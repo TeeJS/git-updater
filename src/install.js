@@ -194,7 +194,8 @@ async function installPortable(archivePath, install) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'rw-extract-'));
   try {
     if (/\.7z$/i.test(archivePath)) await extract7z(archivePath, tmp);
-    else new AdmZip(archivePath).extractAllTo(tmp, /* overwrite */ true); // adm-zip >=0.5.10 is zip-slip-safe
+    else if (/\.zip$/i.test(archivePath)) new AdmZip(archivePath).extractAllTo(tmp, /* overwrite */ true); // adm-zip >=0.5.10 is zip-slip-safe
+    else fs.copyFileSync(archivePath, path.join(tmp, path.basename(archivePath))); // bare portable file (e.g. a single .exe): place it as-is
     // Auto-flatten version-named wrapper folders (e.g. deskflow-1.26.0-.../) so updates
     // overwrite in place instead of piling up a new folder per release. Explicit strip wins.
     const src = install.strip != null ? stripDirs(tmp, install.strip) : stripDirs(tmp, Infinity);

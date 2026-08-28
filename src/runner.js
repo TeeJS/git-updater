@@ -88,10 +88,11 @@ async function handleRepo(repo, id, st, opts) {
     : core.pickWindowsAsset(rel.assets, repo.type);
 
   if (opts.dryRun) {
+    const verb = /\.(zip|7z)$/i.test(asset.name) ? 'extract' : 'place';
     const plan =
       repo.type === 'installer'
         ? `install ${asset.name} silently`
-        : `extract ${asset.name} -> ${repo.install.dir}`;
+        : `${verb} ${asset.name} -> ${repo.install.dir}`;
     return { ...base, status: 'updated', note: plan };
   }
 

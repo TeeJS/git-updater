@@ -109,8 +109,10 @@ function matchAsset(assets, pattern) {
 
 const NON_WINDOWS =
   /\.(deb|rpm|dmg|pkg|appimage|apk|snap|flatpak|tar\.gz|tgz|tar\.xz|tar\.bz2)$|(?:^|[-_.])(linux|darwin|mac(?:os)?|osx|android|freebsd|source)(?:[-_.0-9]|$)/i;
-const PORTABLE_EXT = /\.(zip|7z)$/i;
+// Portable can be an archive OR a single portable .exe (e.g. app-portable.exe).
+const PORTABLE_EXT = /\.(zip|7z|exe)$/i;
 const INSTALLER_EXT = /\.(exe|msi)$/i;
+const SETUP_TOKEN = /(setup|install(er)?|_inst|-inst)/i;
 
 // arch: the machine's architecture (node's process.arch: 'x64' | 'arm64' | 'ia32').
 function scoreAsset(name, type, arch) {
@@ -136,12 +138,17 @@ function scoreAsset(name, type, arch) {
     else if (isArm) s -= 6;
     else if (isX86) s += 1;
   }
+  // Portable vs installer both can be .exe, so disambiguate by name tokens:
+  // portable wants a "portable" build and must AVOID a setup/installer; vice versa.
   if (type === 'portable') {
-    if (/\.zip$/i.test(name)) s += 2; // adm-zip extracts .zip directly; .7z via 7z-wasm
-    if (/portable/i.test(name)) s += 2;
+    if (/portable/i.test(name)) s += 3;
+    if (SETUP_TOKEN.test(name)) s -= 5; // a setup.exe is NOT the portable build
+    if (/\.zip$/i.test(name)) s += 2; // archives extract cleanly; a bare .exe is placed as-is
+    else if (/\.7z$/i.test(name)) s += 1;
   } else {
+    if (SETUP_TOKEN.test(name)) s += 2;
+    if (/portable/i.test(name)) s -= 5; // a portable.exe is NOT the installer
     if (/\.exe$/i.test(name)) s += 1; // prefer exe over msi by default
-    if (/(setup|install)/i.test(name)) s += 1;
   }
   return s;
 }

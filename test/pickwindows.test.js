@@ -26,6 +26,16 @@ test('portable: accepts a .7z when that is the Windows build', () => {
   assert.equal(core.pickWindowsAsset(assets, 'portable').name, 'app-2.0-win-x64.7z');
 });
 
+test('portable: picks the portable .exe over the setup .exe', () => {
+  const assets = A('open-quake-0.7.1-portable.exe', 'open-quake-0.7.1-setup.exe');
+  assert.equal(core.pickWindowsAsset(assets, 'portable').name, 'open-quake-0.7.1-portable.exe');
+});
+
+test('installer: picks the setup .exe over the portable .exe', () => {
+  const assets = A('open-quake-0.7.1-portable.exe', 'open-quake-0.7.1-setup.exe');
+  assert.equal(core.pickWindowsAsset(assets, 'installer').name, 'open-quake-0.7.1-setup.exe');
+});
+
 test('installer: picks the x64 exe over arm and msi', () => {
   const assets = A('7z2602-x64.exe', '7z2602-arm64.exe', '7z2602-x64.msi', '7z2602.exe');
   assert.equal(core.pickWindowsAsset(assets, 'installer').name, '7z2602-x64.exe');
