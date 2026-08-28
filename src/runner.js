@@ -40,13 +40,22 @@ async function handleRepo(repo, id, st, opts) {
 
   if (opts.mode === 'check') return { ...base, status: 'updated' };
 
-  const asset = core.matchAsset(rel.assets, repo.asset);
+  // Manual `asset` pattern overrides; otherwise auto-pick the Windows asset from the type.
+  const asset = repo.asset
+    ? core.matchAsset(rel.assets, repo.asset)
+    : core.pickWindowsAsset(rel.assets, repo.type);
+
+  // Installer needs a kind for its silent switches; auto-guess from the file unless set.
+  const installCfg =
+    repo.type === 'installer'
+      ? { ...repo.install, kind: (repo.install && repo.install.kind) || core.guessKind(asset.name) }
+      : repo.install;
 
   if (opts.dryRun) {
     const plan =
       repo.type === 'installer'
-        ? install.installInstaller(asset.name, repo.install, { dryRun: true }).command
-        : `extract ${asset.name} -> swap into ${repo.install.dir}`;
+        ? install.installInstaller(asset.name, installCfg, { dryRun: true }).command
+        : `extract ${asset.name} -> swap into ${installCfg.dir}`;
     return { ...base, status: 'updated', note: plan };
   }
 
@@ -56,8 +65,8 @@ async function handleRepo(repo, id, st, opts) {
     await github.downloadAsset(asset.browser_download_url, file);
     const v = github.verifyDigest(file, asset.digest);
 
-    if (repo.type === 'installer') install.installInstaller(file, repo.install);
-    else install.installPortable(file, repo.install);
+    if (repo.type === 'installer') install.installInstaller(file, installCfg);
+    else await install.installPortable(file, installCfg);
 
     st[id] = {
       tag: latest,

@@ -44,20 +44,25 @@ node server.js list-assets owner/repo    # discover an asset pattern
 
 ## Config shape (`config.json`)
 
+Each app is just a repo plus **portable or installer** — git-updater picks the right Windows file
+from the latest release automatically (portable → the Windows `.zip`/`.7z`; installer → the `.exe`/`.msi`,
+preferring x64).
+
 ```jsonc
 {
   "portableRoot": "C:/PortableApps",     // portable apps install to <portableRoot>/<repo>
   "repos": [
-    { "owner": "ShareX", "repo": "ShareX", "type": "portable", "asset": "*-portable-x64.zip" },
-    { "owner": "TeeJS", "repo": "tts-stt-windows", "type": "installer",
-      "asset": "*setup*.exe", "install": { "kind": "nsis" } }
+    { "owner": "ShareX", "repo": "ShareX", "type": "portable" },
+    { "owner": "TeeJS", "repo": "tts-stt-windows", "type": "installer" }
   ]
 }
 ```
 
-- `asset` is a glob (`*-win-x64.zip`) or `/regex/`; it must match exactly one release asset.
-- Portable entries may override the folder with `install.dir`; installers take `install.kind`
-  (`msi` | `nsis` | `inno`) and optional `install.args`.
+Optional overrides (rarely needed):
+- `"asset": "*-win-x64.zip"` (glob or `/regex/`) pins a specific file instead of auto-pick.
+- Portable: `"install": { "dir": "D:/Custom" }` to override the folder.
+- Installer: `"install": { "kind": "inno", "args": ["/VERYSILENT"] }` if the guessed silent-install
+  switch is wrong for that installer (`kind` is `msi` | `nsis` | `inno`).
 
 ## Elevation
 

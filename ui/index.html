@@ -10,6 +10,7 @@
   body { font: 15px/1.5 system-ui, Segoe UI, sans-serif; margin: 0; padding: 1.5rem;
          max-width: 1000px; margin-inline: auto; }
   h1 { font-size: 1.4rem; margin: 0 0 .25rem; }
+  h2 { font-size: 1.1rem; margin: .2rem 0 .75rem; }
   .sub { opacity: .7; margin: 0 0 1.25rem; }
   .card { border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
           border-radius: 8px; padding: 1rem; margin-bottom: 1.25rem; }
@@ -18,13 +19,12 @@
   input, select, button { font: inherit; padding: .4rem .5rem; border-radius: 6px;
           border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
           background: transparent; color: inherit; }
-  input[type=text] { min-width: 8rem; }
   button { cursor: pointer; font-weight: 600; }
   button.primary { background: #2563eb; color: #fff; border-color: #2563eb; }
   button.danger { border-color: #dc2626; color: #dc2626; }
   table { width: 100%; border-collapse: collapse; margin-top: .5rem; }
   th, td { text-align: left; padding: .45rem .5rem; border-bottom:
-           1px solid color-mix(in srgb, currentColor 12%, transparent); vertical-align: top; }
+           1px solid color-mix(in srgb, currentColor 12%, transparent); vertical-align: middle; }
   th { font-size: .8rem; text-transform: uppercase; opacity: .6; }
   code { font-family: ui-monospace, Consolas, monospace; font-size: .9em; }
   pre { white-space: pre-wrap; margin: .5rem 0 0; }
@@ -45,22 +45,24 @@
     <input type="text" id="portableRoot" placeholder="C:/PortableApps" style="flex:1;min-width:16rem">
     <button id="saveRoot">Save</button>
   </div>
-  <p class="muted" style="margin:.5rem 0 0">Each portable app installs to <code>&lt;this folder&gt;/&lt;repo&gt;</code> unless it sets its own dir.</p>
+  <p class="muted" style="margin:.5rem 0 0">Portable apps unzip to <code>&lt;this folder&gt;/&lt;repo&gt;</code>.</p>
 </div>
 
 <div class="card">
-  <h2 style="font-size:1.1rem;margin:.2rem 0 .75rem">Tracked apps</h2>
+  <h2>Tracked apps</h2>
   <table id="repos"><thead><tr>
-    <th>Repo</th><th>Type</th><th>Asset pattern</th><th>Install target</th><th></th>
+    <th>Repo</th><th>Type</th><th>Installs to</th><th></th>
   </tr></thead><tbody></tbody></table>
 
   <div class="row" style="margin-top:1rem">
-    <input type="text" id="newOwnerRepo" placeholder="owner/repo" style="min-width:14rem">
-    <button id="loadAssets">List assets</button>
-    <select id="assetPick" style="min-width:16rem;display:none"></select>
-    <button id="addRepo" class="primary" style="display:none">Add</button>
+    <input type="text" id="newRepo" placeholder="https://github.com/owner/repo/releases  (or owner/repo)" style="flex:1;min-width:20rem">
+    <select id="newType">
+      <option value="portable">Portable</option>
+      <option value="installer">Installed</option>
+    </select>
+    <button id="addRepo" class="primary">Add</button>
   </div>
-  <div id="addHint" class="muted"></div>
+  <p class="muted" style="margin:.5rem 0 0">Paste the repo's releases link and pick Portable or Installed — it grabs the right Windows file automatically.</p>
 </div>
 
 <div class="card">
@@ -87,10 +89,20 @@ async function api(path, opts) {
   return j;
 }
 
+// "https://github.com/ShareX/ShareX/releases" or "ShareX/ShareX" -> {owner, repo}
+function parseRepo(s) {
+  s = s.trim();
+  let m = s.match(/github\.com\/([^/\s]+)\/([^/\s#?]+)/i);
+  if (m) return { owner: m[1], repo: m[2].replace(/\.git$/i, '') };
+  m = s.match(/^([^/\s]+)\/([^/\s]+)$/);
+  if (m) return { owner: m[1], repo: m[2] };
+  return null;
+}
+
 function installTarget(repo) {
-  if (repo.type === 'installer') return `installer (${repo.install ? repo.install.kind : '?'})`;
+  if (repo.type === 'installer') return 'runs installer';
   if (repo.install && repo.install.dir) return repo.install.dir;
-  return config.portableRoot ? `${config.portableRoot.replace(/[\\/]+$/,'')}/${repo.repo}` : '(set portable folder)';
+  return config.portableRoot ? `${config.portableRoot.replace(/[\\/]+$/, '')}/${repo.repo}` : '(set portable folder)';
 }
 
 function renderRepos() {
@@ -100,8 +112,7 @@ function renderRepos() {
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td><code>${r.owner}/${r.repo}</code></td>
-      <td><span class="pill">${r.type}</span></td>
-      <td><code>${r.asset}</code></td>
+      <td><span class="pill">${r.type === 'installer' ? 'installed' : 'portable'}</span></td>
       <td class="muted">${installTarget(r)}</td>
       <td><button class="danger" data-i="${i}">Remove</button></td>`;
     tb.appendChild(tr);
@@ -111,9 +122,10 @@ function renderRepos() {
 }
 
 async function saveConfig() {
-  try { await api('/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(config) });
-        msg('Saved.'); }
-  catch (e) { msg(e.message, true); }
+  try {
+    await api('/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(config) });
+    msg('Saved.');
+  } catch (e) { msg(e.message, true); }
 }
 
 async function load() {
@@ -125,41 +137,16 @@ async function load() {
 
 $('saveRoot').onclick = () => { config.portableRoot = $('portableRoot').value.trim(); saveConfig(); };
 
-$('loadAssets').onclick = async () => {
-  const [owner, repo] = $('newOwnerRepo').value.trim().split('/');
-  if (!owner || !repo) return msg('Enter owner/repo', true);
-  msg('Fetching assets…');
-  try {
-    const { tag, assets } = await api(`/api/list-assets?owner=${encodeURIComponent(owner)}&repo=${encodeURIComponent(repo)}`);
-    const pick = $('assetPick');
-    pick.innerHTML = assets.map((a) => `<option>${a}</option>`).join('');
-    pick.style.display = assets.length ? '' : 'none';
-    $('addRepo').style.display = assets.length ? '' : 'none';
-    msg(`Latest ${owner}/${repo} @ ${tag} — ${assets.length} assets. Pick the one to track.`);
-  } catch (e) { msg(e.message, true); }
-};
-
-// asset name -> a glob that survives version bumps, plus a guessed type
-function suggest(assetName) {
-  const type = /\.(exe|msi)$/i.test(assetName) ? 'installer' : 'portable';
-  const glob = assetName
-    .replace(/\d+(\.\d+)+/g, '*')      // version numbers -> *
-    .replace(/\*+/g, '*');
-  const kind = /\.msi$/i.test(assetName) ? 'msi' : 'nsis'; // default installer kind guess
-  return { type, glob, kind };
-}
-
 $('addRepo').onclick = () => {
-  const [owner, repo] = $('newOwnerRepo').value.trim().split('/');
-  const asset = $('assetPick').value;
-  const s = suggest(asset);
-  const entry = { owner, repo, type: s.type, asset: s.glob };
-  if (s.type === 'installer') entry.install = { kind: s.kind };
-  config.repos.push(entry);
-  $('newOwnerRepo').value = ''; $('assetPick').style.display = 'none'; $('addRepo').style.display = 'none';
-  $('addHint').textContent = `Added ${owner}/${repo} as ${s.type}, asset "${s.glob}". Edit config.json for advanced tweaks.`;
+  const parsed = parseRepo($('newRepo').value);
+  if (!parsed) return msg('Paste a github releases URL or owner/repo', true);
+  if (config.repos.some((r) => r.owner === parsed.owner && r.repo === parsed.repo && r.type === $('newType').value))
+    return msg(`${parsed.owner}/${parsed.repo} (${$('newType').value}) is already tracked`, true);
+  config.repos.push({ owner: parsed.owner, repo: parsed.repo, type: $('newType').value });
+  $('newRepo').value = '';
   renderRepos(); saveConfig();
 };
+$('newRepo').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('addRepo').click(); });
 
 async function run(path, body) {
   $('busy').textContent = 'Working…';

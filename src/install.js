@@ -123,11 +123,41 @@ function swapInPlace(src, dir) {
   }
 }
 
-function installPortable(zipPath, install) {
+// Extract a .7z into destDir using 7z-wasm (pure WASM, no external binary).
+// Mounts destDir into the wasm FS, copies the archive in, extracts, cleans up.
+async function extract7z(archivePath, destDir) {
+  const SevenZip = require('7z-wasm');
+  // In the packaged exe the .wasm is a SEA asset; in dev emscripten finds it itself.
+  let wasmBinary;
+  try {
+    const sea = require('node:sea');
+    if (sea.isSea()) wasmBinary = sea.getAsset('7zz.wasm');
+  } catch {}
+  const sevenZip = await SevenZip(wasmBinary ? { wasmBinary } : undefined);
+
+  const mnt = '/out';
+  sevenZip.FS.mkdir(mnt);
+  sevenZip.FS.mount(sevenZip.NODEFS, { root: destDir }, mnt);
+  const archName = 'input.7z';
+  fs.copyFileSync(archivePath, path.join(destDir, archName));
+  sevenZip.FS.chdir(mnt);
+  try {
+    sevenZip.callMain(['x', archName, '-y']); // extract flat into the mounted dir
+  } catch (e) {
+    // emscripten throws ExitStatus on exit(); non-zero status is a real failure
+    if (e && e.status !== undefined && e.status !== 0) throw new Error(`7z extraction failed (code ${e.status})`);
+  }
+  fs.rmSync(path.join(destDir, archName), { force: true });
+}
+
+async function installPortable(archivePath, install) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'rw-extract-'));
   try {
-    new AdmZip(zipPath).extractAllTo(tmp, /* overwrite */ true); // adm-zip >=0.5.10 is zip-slip-safe
-    const src = install.strip ? stripDirs(tmp, install.strip) : tmp;
+    if (/\.7z$/i.test(archivePath)) await extract7z(archivePath, tmp);
+    else new AdmZip(archivePath).extractAllTo(tmp, /* overwrite */ true); // adm-zip >=0.5.10 is zip-slip-safe
+    // Auto-flatten version-named wrapper folders (e.g. deskflow-1.26.0-.../) so updates
+    // overwrite in place instead of piling up a new folder per release. Explicit strip wins.
+    const src = install.strip != null ? stripDirs(tmp, install.strip) : stripDirs(tmp, Infinity);
     fs.mkdirSync(install.dir, { recursive: true });
     swapInPlace(src, install.dir);
   } finally {

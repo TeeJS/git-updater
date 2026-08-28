@@ -2,9 +2,13 @@
   "name": "git-updater",
   "version": "0.1.0",
   "description": "On-demand Windows updater for GitHub-release apps (portable swap or silent install) with a local web UI. A self-hosted Ninite replacement.",
-  "bin": { "git-updater": "server.js" },
+  "bin": {
+    "git-updater": "server.js"
+  },
   "main": "server.js",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "start": "node server.js",
     "test": "node --test",
@@ -12,6 +16,7 @@
   },
   "license": "MIT",
   "dependencies": {
+    "7z-wasm": "^1.2.0",
     "adm-zip": "^0.6.0"
   },
   "devDependencies": {

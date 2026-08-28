@@ -1,11 +1,11 @@
 {
   "portableRoot": "C:/PortableApps",
   "repos": [
-    { "owner": "ShareX", "repo": "ShareX", "type": "portable", "asset": "*-portable-x64.zip" },
-    { "owner": "deskflow", "repo": "deskflow", "type": "portable", "asset": "*windows*.zip" },
-    { "owner": "TeeJS", "repo": "open-quake", "type": "portable", "asset": "*portable*.zip" },
-    { "owner": "TeeJS", "repo": "plezy", "type": "portable", "asset": "*portable*.zip" },
-    { "owner": "notepad-plus-plus", "repo": "notepad-plus-plus", "type": "portable", "asset": "*.portable.x64.zip" },
-    { "owner": "TeeJS", "repo": "tts-stt-windows", "type": "installer", "asset": "*setup*.exe", "install": { "kind": "nsis" } }
+    { "owner": "ShareX", "repo": "ShareX", "type": "portable" },
+    { "owner": "deskflow", "repo": "deskflow", "type": "portable" },
+    { "owner": "TeeJS", "repo": "open-quake", "type": "portable" },
+    { "owner": "TeeJS", "repo": "plezy", "type": "portable" },
+    { "owner": "notepad-plus-plus", "repo": "notepad-plus-plus", "type": "portable" },
+    { "owner": "TeeJS", "repo": "tts-stt-windows", "type": "installer" }
   ]
 }

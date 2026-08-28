@@ -5,6 +5,7 @@
   "useSnapshot": false,
   "useCodeCache": false,
   "assets": {
-    "index.html": "ui/index.html"
+    "index.html": "ui/index.html",
+    "7zz.wasm": "node_modules/7z-wasm/7zz.wasm"
   }
 }

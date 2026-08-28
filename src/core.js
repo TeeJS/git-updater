@@ -81,6 +81,56 @@ function matchAsset(assets, pattern) {
 }
 
 // ---------------------------------------------------------------------------
+// Auto-pick the right Windows asset from a release, given only "portable" or
+// "installer". This is the app doing the work so the user never picks files.
+// ---------------------------------------------------------------------------
+
+const NON_WINDOWS =
+  /\.(deb|rpm|dmg|pkg|appimage|apk|snap|flatpak|tar\.gz|tgz|tar\.xz|tar\.bz2)$|(?:^|[-_.])(linux|darwin|mac(?:os)?|osx|android|freebsd|source)(?:[-_.0-9]|$)/i;
+const PORTABLE_EXT = /\.(zip|7z)$/i;
+const INSTALLER_EXT = /\.(exe|msi)$/i;
+
+function scoreAsset(name, type) {
+  if (NON_WINDOWS.test(name)) return -Infinity;
+  if (!(type === 'installer' ? INSTALLER_EXT : PORTABLE_EXT).test(name)) return -Infinity;
+  let s = 0;
+  if (/win(dows|64|32)?/i.test(name)) s += 4;
+  if (/(x64|amd64|x86[_-]?64|win64)/i.test(name)) s += 3;
+  else if (/(arm64|aarch64|arm)/i.test(name)) s -= 6; // avoid arm on a typical x64 box
+  else if (/(x86|ia32|win32|32-?bit)/i.test(name)) s += 1;
+  if (type === 'portable') {
+    if (/\.zip$/i.test(name)) s += 2; // adm-zip extracts .zip; .7z not yet
+    if (/portable/i.test(name)) s += 2;
+  } else {
+    if (/\.exe$/i.test(name)) s += 1; // prefer exe over msi by default
+    if (/(setup|install)/i.test(name)) s += 1;
+  }
+  return s;
+}
+
+// Returns the best-matching asset object, or throws if the release has none for Windows.
+function pickWindowsAsset(assets, type) {
+  const list = assets || [];
+  let best = null;
+  let bestScore = -Infinity;
+  for (const a of list) {
+    const sc = scoreAsset(a.name, type);
+    if (sc === -Infinity) continue;
+    if (sc > bestScore || (sc === bestScore && best && a.name.length < best.name.length)) {
+      best = a;
+      bestScore = sc;
+    }
+  }
+  if (!best) throw new Error(`no Windows ${type} asset in release. Assets: ${list.map((a) => a.name).join(', ') || '(none)'}`);
+  return best;
+}
+
+// exe -> nsis (/S), msi -> msi. Overridable via install.kind in config.json.
+function guessKind(assetName) {
+  return /\.msi$/i.test(assetName) ? 'msi' : 'nsis';
+}
+
+// ---------------------------------------------------------------------------
 // Installer silent-switch table. Only the kinds we actually use; extend freely.
 // ---------------------------------------------------------------------------
 
@@ -124,7 +174,7 @@ function validateConfig(json) {
     if (r.type !== 'portable' && r.type !== 'installer') {
       throw new Error(`${at}: "type" must be "portable" or "installer"`);
     }
-    if (!r.asset) throw new Error(`${at}: "asset" pattern is required`);
+    // asset is optional: omitted -> engine auto-picks the Windows asset from `type`.
     if (r.type === 'portable') {
       if (!r.install) r.install = {};
       if (!r.install.dir) {
@@ -132,9 +182,9 @@ function validateConfig(json) {
         r.install.dir = resolvePortableDir(json.portableRoot, r.repo);
       }
     } else {
-      if (!r.install) throw new Error(`${at}: "install" is required`);
-      if (!INSTALLER_SWITCHES[r.install.kind]) {
-        throw new Error(`${at}: installer requires install.kind one of ${Object.keys(INSTALLER_SWITCHES).join(', ')}`);
+      // installer: kind is optional (auto-guessed from the picked file); if set, it must be valid.
+      if (r.install && r.install.kind && !INSTALLER_SWITCHES[r.install.kind]) {
+        throw new Error(`${at}: install.kind must be one of ${Object.keys(INSTALLER_SWITCHES).join(', ')}`);
       }
     }
   });
@@ -168,6 +218,8 @@ module.exports = {
   cmpVersion,
   compilePattern,
   matchAsset,
+  pickWindowsAsset,
+  guessKind,
   installerCmd,
   validateConfig,
   resolvePortableDir,
