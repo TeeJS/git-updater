@@ -50,12 +50,16 @@ function allInstalled() {
   return cache;
 }
 
-// Best DisplayVersion for an app whose registry DisplayName contains `needle`
-// (case-insensitive). Returns null when nothing matches (i.e. not installed).
+// Best DisplayVersion for an app whose registry DisplayName matches `needle`.
+// Matches on alphanumerics only, so "7zip" finds "7-Zip" and "notepad-plus-plus"
+// finds "Notepad++". Returns null when nothing matches (i.e. not installed).
 function registryVersion(needle) {
-  if (!needle) return null;
-  const n = String(needle).toLowerCase();
-  const hit = allInstalled().find((e) => e.DisplayName.toLowerCase().includes(n));
+  const t = norm(needle);
+  if (t.length < 2) return null;
+  const hit = allInstalled().find((e) => {
+    const dn = norm(e.DisplayName);
+    return dn.length >= 2 && (dn.includes(t) || t.includes(dn));
+  });
   return hit ? hit.DisplayVersion : null;
 }
 
