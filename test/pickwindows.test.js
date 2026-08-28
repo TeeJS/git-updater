@@ -36,9 +36,14 @@ test('installer: picks the setup .exe over the portable .exe', () => {
   assert.equal(core.pickWindowsAsset(assets, 'installer').name, 'open-quake-0.7.1-setup.exe');
 });
 
-test('installer: picks the x64 exe over arm and msi', () => {
+test('installer: prefers the x64 .msi (silent-installable) over exe/arm', () => {
   const assets = A('7z2602-x64.exe', '7z2602-arm64.exe', '7z2602-x64.msi', '7z2602.exe');
-  assert.equal(core.pickWindowsAsset(assets, 'installer').name, '7z2602-x64.exe');
+  assert.equal(core.pickWindowsAsset(assets, 'installer').name, '7z2602-x64.msi');
+});
+
+test('installer: falls back to .exe when there is no .msi', () => {
+  const assets = A('ShareX-21.0.0-setup-x64.exe', 'ShareX-21.0.0-portable-x64.zip');
+  assert.equal(core.pickWindowsAsset(assets, 'installer').name, 'ShareX-21.0.0-setup-x64.exe');
 });
 
 test('throws when no Windows asset of the requested type exists', () => {

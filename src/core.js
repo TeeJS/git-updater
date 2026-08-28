@@ -148,7 +148,10 @@ function scoreAsset(name, type, arch) {
   } else {
     if (SETUP_TOKEN.test(name)) s += 2;
     if (/portable/i.test(name)) s -= 5; // a portable.exe is NOT the installer
-    if (/\.exe$/i.test(name)) s += 1; // prefer exe over msi by default
+    // Prefer .msi when a repo ships both — `msiexec /qn` is universally silent-installable,
+    // whereas an arbitrary .exe installer's silent switch can't always be identified.
+    if (/\.msi$/i.test(name)) s += 2;
+    else if (/\.exe$/i.test(name)) s += 1;
   }
   return s;
 }
