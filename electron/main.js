@@ -4,10 +4,11 @@
 // the renderer talks to the engine over IPC (no socket), the engine runs in-process
 // (no shell, no self-elevation), and closing the window exits everything (on-demand).
 
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const core = require('../src/core');
+const github = require('../src/github');
 const runner = require('../src/runner');
 const state = require('../src/state');
 
@@ -71,9 +72,22 @@ function createWindow() {
 
 // --- IPC: the only bridge between the renderer and the engine -----------------
 ipcMain.handle('config:get', () => readConfig());
+ipcMain.handle('state:get', () => state.load()); // per-app installed versions map
 ipcMain.handle('config:save', (_e, cfg) => {
   saveConfigFile(cfg);
   return { ok: true };
+});
+ipcMain.handle('config:open', () => shell.openPath(CONFIG_PATH));
+ipcMain.handle('release:open', (_e, { owner, repo }) =>
+  shell.openExternal(`https://github.com/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/releases`)
+);
+// Preview which Windows asset auto-pick would choose for the latest release.
+ipcMain.handle('asset:preview', async (_e, appKey) => {
+  const repo = readConfig().repos.find((r) => `${r.owner}/${r.repo}#${r.type}` === appKey);
+  if (!repo) throw new Error('app not found');
+  const rel = await github.getLatestRelease(repo.owner, repo.repo, { prerelease: repo.prerelease });
+  const asset = repo.asset ? core.matchAsset(rel.assets, repo.asset) : core.pickWindowsAsset(rel.assets, repo.type);
+  return { tag: rel.tag_name, asset: asset.name };
 });
 ipcMain.handle('pick-folder', async () => {
   const r = await dialog.showOpenDialog(win, {
@@ -88,14 +102,16 @@ ipcMain.handle('check', async (_e, body = {}) => {
 });
 
 let updating = false; // in-process guard; state lock guards other processes
-ipcMain.handle('update', async (_e, body = {}) => {
+ipcMain.handle('update', async (e, body = {}) => {
   if (updating) throw new Error('an update is already in progress');
   updating = true;
   let lock = null;
   try {
     const config = core.validateConfig(readConfig());
     if (!body.dryRun) lock = state.acquireLock();
-    return await runner.run(config, { only: body.only, force: !!body.force, dryRun: !!body.dryRun });
+    // Stream per-app progress to the renderer as it happens.
+    const onProgress = (id, phase, pct) => e.sender.send('update:progress', { id, phase, pct });
+    return await runner.run(config, { only: body.only, force: !!body.force, dryRun: !!body.dryRun, onProgress });
   } finally {
     state.releaseLock(lock);
     updating = false;

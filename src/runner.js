@@ -43,6 +43,8 @@ function dirHasFiles(dir) {
 
 async function handleRepo(repo, id, st, opts) {
   const key = appKey(repo);
+  const emit = (phase, pct) => opts.onProgress && opts.onProgress(key, phase, pct);
+  emit('checking');
   const rel = await github.getLatestRelease(repo.owner, repo.repo, { prerelease: repo.prerelease });
   const latest = rel.tag_name;
   const prev = st[key] || {};
@@ -85,9 +87,12 @@ async function handleRepo(repo, id, st, opts) {
   const tmp = fs.mkdtempSync(path.join(stageBase, 'dl-'));
   try {
     const file = path.join(tmp, asset.name);
-    await github.downloadAsset(asset.browser_download_url, file);
+    emit('downloading', 0);
+    await github.downloadAsset(asset.browser_download_url, file, (pct) => emit('downloading', pct));
+    emit('verifying');
     const v = github.verifyDigest(file, asset.digest);
 
+    emit('installing');
     let files; // portable manifest, for stale-file pruning
     if (repo.type === 'installer') {
       // Detect the installer's silent-install technology from its bytes. If it can't be

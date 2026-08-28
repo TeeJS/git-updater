@@ -15,98 +15,88 @@
     --sans: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
   }
   * { box-sizing: border-box; }
-  html, body { height: 100%; }
   body {
-    margin: 0; padding: 2.5rem 1.25rem 4rem; color: var(--text); font-family: var(--sans);
-    font-size: 15px; line-height: 1.55; background: var(--bg);
+    margin: 0; padding: 2rem 1.25rem 3rem; color: var(--text); font-family: var(--sans);
+    font-size: 15px; line-height: 1.5; background: var(--bg);
     background-image:
       radial-gradient(900px 500px at 85% -10%, rgba(227,161,60,.10), transparent 60%),
       radial-gradient(700px 500px at 0% 0%, rgba(88,166,255,.06), transparent 55%);
     background-attachment: fixed;
   }
-  .wrap { max-width: 760px; margin: 0 auto; }
-
-  header { display: flex; align-items: center; gap: .7rem; margin-bottom: .35rem; }
+  .wrap { max-width: 820px; margin: 0 auto; }
+  header { display: flex; align-items: center; gap: .7rem; margin-bottom: .3rem; }
   .logo { width: 30px; height: 30px; flex: none; display: grid; place-items: center;
           border-radius: 8px; background: linear-gradient(160deg, var(--accent), #b9762a);
           color: var(--accent-ink); box-shadow: 0 2px 10px rgba(227,161,60,.35); }
-  h1 { font-family: var(--mono); font-weight: 600; font-size: 1.35rem; letter-spacing: -.01em; margin: 0; }
+  h1 { font-family: var(--mono); font-weight: 600; font-size: 1.35rem; margin: 0; }
   h1 .g { color: var(--accent); }
-  .tagline { color: var(--muted); margin: 0 0 1.6rem; font-size: .95rem; }
-
+  .tagline { color: var(--muted); margin: 0 0 1.4rem; font-size: .95rem; }
   .panel { background: linear-gradient(180deg, var(--panel), var(--panel-2));
-           border: 1px solid var(--border); border-radius: 12px; padding: 1.15rem 1.2rem;
-           margin-bottom: 1.15rem; box-shadow: 0 1px 0 rgba(255,255,255,.02) inset, 0 8px 24px -18px #000; }
-  .panel h2 { font-family: var(--mono); font-size: .78rem; font-weight: 600; letter-spacing: .12em;
-              text-transform: uppercase; color: var(--faint); margin: 0 0 .9rem; }
-  .row { display: flex; gap: .55rem; flex-wrap: wrap; align-items: center; }
-
-  label { font-weight: 600; }
-  input[type=text] {
-    font: 400 14px var(--mono); padding: .55rem .7rem; border-radius: 8px; color: var(--text);
-    background: #0d1117; border: 1px solid var(--border); transition: border-color .15s, box-shadow .15s;
-  }
-  input[type=text]:focus { outline: none; border-color: var(--accent);
-    box-shadow: 0 0 0 3px rgba(227,161,60,.18); }
+           border: 1px solid var(--border); border-radius: 12px; padding: 1rem 1.1rem;
+           margin-bottom: 1rem; box-shadow: 0 8px 24px -18px #000; }
+  .panel h2 { font-family: var(--mono); font-size: .74rem; font-weight: 600; letter-spacing: .12em;
+              text-transform: uppercase; color: var(--faint); margin: 0 0 .8rem; }
+  .row { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
+  input[type=text] { font: 400 14px var(--mono); padding: .5rem .65rem; border-radius: 8px; color: var(--text);
+    background: #0d1117; border: 1px solid var(--border); }
+  input[type=text]:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(227,161,60,.18); }
   input[type=text]::placeholder { color: var(--faint); }
-
-  button { font: 600 14px var(--sans); cursor: pointer; border-radius: 8px; padding: .5rem .85rem;
+  input[type=checkbox] { width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; }
+  button { font: 600 13.5px var(--sans); cursor: pointer; border-radius: 8px; padding: .48rem .8rem;
            border: 1px solid var(--border); background: #21262d; color: var(--text);
            transition: transform .05s, background .15s, border-color .15s, opacity .15s; }
-  button:hover { background: #2a313a; border-color: #444c56; }
-  button:active { transform: translateY(1px); }
-  button:disabled { opacity: .45; cursor: default; transform: none; }
+  button:hover:not(:disabled) { background: #2a313a; border-color: #444c56; }
+  button:active:not(:disabled) { transform: translateY(1px); }
+  button:disabled { opacity: .4; cursor: default; }
   button.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
-  button.primary:hover { background: #efb457; }
-  button.ghost-danger { background: transparent; border-color: transparent; color: var(--faint);
-           padding: .35rem .55rem; }
-  button.ghost-danger:hover { background: rgba(248,81,73,.12); color: var(--red); border-color: transparent; }
-
-  .seg { display: inline-flex; padding: 3px; gap: 3px; border-radius: 9px;
-         background: #0d1117; border: 1px solid var(--border); }
-  .seg button { border: 0; background: transparent; color: var(--muted); padding: .38rem .8rem; border-radius: 6px; }
+  button.primary:hover:not(:disabled) { background: #efb457; }
+  .seg { display: inline-flex; padding: 3px; gap: 3px; border-radius: 9px; background: #0d1117; border: 1px solid var(--border); }
+  .seg button { border: 0; background: transparent; color: var(--muted); padding: .36rem .75rem; border-radius: 6px; }
   .seg button:hover { background: transparent; color: var(--text); }
   .seg button.active { background: var(--accent); color: var(--accent-ink); }
 
   table { width: 100%; border-collapse: collapse; }
-  th { font: 600 .72rem var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--faint);
-       text-align: left; padding: 0 .4rem .55rem; }
-  td { padding: .6rem .4rem; border-top: 1px solid var(--border); vertical-align: middle; }
-  tbody tr { animation: rise .35s ease both; }
-  tbody tr:nth-child(2) { animation-delay: .04s } tbody tr:nth-child(3) { animation-delay: .08s }
-  tbody tr:nth-child(4) { animation-delay: .12s } tbody tr:nth-child(5) { animation-delay: .16s }
-  @keyframes rise { from { opacity: 0; transform: translateY(4px) } to { opacity: 1; transform: none } }
-  .repo { font: 500 14px var(--mono); }
-  .type { font: 500 .82rem var(--mono); color: var(--muted); }
-
-  .status { display: inline-flex; align-items: center; gap: .45rem; font-size: .9rem; }
-  .status .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); flex: none; }
-  .st-muted { color: var(--muted); } .st-muted .dot { background: var(--faint); }
-  .st-ok { color: var(--green); } .st-ok .dot { background: var(--green); box-shadow: 0 0 8px var(--green); }
-  .st-up { color: var(--blue); } .st-up .dot { background: var(--blue); box-shadow: 0 0 8px var(--blue); }
-  .st-bad { color: var(--red); } .st-bad .dot { background: var(--red); box-shadow: 0 0 8px var(--red); }
-  .st-work .dot { animation: pulse 1s infinite; }
+  th { font: 600 .7rem var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--faint); text-align: left; padding: 0 .35rem .5rem; }
+  td { padding: .55rem .35rem; border-top: 1px solid var(--border); vertical-align: middle; }
+  .app { font: 500 14px var(--mono); }
+  .type { font: 500 .8rem var(--mono); color: var(--muted); }
+  .ver { font: 500 13px var(--mono); white-space: nowrap; }
+  .ver .old { color: var(--muted); } .ver .arrow { color: var(--faint); margin: 0 .3rem; } .ver .new { color: var(--blue); }
+  .st { display: inline-flex; align-items: center; gap: .4rem; font-size: .88rem; white-space: nowrap; }
+  .st .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); flex: none; }
+  .c-muted { color: var(--muted); } .c-muted .dot { background: var(--faint); }
+  .c-ok { color: var(--green); } .c-ok .dot { background: var(--green); box-shadow: 0 0 8px var(--green); }
+  .c-up { color: var(--blue); } .c-up .dot { background: var(--blue); box-shadow: 0 0 8px var(--blue); }
+  .c-bad { color: var(--red); } .c-bad .dot { background: var(--red); box-shadow: 0 0 8px var(--red); }
+  .c-work .dot { animation: pulse 1s infinite; background: var(--accent); box-shadow: 0 0 8px var(--accent); }
   @keyframes pulse { 0%,100% { opacity: .3 } 50% { opacity: 1 } }
-
-  .hint { font-size: .85rem; color: var(--faint); margin: .7rem 0 0; }
-  .hint code, .mono { font-family: var(--mono); color: var(--muted); }
-  .check { display: inline-flex; align-items: center; gap: .35rem; color: var(--muted); font-size: .9rem; font-weight: 500; }
-  .empty { color: var(--faint); padding: .8rem .4rem; font-size: .9rem; }
-  #msg { min-height: 1.3rem; margin: 0 0 1rem; font-weight: 600; font-size: .92rem; }
+  td.act { text-align: right; white-space: nowrap; }
+  .rowbtn { padding: .34rem .7rem; font-size: 13px; }
+  .kebab { padding: .3rem .55rem; font-size: 16px; line-height: 1; color: var(--muted); }
+  .menu { position: absolute; z-index: 50; min-width: 210px; background: #1c2128; border: 1px solid var(--border);
+          border-radius: 10px; padding: .35rem; box-shadow: 0 12px 30px -8px #000; }
+  .menu button { display: block; width: 100%; text-align: left; background: transparent; border: 0; border-radius: 6px;
+                 padding: .45rem .6rem; font-weight: 500; color: var(--text); }
+  .menu button:hover { background: #2a313a; }
+  .menu button.danger { color: var(--red); }
+  .menu .sep { height: 1px; background: var(--border); margin: .3rem .2rem; }
+  .hint { font-size: .84rem; color: var(--faint); margin: .6rem 0 0; }
+  .hint code { font-family: var(--mono); color: var(--muted); }
+  .bar { display: flex; align-items: center; gap: .6rem; }
+  .bar .count { color: var(--muted); font-size: .92rem; margin-right: auto; }
+  #msg { min-height: 1.25rem; margin: 0 0 .9rem; font-weight: 600; font-size: .9rem; }
   #msg.ok { color: var(--green); } #msg.bad { color: var(--red); } #msg.info { color: var(--muted); }
-  .divider { height: 1px; background: var(--border); margin: 1rem -1.2rem; }
+  .divider { height: 1px; background: var(--border); margin: .9rem -1.1rem; }
+  .empty { color: var(--faint); padding: .7rem .35rem; font-size: .9rem; }
 </style>
 </head>
 <body>
 <div class="wrap">
   <header>
-    <span class="logo" aria-hidden="true">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 12 5 5 5-5"/><path d="M5 21h14"/></svg>
-    </span>
+    <span class="logo" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 12 5 5 5-5"/><path d="M5 21h14"/></svg></span>
     <h1><span class="g">git</span>-updater</h1>
   </header>
   <p class="tagline">Keeps your apps current straight from their GitHub releases — portable &amp; installed.</p>
-
   <div id="msg"></div>
 
   <div class="panel">
@@ -122,9 +112,18 @@
   <div class="panel">
     <h2>Your apps</h2>
     <table id="repos"><thead><tr>
-      <th style="width:46%">App</th><th>Type</th><th>Status</th><th></th>
+      <th style="width:1%"><input type="checkbox" id="selAll" title="Select all"></th>
+      <th>App</th><th>Type</th><th>Version</th><th>Status</th><th></th>
     </tr></thead><tbody></tbody></table>
     <div class="empty" id="empty" style="display:none">No apps tracked yet — add one below.</div>
+
+    <div class="bar" style="margin-top:.9rem">
+      <span class="count" id="count"></span>
+      <button id="checkAll">Check all</button>
+      <button id="updateSel" disabled>Update selected</button>
+      <button id="updateAll" class="primary">Update all</button>
+    </div>
+
     <div class="divider"></div>
     <div class="row">
       <input type="text" id="newRepo" placeholder="github.com/owner/repo  ·  or  owner/repo" style="flex:1;min-width:16rem">
@@ -134,33 +133,23 @@
       </div>
       <button id="addRepo" class="primary">Add</button>
     </div>
-    <p class="hint">Paste the releases link and pick a type — it grabs the right Windows file automatically.</p>
-  </div>
-
-  <div class="panel">
-    <div class="row" style="gap:.7rem">
-      <button id="checkBtn">Check for updates</button>
-      <button id="updateBtn" class="primary">Download &amp; update</button>
-      <label class="check" title="Show what would happen without changing anything"><input type="checkbox" id="dryRun"> preview only</label>
-      <label class="check" title="Reinstall even if already up to date"><input type="checkbox" id="force"> force reinstall</label>
-    </div>
-    <p class="hint"><strong style="color:var(--muted)">Check</strong> finds newer versions and reports them in Status — nothing changes. <strong style="color:var(--muted)">Download &amp; update</strong> installs them.</p>
+    <p class="hint">Paste the releases link, pick a type — it grabs the right Windows file automatically.</p>
   </div>
 </div>
 
 <script>
 let config = { portableRoot: '', repos: [] };
-let statusById = {}; // "owner/repo" -> {text, cls}
+const st = {};       // appKey -> { ph, pct, from, to, reason }
+const selected = new Set();
+let busy = false;
 
 const $ = (id) => document.getElementById(id);
-const idOf = (r) => `${r.owner}/${r.repo}#${r.type}`; // matches the engine's per-type key
+const keyOf = (r) => `${r.owner}/${r.repo}#${r.type}`;
 const msg = (t, cls) => { const m = $('msg'); m.textContent = t || ''; m.className = cls || ''; };
+const clean = (e) => String(e && e.message ? e.message : e).replace(/^Error:\s*/, '');
 const selectedType = () => $('newType').querySelector('button.active').dataset.type;
 $('newType').querySelectorAll('button').forEach((b) =>
   b.onclick = () => { $('newType').querySelectorAll('button').forEach((x) => x.classList.remove('active')); b.classList.add('active'); });
-
-// Talks to the Electron main process over IPC (window.api) — no network, no server.
-const clean = (e) => String(e && e.message ? e.message : e).replace(/^Error:\s*/, '');
 
 function parseRepo(s) {
   s = s.trim();
@@ -171,122 +160,213 @@ function parseRepo(s) {
   return null;
 }
 
-// Build cells with textContent (never innerHTML) so poisoned config can't inject markup.
-function statusCell(st) {
-  const td = document.createElement('td');
-  const span = document.createElement('span');
-  span.className = 'status ' + st.cls;
-  const dot = document.createElement('span'); dot.className = 'dot';
-  const txt = document.createElement('span'); txt.textContent = st.text;
-  span.append(dot, txt); td.appendChild(span);
-  return td;
+// phase -> { text, cls, showPct }
+function phaseView(s) {
+  switch (s.ph) {
+    case 'checking': return { text: 'Checking…', cls: 'c-work' };
+    case 'queued': return { text: 'Queued', cls: 'c-muted' };
+    case 'downloading': return { text: `Downloading ${s.pct || 0}%`, cls: 'c-work' };
+    case 'verifying': return { text: 'Verifying SHA-256', cls: 'c-work' };
+    case 'installing': return { text: 'Installing…', cls: 'c-work' };
+    case 'current': return { text: `up to date${s.to ? ' · ' + s.to : ''}`, cls: 'c-muted' };
+    case 'available': return { text: 'update available', cls: 'c-up' };
+    case 'updated': return { text: `updated → ${s.to}`, cls: 'c-ok' };
+    case 'failed': return { text: s.reason || 'failed', cls: 'c-bad' };
+    default: return { text: s.from ? `installed · ${s.from}` : 'not checked', cls: 'c-muted' };
+  }
 }
+
+function cell(cls, node) { const td = document.createElement('td'); if (cls) td.className = cls; if (node) td.appendChild(node); return td; }
+function span(cls, text) { const s = document.createElement('span'); if (cls) s.className = cls; if (text != null) s.textContent = text; return s; }
 
 function renderRepos() {
   const tb = $('repos').querySelector('tbody');
   tb.innerHTML = '';
   $('empty').style.display = config.repos.length ? 'none' : '';
-  config.repos.forEach((r, i) => {
-    const st = statusById[idOf(r)] || { text: 'not checked', cls: 'st-muted' };
+  config.repos.forEach((r) => {
+    const key = keyOf(r);
+    const s = st[key] || (st[key] = { ph: 'idle' });
     const tr = document.createElement('tr');
-    const app = document.createElement('td');
-    const code = document.createElement('span'); code.className = 'repo'; code.textContent = `${r.owner}/${r.repo}`;
-    app.appendChild(code); tr.appendChild(app);
-    const type = document.createElement('td');
-    const ts = document.createElement('span'); ts.className = 'type'; ts.textContent = r.type === 'installer' ? 'installed' : 'portable';
-    type.appendChild(ts); tr.appendChild(type);
-    tr.appendChild(statusCell(st));
-    const rm = document.createElement('td'); rm.style.textAlign = 'right';
-    const btn = document.createElement('button'); btn.className = 'ghost-danger'; btn.textContent = 'Remove';
-    btn.title = 'Stop tracking'; btn.onclick = () => { delete statusById[idOf(r)]; config.repos.splice(i, 1); renderRepos(); saveConfig(); };
-    rm.appendChild(btn); tr.appendChild(rm);
+
+    // select checkbox
+    const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = selected.has(key);
+    cb.onchange = () => { cb.checked ? selected.add(key) : selected.delete(key); syncBar(); };
+    tr.appendChild(cell('', cb));
+
+    tr.appendChild(cell('', span('app', `${r.owner}/${r.repo}`)));
+    tr.appendChild(cell('', span('type', r.type === 'installer' ? 'installed' : 'portable')));
+
+    // version: current -> new (when known)
+    const vt = cell('');
+    const v = span('ver');
+    if (s.from && s.to && s.from !== s.to && (s.ph === 'available' || s.ph === 'updated')) {
+      v.append(span('old', s.from), span('arrow', '→'), span('new', s.to));
+    } else if (s.to) { v.append(span('new', s.to)); }
+    else if (s.from) { v.append(span('old', s.from)); }
+    else { v.append(span('old', '—')); }
+    vt.appendChild(v); tr.appendChild(vt);
+
+    // status
+    const pv = phaseView(s);
+    const stEl = span('st ' + pv.cls); stEl.append(span('dot'), span(null, pv.text));
+    tr.appendChild(cell('', stEl));
+
+    // actions: primary (Update/Retry) + kebab
+    const act = document.createElement('td'); act.className = 'act';
+    if (s.ph === 'available') act.appendChild(rowBtn('Update', () => runBatch([key])));
+    else if (s.ph === 'failed') act.appendChild(rowBtn('Retry', () => runBatch([key])));
+    const kb = document.createElement('button'); kb.className = 'kebab'; kb.textContent = '⋯'; kb.title = 'More';
+    kb.onclick = (ev) => { ev.stopPropagation(); openMenu(r, kb); };
+    act.appendChild(kb);
+    tr.appendChild(act);
+
     tb.appendChild(tr);
   });
+  syncBar();
 }
 
+function rowBtn(label, fn) {
+  const b = document.createElement('button'); b.className = 'primary rowbtn'; b.textContent = label;
+  b.disabled = busy; b.onclick = fn; return b;
+}
+
+function syncBar() {
+  const avail = config.repos.filter((r) => st[keyOf(r)]?.ph === 'available').length;
+  $('count').textContent = avail ? `${avail} update${avail > 1 ? 's' : ''} available` : '';
+  $('updateSel').disabled = busy || selected.size === 0;
+  $('updateAll').disabled = busy || config.repos.length === 0;
+  $('checkAll').disabled = busy || config.repos.length === 0;
+  $('selAll').checked = config.repos.length > 0 && selected.size === config.repos.length;
+}
+
+// --- overflow menu ---
+let menuEl = null;
+function closeMenu() { if (menuEl) { menuEl.remove(); menuEl = null; document.removeEventListener('click', closeMenu); } }
+function openMenu(r, anchor) {
+  closeMenu();
+  const key = keyOf(r);
+  menuEl = document.createElement('div'); menuEl.className = 'menu';
+  const item = (label, fn, danger) => { const b = document.createElement('button'); b.textContent = label; if (danger) b.className = 'danger'; b.onclick = (e) => { e.stopPropagation(); closeMenu(); fn(); }; menuEl.appendChild(b); };
+  const sep = () => { const d = document.createElement('div'); d.className = 'sep'; menuEl.appendChild(d); };
+
+  item('Check now', () => checkApps([key]));
+  item(st[key]?.ph === 'failed' ? 'Retry update' : 'Update', () => runBatch([key]));
+  sep();
+  item('View release ↗', () => window.api.openRelease(r.owner, r.repo));
+  item('Preview selected asset', async () => {
+    try { const { tag, asset } = await window.api.previewAsset(key); msg(`${r.owner}/${r.repo} @ ${tag} → ${asset}`, 'info'); }
+    catch (e) { msg(clean(e), 'bad'); }
+  });
+  sep();
+  item(`Change to ${r.type === 'installer' ? 'portable' : 'installed'}`, () => changeType(r));
+  item('Edit configuration (config.json)', () => window.api.openConfig());
+  item('Force reinstall', () => { if (confirm(`Reinstall ${r.owner}/${r.repo} even if it's up to date?`)) runBatch([key], true); });
+  sep();
+  item('Stop tracking', () => { if (confirm(`Stop tracking ${r.owner}/${r.repo} (${r.type})? This does not uninstall it.`)) removeRepo(r); }, true);
+
+  document.body.appendChild(menuEl);
+  const rect = anchor.getBoundingClientRect();
+  menuEl.style.top = `${window.scrollY + rect.bottom + 4}px`;
+  menuEl.style.left = `${Math.max(8, window.scrollX + rect.right - menuEl.offsetWidth)}px`;
+  setTimeout(() => document.addEventListener('click', closeMenu), 0);
+}
+
+// --- config ops ---
 async function saveConfig() {
-  config.portableRoot = $('portableRoot').value.trim(); // folder field is the source of truth
-  try {
-    await window.api.saveConfig(config);
-    msg('Saved.', 'ok');
-  } catch (e) { msg(clean(e), 'bad'); }
-  await load();
+  config.portableRoot = $('portableRoot').value.trim();
+  try { await window.api.saveConfig(config); } catch (e) { msg(clean(e), 'bad'); }
 }
-
 async function load() {
-  const saved = statusById;
   config = await window.api.getConfig();
   if (!config.repos) config.repos = [];
-  statusById = saved;
   $('portableRoot').value = config.portableRoot || '';
+  // seed installed versions from state
+  try {
+    const state = await window.api.getState();
+    config.repos.forEach((r) => { const k = keyOf(r); const rec = state[k]; if (rec) (st[k] = st[k] || { ph: 'idle' }).from = rec.version; });
+  } catch {}
   renderRepos();
 }
 
-$('saveRoot').onclick = () => saveConfig();
-
+$('saveRoot').onclick = () => saveConfig().then(() => msg('Saved.', 'ok'));
 $('browse').onclick = async () => {
-  try {
-    const { path } = await window.api.pickFolder();
-    if (path) { $('portableRoot').value = path; await saveConfig(); }
-    else msg('No folder chosen.', 'info');
-  } catch (e) { msg(clean(e), 'bad'); }
+  try { const { path } = await window.api.pickFolder(); if (path) { $('portableRoot').value = path; await saveConfig(); msg('Saved.', 'ok'); } }
+  catch (e) { msg(clean(e), 'bad'); }
 };
-
-$('addRepo').onclick = () => {
+$('addRepo').onclick = async () => {
   const parsed = parseRepo($('newRepo').value);
   if (!parsed) return msg('Paste a GitHub releases URL or owner/repo.', 'bad');
   const type = selectedType();
-  if (type === 'portable' && !$('portableRoot').value.trim()) {
-    msg('Set the portable apps folder first — click Browse.', 'bad');
-    $('portableRoot').focus();
-    return;
-  }
-  if (config.repos.some((r) => r.owner === parsed.owner && r.repo === parsed.repo && r.type === type))
-    return msg(`${idOf(parsed)} (${type}) is already in your list.`, 'bad');
+  if (type === 'portable' && !$('portableRoot').value.trim()) { msg('Set the portable apps folder first — click Browse.', 'bad'); $('portableRoot').focus(); return; }
+  if (config.repos.some((r) => r.owner === parsed.owner && r.repo === parsed.repo && r.type === type)) return msg(`${parsed.owner}/${parsed.repo} (${type}) is already in your list.`, 'bad');
   config.repos.push({ owner: parsed.owner, repo: parsed.repo, type });
   $('newRepo').value = '';
-  renderRepos(); saveConfig();
+  await saveConfig(); renderRepos();
 };
 $('newRepo').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('addRepo').click(); });
 
-function toStatus(r, kind, dry) {
-  if (r.status === 'failed') return { text: r.reason, cls: 'st-bad' };
-  if (r.status === 'current') return { text: `up to date · ${r.to}`, cls: 'st-muted' };
-  if (kind === 'check') return { text: `update available → ${r.to}`, cls: 'st-up' };
-  if (dry) return { text: `would update → ${r.to}`, cls: 'st-up' };
-  return { text: `updated → ${r.to}`, cls: 'st-ok' };
+async function changeType(r) {
+  const other = r.type === 'installer' ? 'portable' : 'installer';
+  if (other === 'portable' && !$('portableRoot').value.trim()) return msg('Set the portable apps folder first.', 'bad');
+  delete st[keyOf(r)];
+  r.type = other;
+  await saveConfig(); renderRepos(); msg(`Changed to ${other === 'installer' ? 'installed' : 'portable'}.`, 'ok');
+}
+async function removeRepo(r) {
+  const k = keyOf(r); selected.delete(k); delete st[k];
+  config.repos = config.repos.filter((x) => !(x.owner === r.owner && x.repo === r.repo && x.type === r.type));
+  await saveConfig(); renderRepos();
 }
 
-async function run(kind) {
-  const dry = $('dryRun').checked;
-  config.repos.forEach((r) => (statusById[idOf(r)] = { text: kind === 'check' ? 'checking…' : 'working…', cls: 'st-muted st-work' }));
-  renderRepos();
-  $('checkBtn').disabled = $('updateBtn').disabled = true;
-  msg(kind === 'check' ? 'Checking releases…' : 'Updating…', 'info');
+// --- check / update ---
+async function checkApps(keys) {
+  if (busy) return;
+  busy = true; keys.forEach((k) => (st[k] = { ...(st[k] || {}), ph: 'checking' })); renderRepos();
   try {
-    const body = { dryRun: dry, force: $('force').checked };
-    const { results } = kind === 'check' ? await window.api.check(body) : await window.api.update(body);
-    results.forEach((r) => (statusById[r.id || r.repo] = toStatus(r, kind, dry)));
-    renderRepos();
-    const n = results.filter((r) => r.status === 'updated').length;
-    const f = results.filter((r) => r.status === 'failed').length;
-    msg(kind === 'check'
-      ? (n ? `${n} update${n > 1 ? 's' : ''} available.` : 'Everything is up to date.') + (f ? ` ${f} failed.` : '')
-      : (dry ? 'Preview complete — nothing was changed.' : `Done — ${n} updated${f ? `, ${f} failed` : ''}.`),
-      f ? 'bad' : 'ok');
-  } catch (e) {
-    config.repos.forEach((r) => (statusById[idOf(r)] = { text: 'not checked', cls: 'st-muted' }));
-    renderRepos();
-    msg(e.message, 'bad');
-  } finally {
-    $('checkBtn').disabled = $('updateBtn').disabled = false;
-  }
+    for (const k of keys) {
+      const { results } = await window.api.check({ only: k });
+      const r = results.find((x) => (x.id || x.repo) === k) || results[0];
+      if (r) st[k] = { ph: r.status === 'current' ? 'current' : 'available', from: r.from || st[k]?.from, to: r.to };
+      renderRepos();
+    }
+    msg('Check complete.', 'ok');
+  } catch (e) { keys.forEach((k) => (st[k].ph = 'failed', st[k].reason = clean(e))); msg(clean(e), 'bad'); }
+  finally { busy = false; renderRepos(); }
 }
 
-$('checkBtn').onclick = () => run('check');
-$('updateBtn').onclick = () => run('update');
+async function runBatch(keys, force) {
+  if (busy || !keys.length) return;
+  busy = true;
+  keys.forEach((k) => (st[k] = { ...(st[k] || {}), ph: 'queued' })); renderRepos();
+  let done = 0, failed = 0;
+  for (const k of keys) {
+    try {
+      const { results } = await window.api.update({ only: k, force: !!force });
+      const r = results.find((x) => (x.id || x.repo) === k) || results[0];
+      if (!r) { st[k] = { ph: 'failed', reason: 'no result' }; failed++; }
+      else if (r.status === 'updated') { st[k] = { ph: 'updated', from: r.from, to: r.to }; done++; }
+      else if (r.status === 'current') { st[k] = { ph: 'current', to: r.to }; }
+      else { st[k] = { ph: 'failed', reason: r.reason }; failed++; }
+    } catch (e) { st[k] = { ph: 'failed', reason: clean(e) }; failed++; }
+    renderRepos();
+  }
+  busy = false; renderRepos();
+  msg(failed ? `${done} updated, ${failed} failed.` : done ? `${done} updated.` : 'Nothing to update.', failed ? 'bad' : 'ok');
+}
 
-load().catch((e) => msg(e.message, 'bad'));
+// live per-app progress from the engine
+window.api.onProgress(({ id, phase, pct }) => {
+  if (!st[id]) return;
+  st[id].ph = phase; if (phase === 'downloading') st[id].pct = pct;
+  renderRepos();
+});
+
+$('checkAll').onclick = () => checkApps(config.repos.map(keyOf));
+$('updateAll').onclick = () => runBatch(config.repos.map(keyOf));
+$('updateSel').onclick = () => runBatch([...selected]);
+$('selAll').onchange = (e) => { selected.clear(); if (e.target.checked) config.repos.forEach((r) => selected.add(keyOf(r))); renderRepos(); };
+
+load().catch((e) => msg(clean(e), 'bad'));
 </script>
 </body>
 </html>

@@ -52,18 +52,27 @@ async function listAssets(owner, repo, opts = {}) {
 }
 
 // fetch follows redirects by default; enforce the size cap while streaming.
-async function downloadAsset(url, destPath) {
+// onProgress(pct 0-100) is called as bytes arrive (throttled) when a size is known.
+async function downloadAsset(url, destPath, onProgress) {
   const res = await fetch(url, { headers: { 'User-Agent': UA } });
   if (!res.ok) throw new Error(`download ${res.status} for ${url}`);
   const declared = Number(res.headers.get('content-length') || 0);
   if (declared && declared > MAX_BYTES) throw new Error(`asset too large: ${declared} bytes (cap ${MAX_BYTES})`);
   let seen = 0;
+  let lastPct = -1;
   await pipeline(
     Readable.fromWeb(res.body),
     async function* (source) {
       for await (const chunk of source) {
         seen += chunk.length;
         if (seen > MAX_BYTES) throw new Error(`asset exceeded size cap ${MAX_BYTES} bytes`);
+        if (onProgress && declared) {
+          const pct = Math.floor((seen / declared) * 100);
+          if (pct !== lastPct) {
+            lastPct = pct;
+            onProgress(pct);
+          }
+        }
         yield chunk;
       }
     },
