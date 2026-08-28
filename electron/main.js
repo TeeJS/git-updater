@@ -126,6 +126,13 @@ ipcMain.handle('config:save', (_e, cfg) => {
 });
 ipcMain.handle('config:open', () => shell.openPath(CONFIG_PATH));
 ipcMain.handle('log:open', () => shell.openPath(LOG_FILE));
+// Close a tracked app's running processes (graceful; force on request).
+ipcMain.handle('app:close', async (_e, { appKey, force }) => {
+  const r = readConfig().repos.find((x) => `${x.owner}/${x.repo}#${x.type}` === appKey);
+  if (!r) throw new Error('app not found');
+  log(`closeApp ${appKey} force=${!!force}`);
+  return detect.closeApp(r.process || r.repo, { force: !!force });
+});
 // Validate a repo has a usable release before it's added (throws -> rejects).
 ipcMain.handle('repo:validate', async (_e, { owner, repo, prerelease }) => {
   const rel = await github.getLatestRelease(owner, repo, { prerelease });

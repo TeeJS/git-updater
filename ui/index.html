@@ -245,9 +245,10 @@ function renderRepos() {
 
     // Action
     const act = el('td', 'act');
-    const label = primaryAction(s);
+    const runningFail = s.ph === 'failed' && /is running/.test(s.reason || '');
+    const label = runningFail ? 'Close & retry' : primaryAction(s);
     const b = el('button', 'primary rowbtn', label); b.disabled = busy;
-    b.onclick = () => (label === 'Check' ? checkApps([key]) : runBatch([key]));
+    b.onclick = () => (runningFail ? closeAndRetry(r, key) : label === 'Check' ? checkApps([key]) : runBatch([key]));
     act.appendChild(b);
     const kb = el('button', 'kebab ghost', '⋯'); kb.title = 'More';
     kb.onclick = (ev) => { ev.stopPropagation(); openMenu(r, kb); };
@@ -290,6 +291,7 @@ function openMenu(r, anchor) {
   if (r.type === 'portable') item('Open folder', () => window.api.openFolder(key));
   sep();
   item('Edit…', () => startEdit(r));
+  item('Close app & update', () => closeAndRetry(r, key));
   item('Force reinstall', () => { if (confirm(`Reinstall ${r.owner}/${r.repo} even if it's up to date?`)) runBatch([key], true); });
   sep();
   item('Stop tracking', () => { if (confirm(`Stop tracking ${r.owner}/${r.repo} (${r.type})? This does not uninstall it.`)) removeRepo(r); }, true);
@@ -390,6 +392,21 @@ async function removeRepo(r) {
   const k = keyOf(r); selected.delete(k); delete st[k];
   config.repos = config.repos.filter((x) => !(x.owner === r.owner && x.repo === r.repo && x.type === r.type));
   await saveConfig(); renderRepos();
+}
+
+// Close the running app (graceful first, force on a second confirm), then retry the update.
+async function closeAndRetry(r, key) {
+  if (busy) return;
+  if (!confirm(`Close ${r.repo} and update it? Unsaved work in ${r.repo} may be lost.`)) return;
+  msg(`Closing ${r.repo}…`, 'info');
+  try {
+    let res = await window.api.closeApp(key, false);
+    if (res.stillRunning && confirm(`${r.repo} did not close. Force-close it? Unsaved work WILL be lost.`)) {
+      res = await window.api.closeApp(key, true);
+    }
+    if (res.stillRunning) return msg(`${r.repo} is still running — close it manually, then Retry.`, 'bad');
+  } catch (e) { return msg(clean(e), 'bad'); }
+  runBatch([key]);
 }
 
 // --- check / update ---

@@ -71,15 +71,36 @@ function runningProcesses() {
   if (process.platform !== 'win32') return [];
   const r = spawnSync('tasklist', ['/fo', 'csv', '/nh'], { encoding: 'utf8', windowsHide: true, maxBuffer: 16 * 1024 * 1024 });
   if (r.status !== 0 || !r.stdout) return [];
-  return r.stdout.split(/\r?\n/).map((l) => { const m = l.match(/^"([^"]+)"/); return m ? m[1] : null; }).filter(Boolean);
+  return r.stdout
+    .split(/\r?\n/)
+    .map((l) => { const m = l.match(/^"([^"]+)","([^"]+)"/); return m ? { name: m[1], pid: m[2] } : null; })
+    .filter(Boolean);
+}
+
+function matches(needle) {
+  const t = norm(needle);
+  if (t.length < 3) return [];
+  return runningProcesses().filter((p) => { const pn = norm(p.name); return pn.length >= 3 && (pn.includes(t) || t.includes(pn)); });
 }
 
 // Is a process whose name looks like `needle` running? Loose alphanumeric match
 // (so "notepad-plus-plus" matches "notepad++.exe"); override per app with `process`.
 function isRunning(needle) {
-  const t = norm(needle);
-  if (t.length < 3) return false;
-  return runningProcesses().some((p) => { const pn = norm(p); return pn.length >= 3 && (pn.includes(t) || t.includes(pn)); });
+  return matches(needle).length > 0;
 }
 
-module.exports = { registryVersion, isRunning };
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Close the running processes for `needle` — graceful WM_CLOSE by default (taskkill),
+// or /F to force. taskkill is a signed MS utility, no shell. Waits briefly for exit.
+// ponytail: taskkill by PID; force can lose unsaved work, so the UI double-confirms it.
+async function closeApp(needle, opts = {}) {
+  const procs = matches(needle);
+  for (const p of procs) {
+    spawnSync('taskkill', opts.force ? ['/PID', p.pid, '/F', '/T'] : ['/PID', p.pid], { windowsHide: true });
+  }
+  for (let i = 0; i < 15 && isRunning(needle); i++) await wait(200); // up to ~3s to exit
+  return { closed: procs.length, stillRunning: isRunning(needle) };
+}
+
+module.exports = { registryVersion, isRunning, closeApp };
