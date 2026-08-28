@@ -137,8 +137,9 @@
         <button type="button" data-type="installer">Installer</button>
       </div>
       <button id="addRepo" class="primary">Add</button>
+      <button id="cancelEdit" style="display:none">Cancel</button>
     </div>
-    <p class="hint">Paste the releases link, pick a type — it grabs the right Windows file automatically.</p>
+    <p class="hint" id="addHint">Paste the releases link, pick a type — it grabs the right Windows file automatically.</p>
 
     <details class="settings" id="settings">
       <summary>Settings</summary>
@@ -149,6 +150,11 @@
         <button id="saveRoot">Save</button>
       </div>
       <p class="hint">Portable apps unzip into <code>&lt;folder&gt;\&lt;repo&gt;</code>.</p>
+      <div class="row" style="margin-top:.6rem">
+        <span style="color:var(--muted);font-size:.9rem;min-width:8rem">Advanced</span>
+        <button id="editJson">Edit config.json</button>
+      </div>
+      <p class="hint">Hand-edit for per-app overrides (asset pattern, install dir, installer kind/args, process name).</p>
     </details>
   </div>
 </div>
@@ -282,8 +288,7 @@ function openMenu(r, anchor) {
   });
   if (r.type === 'portable') item('Open folder', () => window.api.openFolder(key));
   sep();
-  item(`Change to ${r.type === 'installer' ? 'portable' : 'installer'}`, () => changeType(r));
-  item('Edit configuration (config.json)', () => window.api.openConfig());
+  item('Edit…', () => startEdit(r));
   item('Force reinstall', () => { if (confirm(`Reinstall ${r.owner}/${r.repo} even if it's up to date?`)) runBatch([key], true); });
   sep();
   item('Stop tracking', () => { if (confirm(`Stop tracking ${r.owner}/${r.repo} (${r.type})? This does not uninstall it.`)) removeRepo(r); }, true);
@@ -324,36 +329,61 @@ $('browse').onclick = async () => {
   try { const { path } = await window.api.pickFolder(); if (path) { $('portableRoot').value = path; await saveConfig(); msg('Saved.', 'ok'); refreshInstalled().then(renderRepos); } }
   catch (e) { msg(clean(e), 'bad'); }
 };
+let editingKey = null;
+const ADD_HINT = 'Paste the releases link, pick a type — it grabs the right Windows file automatically.';
+function setTypeToggle(type) { $('newType').querySelectorAll('button').forEach((b) => b.classList.toggle('active', b.dataset.type === type)); }
+
+function startEdit(r) {
+  editingKey = keyOf(r);
+  $('newRepo').value = `${r.owner}/${r.repo}`;
+  setTypeToggle(r.type);
+  $('addRepo').textContent = 'Save';
+  $('cancelEdit').style.display = '';
+  $('addHint').textContent = `Editing ${r.owner}/${r.repo} — change the repo or type, then Save.`;
+  $('newRepo').focus();
+  $('newRepo').scrollIntoView({ block: 'nearest' });
+}
+function cancelEdit() {
+  editingKey = null;
+  $('newRepo').value = '';
+  $('addRepo').textContent = 'Add';
+  $('cancelEdit').style.display = 'none';
+  $('addHint').textContent = ADD_HINT;
+  msg('', '');
+}
+$('cancelEdit').onclick = cancelEdit;
+$('editJson').onclick = () => window.api.openConfig();
+
 $('addRepo').onclick = async () => {
   const parsed = parseRepo($('newRepo').value);
   if (!parsed) return msg('Paste a GitHub releases URL or owner/repo.', 'bad');
   const type = selectedType();
-  if (type === 'portable' && !$('portableRoot').value.trim()) { $('settings').open = true; msg('Set the portable apps folder first — see Settings.', 'bad'); return; }
-  if (config.repos.some((r) => r.owner === parsed.owner && r.repo === parsed.repo && r.type === type)) return msg(`${parsed.owner}/${parsed.repo} (${type}) is already in your list.`, 'bad');
-  // Verify the repo exists and has a release before adding it.
+  if (type === 'portable' && !$('portableRoot').value.trim()) { $('settings').open = true; return msg('Set the portable apps folder first — see Settings.', 'bad'); }
+  const dup = config.repos.some((r) => r.owner === parsed.owner && r.repo === parsed.repo && r.type === type && keyOf(r) !== editingKey);
+  if (dup) return msg(`${parsed.owner}/${parsed.repo} (${type}) is already in your list.`, 'bad');
+
   $('addRepo').disabled = true;
   msg(`Checking ${parsed.owner}/${parsed.repo}…`, 'info');
   try {
     await window.api.validateRepo(parsed.owner, parsed.repo);
   } catch (e) {
     $('addRepo').disabled = false;
-    return msg(`Can't add ${parsed.owner}/${parsed.repo} — ${clean(e)}. Check the owner/repo.`, 'bad');
+    return msg(`Can't ${editingKey ? 'save' : 'add'} ${parsed.owner}/${parsed.repo} — ${clean(e)}. Check the owner/repo.`, 'bad');
   }
   $('addRepo').disabled = false;
-  config.repos.push({ owner: parsed.owner, repo: parsed.repo, type });
-  $('newRepo').value = '';
-  msg('Added.', 'ok');
-  await saveConfig(); await refreshInstalled(); renderRepos();
-};
-$('newRepo').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('addRepo').click(); });
 
-async function changeType(r) {
-  const other = r.type === 'installer' ? 'portable' : 'installer';
-  if (other === 'portable' && !$('portableRoot').value.trim()) { $('settings').open = true; return msg('Set the portable apps folder first — see Settings.', 'bad'); }
-  delete st[keyOf(r)];
-  r.type = other;
-  await saveConfig(); await refreshInstalled(); renderRepos(); msg(`Changed to ${other}.`, 'ok');
-}
+  if (editingKey) { // replace the edited entry
+    delete st[editingKey]; selected.delete(editingKey);
+    config.repos = config.repos.filter((r) => keyOf(r) !== editingKey);
+  }
+  config.repos.push({ owner: parsed.owner, repo: parsed.repo, type });
+  const wasEditing = !!editingKey;
+  cancelEdit();
+  msg(wasEditing ? 'Saved.' : 'Added.', 'ok');
+  await saveConfig(); await refreshInstalled(); renderRepos();
+  checkApps([`${parsed.owner}/${parsed.repo}#${type}`]); // populate available for the new/edited entry
+};
+$('newRepo').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('addRepo').click(); if (e.key === 'Escape' && editingKey) cancelEdit(); });
 async function removeRepo(r) {
   const k = keyOf(r); selected.delete(k); delete st[k];
   config.repos = config.repos.filter((x) => !(x.owner === r.owner && x.repo === r.repo && x.type === r.type));
