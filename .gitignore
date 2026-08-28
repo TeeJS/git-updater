@@ -5,3 +5,4 @@ config.json.*.bak
 repos.json
 state.json
 *.bak
+.server.log
