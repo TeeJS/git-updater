@@ -171,6 +171,7 @@ function parseRepo(s) {
 
 function statusView(s) {
   switch (s.ph) {
+    case 'loading': return { text: 'Loading…', cls: 'c-work' };
     case 'checking': return { text: 'Checking…', cls: 'c-work' };
     case 'queued': return { text: 'Queued', cls: 'c-muted' };
     case 'downloading': return { text: `Downloading ${s.pct || 0}%`, cls: 'c-work' };
@@ -211,7 +212,8 @@ function renderRepos() {
 
     // Current
     let cur;
-    if (s.from) cur = el('span', 'ver cur', s.from);
+    if (s.ph === 'loading') cur = el('span', 'ver dash', '…');
+    else if (s.from) cur = el('span', 'ver cur', s.from);
     else if (s.present) { cur = el('span', 'ver none', 'Unknown'); cur.title = 'Installed, but the version could not be detected.'; }
     else cur = el('span', 'ver none', 'Not installed');
     tr.appendChild(cell(cur));
@@ -298,7 +300,10 @@ async function load() {
   config = await window.api.getConfig();
   if (!config.repos) config.repos = [];
   $('portableRoot').value = config.portableRoot || '';
-  await refreshInstalled();
+  config.repos.forEach((r) => { st[keyOf(r)] = { ph: 'loading' }; }); // show rows instantly
+  renderRepos();
+  await refreshInstalled(); // slower registry/manifest detection
+  config.repos.forEach((r) => { const s = st[keyOf(r)]; if (s && s.ph === 'loading') s.ph = 'idle'; });
   renderRepos();
 }
 
