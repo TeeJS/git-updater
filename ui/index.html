@@ -185,16 +185,17 @@ function statusView(s) {
     case 'verifying': return { text: 'Verifying SHA-256', cls: 'c-work' };
     case 'installing': return { text: 'Installing…', cls: 'c-work' };
     case 'current': return { text: 'Up to date', cls: 'c-ok' };
-    case 'available': return { text: 'Update available', cls: 'c-up' };
+    case 'available': return s.present ? { text: 'Update available', cls: 'c-up' } : { text: 'Available to install', cls: 'c-up' };
+    case 'installed': return { text: 'Installed', cls: 'c-ok' };
     case 'updated': return { text: 'Updated', cls: 'c-ok' };
     case 'failed': return { text: s.reason || 'Failed', cls: 'c-bad' };
     default: return s.present ? { text: 'Not checked', cls: 'c-muted' } : { text: 'Not installed', cls: 'c-warn' };
   }
 }
 function primaryAction(s) {
-  if (s.ph === 'available') return 'Update';
   if (s.ph === 'failed') return 'Retry';
-  if (!s.present) return 'Install';
+  if (!s.present && s.ph !== 'installed') return 'Install'; // not installed -> Install, never "Update"
+  if (s.ph === 'available') return 'Update';
   return 'Check';
 }
 
@@ -366,21 +367,26 @@ async function runBatch(keys, force) {
   if (busy || !keys.length) return;
   busy = true;
   keys.forEach((k) => (st[k] = { ...(st[k] || {}), ph: 'queued' })); renderRepos();
-  let done = 0, failed = 0;
+  let done = 0, installed = 0, failed = 0;
   for (const k of keys) {
+    const wasInstall = !(st[k] && st[k].present); // fresh install vs update, for the right wording
     try {
       const { results } = await window.api.update({ only: k, force: !!force });
       const r = results.find((x) => (x.id || x.repo) === k) || results[0];
       const s = st[k] || {};
       if (!r) { st[k] = { ...s, ph: 'failed', reason: 'no result' }; failed++; }
-      else if (r.status === 'updated') { st[k] = { ...s, ph: 'updated', from: r.to, to: r.to, present: true }; done++; }
+      else if (r.status === 'updated') { st[k] = { ...s, ph: wasInstall ? 'installed' : 'updated', from: r.to, to: r.to, present: true }; wasInstall ? installed++ : done++; }
       else if (r.status === 'current') { st[k] = { ...s, ph: 'current', to: r.to }; }
       else { st[k] = { ...s, ph: 'failed', reason: r.reason }; failed++; }
     } catch (e) { st[k] = { ...(st[k] || {}), ph: 'failed', reason: clean(e) }; failed++; }
     renderRepos();
   }
   busy = false; renderRepos();
-  msg(failed ? `${done} updated, ${failed} failed.` : done ? `${done} updated.` : 'Nothing to update.', failed ? 'bad' : 'ok');
+  const parts = [];
+  if (done) parts.push(`${done} updated`);
+  if (installed) parts.push(`${installed} installed`);
+  if (failed) parts.push(`${failed} failed`);
+  msg(parts.length ? parts.join(', ') + '.' : 'Nothing to update.', failed ? 'bad' : 'ok');
 }
 
 window.api.onProgress(({ id, phase, pct }) => {
