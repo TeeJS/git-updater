@@ -28,11 +28,26 @@ async function run(config, opts = {}) {
   return { results, summary: core.buildSummary(results) };
 }
 
+function dirHasFiles(dir) {
+  try {
+    return !!dir && fs.existsSync(dir) && fs.readdirSync(dir).length > 0;
+  } catch {
+    return false;
+  }
+}
+
 async function handleRepo(repo, id, st, opts) {
   const rel = await github.getLatestRelease(repo.owner, repo.repo, { prerelease: repo.prerelease });
   const latest = rel.tag_name;
-  const seen = st[id] && st[id].tag;
-  const isNew = core.cmpVersion(latest, seen || '') > 0;
+  const prev = st[id] || {};
+  const seen = prev.tag;
+  let isNew = core.cmpVersion(latest, seen || '') > 0;
+
+  // If we recorded a portable app as installed but its folder is now missing/empty
+  // (user deleted it, or a prior run half-failed), reinstall instead of reporting "current".
+  if (!isNew && !opts.force && seen && repo.type === 'portable' && repo.install && !dirHasFiles(repo.install.dir)) {
+    isNew = true;
+  }
 
   if (!isNew && !opts.force) return { repo: id, status: 'current', to: core.normTag(latest) };
 
@@ -45,17 +60,11 @@ async function handleRepo(repo, id, st, opts) {
     ? core.matchAsset(rel.assets, repo.asset)
     : core.pickWindowsAsset(rel.assets, repo.type);
 
-  // Installer needs a kind for its silent switches; auto-guess from the file unless set.
-  const installCfg =
-    repo.type === 'installer'
-      ? { ...repo.install, kind: (repo.install && repo.install.kind) || core.guessKind(asset.name) }
-      : repo.install;
-
   if (opts.dryRun) {
     const plan =
       repo.type === 'installer'
-        ? install.installInstaller(asset.name, installCfg, { dryRun: true }).command
-        : `extract ${asset.name} -> swap into ${installCfg.dir}`;
+        ? `install ${asset.name} silently`
+        : `extract ${asset.name} -> ${repo.install.dir}`;
     return { ...base, status: 'updated', note: plan };
   }
 
@@ -65,14 +74,23 @@ async function handleRepo(repo, id, st, opts) {
     await github.downloadAsset(asset.browser_download_url, file);
     const v = github.verifyDigest(file, asset.digest);
 
-    if (repo.type === 'installer') install.installInstaller(file, installCfg);
-    else await install.installPortable(file, installCfg);
+    let files; // portable manifest, for stale-file pruning
+    if (repo.type === 'installer') {
+      // Detect the installer's silent-install technology from its bytes (safer than
+      // assuming NSIS); explicit install.kind still wins.
+      const kind = (repo.install && repo.install.kind) || install.detectInstallerKind(file) || core.guessKind(asset.name);
+      install.installInstaller(file, { ...repo.install, kind });
+    } else {
+      files = await install.installPortable(file, repo.install);
+      install.pruneStale(repo.install.dir, prev.files || [], files);
+    }
 
     st[id] = {
       tag: latest,
       version: core.normTag(latest),
       assetName: asset.name,
       installedAt: new Date().toISOString(),
+      ...(files ? { files } : {}),
     };
     state.save(st, opts.statePath);
     return { ...base, status: 'updated', note: v && v.note };

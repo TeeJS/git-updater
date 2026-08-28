@@ -5,11 +5,9 @@
 //   git-updater check|update|list-assets ...   -> delegate to the CLI (bin/watch.js)
 //   git-updater                                -> start the local web UI + open browser
 //
-// The web UI is a thin HTTP layer over the same engine (src/*). Update runs inline:
-// portable apps install under a user-writable portableRoot (no admin), and installers
-// trigger their own UAC when they launch. For portable swaps into a protected dir
-// (e.g. Program Files) run the exe as admin, or use the CLI which self-elevates per repo.
-// ponytail: no per-repo elevation in the server path; CLI covers that case.
+// The web UI is a thin HTTP layer. Check/update are run by SPAWNING this same
+// program as the CLI (with --json), so the CLI's per-repo Windows elevation applies
+// to updates started from the browser too — the server never applies changes itself.
 
 const fs = require('fs');
 const path = require('path');
@@ -17,11 +15,40 @@ const http = require('http');
 const { spawn } = require('child_process');
 const core = require('./src/core');
 const github = require('./src/github');
-const runner = require('./src/runner');
+
+let IS_SEA = false;
+try {
+  IS_SEA = require('node:sea').isSea();
+} catch {}
 
 const SUBCOMMANDS = new Set(['check', 'update', 'list-assets']);
 const CONFIG_PATH = process.env.GITUPDATER_CONFIG || path.resolve('config.json');
 const PORT = Number(process.env.GITUPDATER_PORT) || 8756;
+
+// Spawn this same app as the CLI and return its parsed {results, summary}. As a SEA
+// exe that's `git-updater.exe <cmd>`; as node it's `node bin/watch.js <cmd>`.
+function runCli(subcmd, opts = {}) {
+  return new Promise((resolve, reject) => {
+    const pre = IS_SEA ? [] : [path.join(__dirname, 'bin', 'watch.js')];
+    const args = [...pre, subcmd, '--json', '--config', CONFIG_PATH];
+    if (opts.only) args.push('--only', opts.only);
+    if (opts.force) args.push('--force');
+    if (opts.dryRun) args.push('--dry-run');
+    const child = spawn(process.execPath, args, { windowsHide: false });
+    let out = '';
+    let err = '';
+    child.stdout.on('data', (d) => (out += d));
+    child.stderr.on('data', (d) => (err += d));
+    child.on('error', reject);
+    child.on('close', (code) => {
+      try {
+        resolve(JSON.parse(out));
+      } catch {
+        reject(new Error((err || out || `exited ${code}`).trim().split('\n').pop()));
+      }
+    });
+  });
+}
 
 function readConfig() {
   if (!fs.existsSync(CONFIG_PATH)) return { portableRoot: '', repos: [] };
@@ -42,6 +69,40 @@ function saveConfig(cfg) {
     fs.copyFileSync(CONFIG_PATH, `${CONFIG_PATH}.${stamp}.bak`);
   }
   fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2));
+}
+
+// Native Windows folder picker (server runs locally, so it can show a real dialog).
+function pickFolder() {
+  return new Promise((resolve) => {
+    if (process.platform !== 'win32') return resolve('');
+    const ps =
+      "Add-Type -AssemblyName System.Windows.Forms;" +
+      "$d=New-Object System.Windows.Forms.FolderBrowserDialog;" +
+      "$d.Description='Select the portable apps folder';$d.ShowNewFolderButton=$true;" +
+      "if($d.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK){[Console]::Out.Write($d.SelectedPath)}";
+    const child = spawn('powershell', ['-NoProfile', '-STA', '-Command', ps]);
+    let out = '';
+    child.stdout.on('data', (d) => (out += d));
+    child.on('close', () => resolve(out.trim()));
+    child.on('error', () => resolve(''));
+  });
+}
+
+// CSRF/drive-by guard for state-changing (and dialog-popping) routes. A hostile
+// page can't set a custom header cross-origin without a CORS preflight we never
+// answer, and any Origin it does send won't be localhost. Same-origin UI passes.
+function sameOriginOnly(req) {
+  if (req.headers['x-git-updater'] !== '1') return false;
+  const origin = req.headers.origin;
+  if (origin) {
+    try {
+      const h = new URL(origin).hostname;
+      if (h !== '127.0.0.1' && h !== 'localhost') return false;
+    } catch {
+      return false;
+    }
+  }
+  return true;
 }
 
 function send(res, code, body, type = 'application/json') {
@@ -84,6 +145,17 @@ function startServer() {
     if (req.method === 'GET' && url.pathname === '/api/config') {
       return send(res, 200, readConfig());
     }
+    // State-changing + dialog routes require the same-origin guard.
+    const guarded =
+      url.pathname === '/api/pick-folder' ||
+      url.pathname === '/api/config' && req.method === 'POST' ||
+      url.pathname === '/api/check' ||
+      url.pathname === '/api/update';
+    if (guarded && !sameOriginOnly(req)) return send(res, 403, { error: 'forbidden' });
+
+    if (req.method === 'GET' && url.pathname === '/api/pick-folder') {
+      return send(res, 200, { path: await pickFolder() });
+    }
     if (req.method === 'POST' && url.pathname === '/api/config') {
       const cfg = await readBody(req);
       saveConfig(cfg);
@@ -98,12 +170,13 @@ function startServer() {
     }
     if (req.method === 'POST' && (url.pathname === '/api/check' || url.pathname === '/api/update')) {
       const body = await readBody(req);
-      const config = core.validateConfig(readConfig()); // fills portable dirs
-      const opts =
-        url.pathname === '/api/check'
-          ? { mode: 'check', only: body.only }
-          : { only: body.only, force: !!body.force, dryRun: !!body.dryRun };
-      const { results, summary } = await runner.run(config, opts);
+      core.validateConfig(JSON.parse(JSON.stringify(readConfig()))); // fail fast with a clear message
+      const subcmd = url.pathname === '/api/check' ? 'check' : 'update';
+      const { results, summary } = await runCli(subcmd, {
+        only: body.only,
+        force: !!body.force,
+        dryRun: !!body.dryRun,
+      });
       return send(res, 200, { results, summary });
     }
       send(res, 404, { error: 'not found' });

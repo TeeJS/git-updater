@@ -79,8 +79,11 @@ function stripDirs(root, n) {
   return cur;
 }
 
-// Swap new files into dir: back up each existing target to .bak, move new in,
-// delete .bak on success / restore on failure. A locked file (app running) aborts + rolls back.
+const BAK = '.git-updater.bak'; // distinct suffix so we never clash with an app's own .bak files
+
+// Swap new files into dir: back up each existing target, move new in, delete
+// backups on success / restore on failure. Returns the list of installed
+// relative paths (for stale-file bookkeeping). A locked file aborts + rolls back.
 function swapInPlace(src, dir) {
   const files = walk(src);
   const backups = []; // {to, bak}
@@ -91,7 +94,8 @@ function swapInPlace(src, dir) {
       const to = path.join(dir, rel);
       fs.mkdirSync(path.dirname(to), { recursive: true });
       if (fs.existsSync(to)) {
-        const bak = to + '.bak';
+        const bak = to + BAK;
+        if (fs.existsSync(bak)) fs.rmSync(bak, { force: true }); // clear a stale backup from a prior crash
         fs.renameSync(to, bak); // EBUSY/EPERM here if the file is in use
         backups.push({ to, bak });
       }
@@ -104,15 +108,23 @@ function swapInPlace(src, dir) {
         fs.rmSync(to, { force: true });
       } catch {}
     }
+    const restoreFailed = [];
     for (const { to, bak } of backups) {
       try {
         fs.renameSync(bak, to);
-      } catch {}
+      } catch {
+        restoreFailed.push(to);
+      }
     }
     if (e.code === 'EBUSY' || e.code === 'EPERM' || e.code === 'EACCES') {
       const err = new Error(`file in use (${e.path || 'target'}); close the app and re-run`);
       err.locked = true;
       throw err;
+    }
+    if (restoreFailed.length) {
+      throw new Error(
+        `update failed and rollback was incomplete — restore these from their "${BAK}" copies: ${restoreFailed.join(', ')}`
+      );
     }
     throw e;
   }
@@ -121,6 +133,39 @@ function swapInPlace(src, dir) {
       fs.rmSync(bak, { force: true });
     } catch {}
   }
+  return files;
+}
+
+// Remove files we installed in a previous version that are gone from the new one,
+// then drop any directories left empty. Runtime-created files (user settings) are
+// never in the manifest, so they are preserved.
+function pruneStale(dir, oldFiles, newFiles) {
+  const keep = new Set((newFiles || []).map((f) => f.replace(/\\/g, '/')));
+  for (const rel of oldFiles || []) {
+    if (keep.has(rel.replace(/\\/g, '/'))) continue;
+    try {
+      fs.rmSync(path.join(dir, rel), { force: true });
+    } catch {}
+  }
+  removeEmptyDirs(dir);
+}
+
+function removeEmptyDirs(dir) {
+  let entries;
+  try {
+    entries = fs.readdirSync(dir);
+  } catch {
+    return;
+  }
+  for (const name of entries) {
+    const full = path.join(dir, name);
+    try {
+      if (fs.statSync(full).isDirectory()) removeEmptyDirs(full);
+    } catch {}
+  }
+  try {
+    if (fs.readdirSync(dir).length === 0) fs.rmdirSync(dir);
+  } catch {}
 }
 
 // Extract a .7z into destDir using 7z-wasm (pure WASM, no external binary).
@@ -141,15 +186,26 @@ async function extract7z(archivePath, destDir) {
   const archName = 'input.7z';
   fs.copyFileSync(archivePath, path.join(destDir, archName));
   sevenZip.FS.chdir(mnt);
+
+  let rc = 0;
   try {
-    sevenZip.callMain(['x', archName, '-y']); // extract flat into the mounted dir
+    // callMain may RETURN the exit code (not throw) — capture both paths.
+    const ret = sevenZip.callMain(['x', archName, '-y']); // extract flat into the mounted dir
+    if (typeof ret === 'number') rc = ret;
   } catch (e) {
-    // emscripten throws ExitStatus on exit(); non-zero status is a real failure
-    if (e && e.status !== undefined && e.status !== 0) throw new Error(`7z extraction failed (code ${e.status})`);
+    rc = e && e.status !== undefined ? e.status : 1; // emscripten ExitStatus on exit()
   }
   fs.rmSync(path.join(destDir, archName), { force: true });
+
+  // A corrupt/invalid .7z makes 7-Zip print "Is not archive" and exit nonzero, but the
+  // extraction "succeeds" with zero files — verify BOTH the exit code and real output.
+  const produced = walk(destDir).length;
+  if (rc !== 0 || produced === 0) {
+    throw new Error(`.7z extraction failed (exit ${rc}, ${produced} files) — the download may be corrupt or not a 7-Zip archive`);
+  }
 }
 
+// Returns the list of installed relative paths (manifest) for stale-file bookkeeping.
 async function installPortable(archivePath, install) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'rw-extract-'));
   try {
@@ -158,11 +214,28 @@ async function installPortable(archivePath, install) {
     // Auto-flatten version-named wrapper folders (e.g. deskflow-1.26.0-.../) so updates
     // overwrite in place instead of piling up a new folder per release. Explicit strip wins.
     const src = install.strip != null ? stripDirs(tmp, install.strip) : stripDirs(tmp, Infinity);
+    if (walk(src).length === 0) throw new Error('archive contained no files');
     fs.mkdirSync(install.dir, { recursive: true });
-    swapInPlace(src, install.dir);
+    return swapInPlace(src, install.dir);
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
+}
+
+// Detect an installer's silent-install technology from its bytes (far safer than
+// assuming every .exe is NSIS). Falls back to null when unrecognized.
+function detectInstallerKind(filePath) {
+  if (/\.msi$/i.test(filePath)) return 'msi';
+  let buf;
+  try {
+    buf = fs.readFileSync(filePath);
+  } catch {
+    return null;
+  }
+  if (buf.length > 8 && buf[0] === 0xd0 && buf[1] === 0xcf && buf[2] === 0x11 && buf[3] === 0xe0) return 'msi'; // OLE compound = MSI
+  if (buf.indexOf(Buffer.from('Inno Setup')) !== -1) return 'inno';
+  if (buf.indexOf(Buffer.from('Nullsoft')) !== -1) return 'nsis';
+  return null;
 }
 
 // --- installer --------------------------------------------------------------
@@ -187,6 +260,8 @@ module.exports = {
   needsElevation,
   installPortable,
   installInstaller,
+  detectInstallerKind,
+  pruneStale,
   // exported for tests
   swapInPlace,
   stripDirs,

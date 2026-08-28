@@ -8,9 +8,9 @@
   :root { color-scheme: light dark; }
   * { box-sizing: border-box; }
   body { font: 15px/1.5 system-ui, Segoe UI, sans-serif; margin: 0; padding: 1.5rem;
-         max-width: 1000px; margin-inline: auto; }
+         max-width: 900px; margin-inline: auto; }
   h1 { font-size: 1.4rem; margin: 0 0 .25rem; }
-  h2 { font-size: 1.1rem; margin: .2rem 0 .75rem; }
+  h2 { font-size: 1.05rem; margin: .2rem 0 .75rem; }
   .sub { opacity: .7; margin: 0 0 1.25rem; }
   .card { border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
           border-radius: 8px; padding: 1rem; margin-bottom: 1.25rem; }
@@ -19,80 +19,90 @@
   input, select, button { font: inherit; padding: .4rem .5rem; border-radius: 6px;
           border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
           background: transparent; color: inherit; }
-  /* native select + its option list: theme-aware so it's readable in light and dark */
-  select { background: Field; color: FieldText; }
-  select option { background: Field; color: FieldText; }
   button { cursor: pointer; font-weight: 600; }
+  .seg { display: inline-flex; border-radius: 6px; overflow: hidden;
+         border: 1px solid color-mix(in srgb, currentColor 30%, transparent); }
+  .seg button { border: 0; border-radius: 0; background: transparent; padding: .4rem .9rem; }
+  .seg button + button { border-left: 1px solid color-mix(in srgb, currentColor 20%, transparent); }
+  .seg button.active { background: #2563eb; color: #fff; }
+  button:disabled { opacity: .5; cursor: default; }
   button.primary { background: #2563eb; color: #fff; border-color: #2563eb; }
   button.danger { border-color: #dc2626; color: #dc2626; }
   table { width: 100%; border-collapse: collapse; margin-top: .5rem; }
-  th, td { text-align: left; padding: .45rem .5rem; border-bottom:
+  th, td { text-align: left; padding: .5rem; border-bottom:
            1px solid color-mix(in srgb, currentColor 12%, transparent); vertical-align: middle; }
   th { font-size: .8rem; text-transform: uppercase; opacity: .6; }
   code { font-family: ui-monospace, Consolas, monospace; font-size: .9em; }
-  pre { white-space: pre-wrap; margin: .5rem 0 0; }
-  .ok { color: #16a34a; } .bad { color: #dc2626; } .muted { opacity: .6; }
-  .pill { font-size: .8rem; padding: .1rem .45rem; border-radius: 999px;
+  .muted { opacity: .6; } .ok { color: #16a34a; } .bad { color: #dc2626; } .up { color: #2563eb; }
+  .pill { font-size: .8rem; padding: .1rem .5rem; border-radius: 999px;
           border: 1px solid color-mix(in srgb, currentColor 30%, transparent); }
-  #msg { min-height: 1.2rem; margin: .5rem 0; }
+  #msg { min-height: 1.3rem; margin: .5rem 0; font-weight: 600; }
+  .hint { font-size: .85rem; opacity: .65; margin: .5rem 0 0; }
+  td.status { font-weight: 600; }
 </style>
 </head>
 <body>
 <h1>git-updater</h1>
-<p class="sub">On-demand updater for GitHub-release apps — portable &amp; installed.</p>
+<p class="sub">Updates your apps straight from their GitHub releases — portable &amp; installed.</p>
 <div id="msg"></div>
 
 <div class="card">
   <div class="row">
-    <label for="portableRoot">Portable apps folder</label>
-    <input type="text" id="portableRoot" placeholder="C:/PortableApps" style="flex:1;min-width:16rem">
+    <label for="portableRoot" style="min-width:9rem">Portable apps folder</label>
+    <input type="text" id="portableRoot" placeholder="No folder set — click Browse" style="flex:1;min-width:14rem">
+    <button id="browse">Browse…</button>
     <button id="saveRoot">Save</button>
   </div>
-  <p class="muted" style="margin:.5rem 0 0">Portable apps unzip to <code>&lt;this folder&gt;/&lt;repo&gt;</code>.</p>
+  <p class="hint">Portable apps unzip into <code>&lt;this folder&gt;/&lt;repo&gt;</code>. Required before adding a portable app.</p>
 </div>
 
 <div class="card">
-  <h2>Tracked apps</h2>
+  <h2>Your apps</h2>
   <table id="repos"><thead><tr>
-    <th>Repo</th><th>Type</th><th>Installs to</th><th></th>
+    <th style="width:40%">App</th><th>Type</th><th>Status</th><th></th>
   </tr></thead><tbody></tbody></table>
+  <p class="hint" id="empty" style="display:none">No apps yet — add one below.</p>
 
   <div class="row" style="margin-top:1rem">
-    <input type="text" id="newRepo" placeholder="https://github.com/owner/repo/releases  (or owner/repo)" style="flex:1;min-width:20rem">
-    <select id="newType">
-      <option value="portable">Portable</option>
-      <option value="installer">Installed</option>
-    </select>
+    <input type="text" id="newRepo" placeholder="https://github.com/owner/repo/releases  (or owner/repo)" style="flex:1;min-width:18rem">
+    <div class="seg" id="newType" role="group" aria-label="App type">
+      <button type="button" data-type="portable" class="active">Portable</button>
+      <button type="button" data-type="installer">Installed</button>
+    </div>
     <button id="addRepo" class="primary">Add</button>
   </div>
-  <p class="muted" style="margin:.5rem 0 0">Paste the repo's releases link and pick Portable or Installed — it grabs the right Windows file automatically.</p>
+  <p class="hint">Paste the repo's releases link, pick Portable or Installed — it grabs the right Windows file automatically.</p>
 </div>
 
 <div class="card">
   <div class="row">
     <button id="checkBtn">Check for updates</button>
-    <button id="updateBtn" class="primary">Update all</button>
-    <label class="row" style="gap:.3rem"><input type="checkbox" id="dryRun"> dry run</label>
-    <label class="row" style="gap:.3rem"><input type="checkbox" id="force"> force</label>
-    <span id="busy" class="muted"></span>
+    <button id="updateBtn" class="primary">Download &amp; update</button>
+    <label class="row" style="gap:.3rem;font-weight:400" title="Show what would happen without changing anything"><input type="checkbox" id="dryRun"> preview only</label>
+    <label class="row" style="gap:.3rem;font-weight:400" title="Reinstall even if already up to date"><input type="checkbox" id="force"> force reinstall</label>
   </div>
-  <pre id="results"></pre>
+  <p class="hint"><strong>Check</strong> looks for newer versions and reports them in the Status column — nothing is changed. <strong>Download &amp; update</strong> installs them.</p>
 </div>
 
 <script>
 let config = { portableRoot: '', repos: [] };
+let statusById = {}; // "owner/repo" -> {text, cls}
 
 const $ = (id) => document.getElementById(id);
-const msg = (t, bad) => { const m = $('msg'); m.textContent = t || ''; m.className = bad ? 'bad' : 'ok'; };
+const idOf = (r) => `${r.owner}/${r.repo}`;
+const selectedType = () => $('newType').querySelector('button.active').dataset.type;
+$('newType').querySelectorAll('button').forEach((b) =>
+  b.onclick = () => { $('newType').querySelectorAll('button').forEach((x) => x.classList.remove('active')); b.classList.add('active'); });
+const msg = (t, cls) => { const m = $('msg'); m.textContent = t || ''; m.className = cls || ''; };
 
-async function api(path, opts) {
+async function api(path, opts = {}) {
+  opts.headers = { ...(opts.headers || {}), 'X-Git-Updater': '1' }; // same-origin CSRF guard
   const r = await fetch(path, opts);
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(j.error || r.statusText);
   return j;
 }
 
-// "https://github.com/ShareX/ShareX/releases" or "ShareX/ShareX" -> {owner, repo}
 function parseRepo(s) {
   s = s.trim();
   let m = s.match(/github\.com\/([^/\s]+)\/([^/\s#?]+)/i);
@@ -102,74 +112,122 @@ function parseRepo(s) {
   return null;
 }
 
-function installTarget(repo) {
-  if (repo.type === 'installer') return 'runs installer';
-  if (repo.install && repo.install.dir) return repo.install.dir;
-  return config.portableRoot ? `${config.portableRoot.replace(/[\\/]+$/, '')}/${repo.repo}` : '(set portable folder)';
+// Build rows with textContent (never innerHTML) so poisoned config values can't inject markup.
+function cell(tag, text, cls) {
+  const td = document.createElement('td');
+  const el = tag ? td.appendChild(document.createElement(tag)) : td;
+  el.textContent = text;
+  if (cls) (tag ? td : el).className = cls;
+  return td;
 }
 
 function renderRepos() {
   const tb = $('repos').querySelector('tbody');
   tb.innerHTML = '';
+  $('empty').style.display = config.repos.length ? 'none' : '';
   config.repos.forEach((r, i) => {
+    const st = statusById[idOf(r)] || { text: '—', cls: 'muted' };
     const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td><code>${r.owner}/${r.repo}</code></td>
-      <td><span class="pill">${r.type === 'installer' ? 'installed' : 'portable'}</span></td>
-      <td class="muted">${installTarget(r)}</td>
-      <td><button class="danger" data-i="${i}">Remove</button></td>`;
+    tr.appendChild(cell('code', `${r.owner}/${r.repo}`));
+    tr.appendChild(cell('span', r.type === 'installer' ? 'installed' : 'portable', 'pill'));
+    tr.appendChild(cell(null, st.text, 'status ' + st.cls));
+    const tdRm = document.createElement('td');
+    const btn = document.createElement('button');
+    btn.className = 'danger';
+    btn.textContent = 'Remove';
+    btn.onclick = () => { delete statusById[idOf(r)]; config.repos.splice(i, 1); renderRepos(); saveConfig(); };
+    tdRm.appendChild(btn);
+    tr.appendChild(tdRm);
     tb.appendChild(tr);
   });
-  tb.querySelectorAll('button[data-i]').forEach((b) =>
-    b.onclick = () => { config.repos.splice(+b.dataset.i, 1); renderRepos(); saveConfig(); });
 }
 
 async function saveConfig() {
-  config.portableRoot = $('portableRoot').value.trim(); // folder field is the source of truth
+  config.portableRoot = $('portableRoot').value.trim();
   try {
     await api('/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(config) });
-    msg('Saved.');
-  } catch (e) {
-    msg(e.message, true);
-  }
-  await load(); // reflect what actually persisted — never show a row that didn't save
+    msg('Saved.', 'ok');
+  } catch (e) { msg(e.message, 'bad'); }
+  await load();
 }
 
 async function load() {
+  const saved = statusById;
   config = await api('/api/config');
   if (!config.repos) config.repos = [];
+  statusById = saved; // keep statuses across reloads within the session
   $('portableRoot').value = config.portableRoot || '';
   renderRepos();
 }
 
-$('saveRoot').onclick = () => { config.portableRoot = $('portableRoot').value.trim(); saveConfig(); };
+$('saveRoot').onclick = () => saveConfig();
+
+$('browse').onclick = async () => {
+  msg('Opening folder picker…');
+  try {
+    const { path } = await api('/api/pick-folder');
+    if (path) { $('portableRoot').value = path; await saveConfig(); }
+    else msg('No folder chosen.', 'muted');
+  } catch (e) { msg(e.message, 'bad'); }
+};
 
 $('addRepo').onclick = () => {
   const parsed = parseRepo($('newRepo').value);
-  if (!parsed) return msg('Paste a github releases URL or owner/repo', true);
-  if (config.repos.some((r) => r.owner === parsed.owner && r.repo === parsed.repo && r.type === $('newType').value))
-    return msg(`${parsed.owner}/${parsed.repo} (${$('newType').value}) is already tracked`, true);
-  config.repos.push({ owner: parsed.owner, repo: parsed.repo, type: $('newType').value });
+  if (!parsed) return msg('Paste a GitHub releases URL or owner/repo.', 'bad');
+  const type = selectedType();
+  if (type === 'portable' && !$('portableRoot').value.trim()) {
+    msg('Set the portable apps folder first — click Browse.', 'bad');
+    $('portableRoot').focus();
+    return;
+  }
+  if (config.repos.some((r) => r.owner === parsed.owner && r.repo === parsed.repo && r.type === type))
+    return msg(`${idOf(parsed)} (${type}) is already in your list.`, 'bad');
+  config.repos.push({ owner: parsed.owner, repo: parsed.repo, type });
   $('newRepo').value = '';
   renderRepos(); saveConfig();
 };
 $('newRepo').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('addRepo').click(); });
 
-async function run(path, body) {
-  $('busy').textContent = 'Working…';
-  $('results').textContent = '';
-  try {
-    const { summary } = await api(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
-    $('results').textContent = summary.text;
-    msg('Done.');
-  } catch (e) { msg(e.message, true); }
-  finally { $('busy').textContent = ''; }
+// Turn one engine result into an inline status for its row.
+function toStatus(r, kind, dry) {
+  if (r.status === 'failed') return { text: '✗ ' + r.reason, cls: 'bad' };
+  if (r.status === 'current') return { text: `up to date (${r.to})`, cls: 'muted' };
+  // 'updated'
+  if (kind === 'check') return { text: `update available → ${r.to}`, cls: 'up' };
+  if (dry) return { text: `would update → ${r.to}`, cls: 'up' };
+  return { text: `✓ updated to ${r.to}`, cls: 'ok' };
 }
 
-$('checkBtn').onclick = () => run('/api/check');
-$('updateBtn').onclick = () => run('/api/update', { dryRun: $('dryRun').checked, force: $('force').checked });
+async function run(kind) {
+  const dry = $('dryRun').checked;
+  const path = kind === 'check' ? '/api/check' : '/api/update';
+  // mark all rows working
+  config.repos.forEach((r) => (statusById[idOf(r)] = { text: kind === 'check' ? 'checking…' : 'working…', cls: 'muted' }));
+  renderRepos();
+  $('checkBtn').disabled = $('updateBtn').disabled = true;
+  msg(kind === 'check' ? 'Checking…' : 'Updating…');
+  try {
+    const { results } = await api(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dryRun: dry, force: $('force').checked }) });
+    results.forEach((r) => (statusById[r.repo] = toStatus(r, kind, dry)));
+    renderRepos();
+    const n = results.filter((r) => r.status === 'updated').length;
+    const f = results.filter((r) => r.status === 'failed').length;
+    msg(kind === 'check'
+      ? (n ? `${n} update${n > 1 ? 's' : ''} available.` : 'Everything is up to date.') + (f ? ` ${f} failed.` : '')
+      : (dry ? 'Preview complete.' : `Done — ${n} updated${f ? `, ${f} failed` : ''}.`), f ? 'bad' : 'ok');
+  } catch (e) {
+    config.repos.forEach((r) => (statusById[idOf(r)] = { text: '—', cls: 'muted' }));
+    renderRepos();
+    msg(e.message, 'bad');
+  } finally {
+    $('checkBtn').disabled = $('updateBtn').disabled = false;
+  }
+}
 
-load().catch((e) => msg(e.message, true));
+$('checkBtn').onclick = () => run('check');
+$('updateBtn').onclick = () => run('update');
+
+load().catch((e) => msg(e.message, 'bad'));
 </script>
 </body>
 </html>

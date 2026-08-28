@@ -14,6 +14,13 @@ const github = require('../src/github');
 const install = require('../src/install');
 const runner = require('../src/runner');
 
+// Are we running as the packaged single-exe (SEA)? Then process.execPath IS the
+// app exe and there is no script file to pass as an argument.
+let IS_SEA = false;
+try {
+  IS_SEA = require('node:sea').isSea();
+} catch {}
+
 function parseArgs(argv) {
   const a = { _: [], flags: {} };
   for (let i = 0; i < argv.length; i++) {
@@ -54,8 +61,10 @@ function usage() {
 function relaunchElevated(repo, ctx) {
   const id = `${repo.owner}/${repo.repo}`;
   const resultFile = path.join(os.tmpdir(), `rw-result-${repo.repo}-${process.pid}.json`);
-  const nodeArgs = [
-    path.resolve(__filename),
+  // As a SEA exe the app IS process.execPath and dispatches on argv — do NOT pass a
+  // script path (that would land in argv[2] and hide the "update" subcommand). As
+  // plain node, the first arg must be this script.
+  const cliArgs = [
     'update',
     '--only',
     id,
@@ -65,8 +74,9 @@ function relaunchElevated(repo, ctx) {
     '--config',
     path.resolve(ctx.configPath),
   ];
-  if (ctx.statePath) nodeArgs.push('--state', path.resolve(ctx.statePath));
-  if (ctx.force) nodeArgs.push('--force');
+  if (ctx.statePath) cliArgs.push('--state', path.resolve(ctx.statePath));
+  if (ctx.force) cliArgs.push('--force');
+  const nodeArgs = IS_SEA ? cliArgs : [path.resolve(__filename), ...cliArgs];
 
   const quoted = nodeArgs.map((x) => `'${String(x).replace(/'/g, "''")}'`).join(',');
   const ps = `Start-Process -Verb RunAs -Wait -FilePath '${process.execPath}' -ArgumentList ${quoted}`;
@@ -83,8 +93,9 @@ function relaunchElevated(repo, ctx) {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const cmd = args._[0];
-  const configPath = args.flags.config || './repos.json';
+  const configPath = args.flags.config || './config.json'; // aligned with the web UI's default
   const statePath = typeof args.flags.state === 'string' ? args.flags.state : undefined;
+  const asJson = !!args.flags.json; // emit machine-readable output (used by the web server)
 
   if (cmd === 'list-assets') {
     const [owner, repo] = String(args._[1] || '').split('/');
@@ -101,8 +112,8 @@ async function main() {
   const config = core.validateConfig(readJson(configPath));
 
   if (cmd === 'check') {
-    const { summary } = await runner.run(config, { mode: 'check', only: args.flags.only, statePath });
-    console.log(summary.text);
+    const { results, summary } = await runner.run(config, { mode: 'check', only: args.flags.only, statePath });
+    console.log(asJson ? JSON.stringify({ results, summary }) : summary.text);
     return 0;
   }
 
@@ -145,7 +156,7 @@ async function main() {
   }
 
   const summary = core.buildSummary(results);
-  console.log(summary.text);
+  console.log(asJson ? JSON.stringify({ results, summary }) : summary.text);
   return summary.counts.failed > 0 ? 1 : 0;
 }
 

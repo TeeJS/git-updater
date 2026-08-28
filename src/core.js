@@ -11,10 +11,13 @@ function normTag(t) {
   return String(t == null ? '' : t).trim().replace(/^[vV]/, '');
 }
 
-// { nums:[1,2,0], pre:'rc1' } from "v1.2.0-rc1"
+// { nums:[1,2,0], pre:'rc1' } from "v1.2.0-rc1". Build metadata ("+abc") is
+// dropped: per semver it does not affect precedence.
 function splitVer(t) {
-  const s = normTag(t);
-  const m = s.match(/^(\d+(?:\.\d+)*)(?:[-+](.*))?$/);
+  let s = normTag(t);
+  const plus = s.indexOf('+');
+  if (plus >= 0) s = s.slice(0, plus);
+  const m = s.match(/^(\d+(?:\.\d+)*)(?:-(.*))?$/);
   if (!m) return { nums: [0], pre: '' };
   return { nums: m[1].split('.').map((x) => parseInt(x, 10) || 0), pre: m[2] || '' };
 }
@@ -30,6 +33,25 @@ function cmpNums(a, b) {
   return 0;
 }
 
+// Natural compare so "rc10" > "rc2" (digit runs compared numerically, not lexically).
+function naturalCmp(a, b) {
+  const ax = a.match(/\d+|\D+/g) || [];
+  const bx = b.match(/\d+|\D+/g) || [];
+  for (let i = 0; i < Math.max(ax.length, bx.length); i++) {
+    const as = ax[i];
+    const bs = bx[i];
+    if (as === undefined) return -1;
+    if (bs === undefined) return 1;
+    if (/^\d+$/.test(as) && /^\d+$/.test(bs)) {
+      const d = parseInt(as, 10) - parseInt(bs, 10);
+      if (d) return d < 0 ? -1 : 1;
+    } else if (as !== bs) {
+      return as < bs ? -1 : 1;
+    }
+  }
+  return 0;
+}
+
 // >0 if a is newer than b. Handles "1.2" == "1.2.0" and prerelease < release.
 function cmpVersion(a, b) {
   const va = splitVer(a);
@@ -39,7 +61,7 @@ function cmpVersion(a, b) {
   if (va.pre && !vb.pre) return -1; // a is a prerelease of b's version -> older
   if (!va.pre && vb.pre) return 1;
   if (va.pre === vb.pre) return 0;
-  return va.pre < vb.pre ? -1 : 1; // ponytail: lexical prerelease compare, fine for a short curated list
+  return naturalCmp(va.pre, vb.pre);
 }
 
 // ---------------------------------------------------------------------------
@@ -90,16 +112,32 @@ const NON_WINDOWS =
 const PORTABLE_EXT = /\.(zip|7z)$/i;
 const INSTALLER_EXT = /\.(exe|msi)$/i;
 
-function scoreAsset(name, type) {
+// arch: the machine's architecture (node's process.arch: 'x64' | 'arm64' | 'ia32').
+function scoreAsset(name, type, arch) {
   if (NON_WINDOWS.test(name)) return -Infinity;
   if (!(type === 'installer' ? INSTALLER_EXT : PORTABLE_EXT).test(name)) return -Infinity;
   let s = 0;
   if (/win(dows|64|32)?/i.test(name)) s += 4;
-  if (/(x64|amd64|x86[_-]?64|win64)/i.test(name)) s += 3;
-  else if (/(arm64|aarch64|arm)/i.test(name)) s -= 6; // avoid arm on a typical x64 box
-  else if (/(x86|ia32|win32|32-?bit)/i.test(name)) s += 1;
+  const isX64 = /(x64|amd64|x86[_-]?64|win64)/i.test(name);
+  const isArm = /(arm64|aarch64|arm)/i.test(name);
+  const isX86 = /(x86|ia32|win32|32-?bit)/i.test(name) && !isX64;
+  // Prefer the file matching the running machine's architecture; penalize mismatches.
+  if (arch === 'arm64') {
+    if (isArm) s += 3;
+    else if (isX64) s -= 1; // x64 runs on arm64 Windows via emulation, so mild penalty only
+    else if (isX86) s -= 1;
+  } else if (arch === 'ia32') {
+    if (isX86) s += 3;
+    else if (isX64) s -= 6;
+    else if (isArm) s -= 6;
+  } else {
+    // x64 (default)
+    if (isX64) s += 3;
+    else if (isArm) s -= 6;
+    else if (isX86) s += 1;
+  }
   if (type === 'portable') {
-    if (/\.zip$/i.test(name)) s += 2; // adm-zip extracts .zip; .7z not yet
+    if (/\.zip$/i.test(name)) s += 2; // adm-zip extracts .zip directly; .7z via 7z-wasm
     if (/portable/i.test(name)) s += 2;
   } else {
     if (/\.exe$/i.test(name)) s += 1; // prefer exe over msi by default
@@ -109,12 +147,14 @@ function scoreAsset(name, type) {
 }
 
 // Returns the best-matching asset object, or throws if the release has none for Windows.
-function pickWindowsAsset(assets, type) {
+// arch defaults to the running machine's architecture.
+function pickWindowsAsset(assets, type, arch) {
   const list = assets || [];
+  const a4 = arch || (typeof process !== 'undefined' && process.arch) || 'x64';
   let best = null;
   let bestScore = -Infinity;
   for (const a of list) {
-    const sc = scoreAsset(a.name, type);
+    const sc = scoreAsset(a.name, type, a4);
     if (sc === -Infinity) continue;
     if (sc > bestScore || (sc === bestScore && best && a.name.length < best.name.length)) {
       best = a;

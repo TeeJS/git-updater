@@ -58,11 +58,15 @@ preferring x64).
 }
 ```
 
+The chosen file matches the machine's architecture (x64 / arm64 / x86). For installers, the
+silent-install technology (NSIS / Inno / MSI) is **detected from the downloaded file's bytes**, not
+guessed from the extension.
+
 Optional overrides (rarely needed):
 - `"asset": "*-win-x64.zip"` (glob or `/regex/`) pins a specific file instead of auto-pick.
 - Portable: `"install": { "dir": "D:/Custom" }` to override the folder.
-- Installer: `"install": { "kind": "inno", "args": ["/VERYSILENT"] }` if the guessed silent-install
-  switch is wrong for that installer (`kind` is `msi` | `nsis` | `inno`).
+- Installer: `"install": { "kind": "inno", "args": ["/VERYSILENT"] }` if detection can't identify an
+  unusual installer (`kind` is `msi` | `nsis` | `inno`).
 
 ## Elevation
 
