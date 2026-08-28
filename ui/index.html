@@ -61,8 +61,8 @@
   th { font: 600 .68rem var(--mono); letter-spacing: .07em; text-transform: uppercase; color: var(--faint); text-align: left; padding: 0 .35rem .5rem; }
   td { padding: .5rem .35rem; border-top: 1px solid var(--border); vertical-align: middle; overflow: hidden; }
   .app { font: 500 14px var(--mono); display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .st, .ver { overflow: hidden; text-overflow: ellipsis; }
-  .st > span:last-child { overflow: hidden; text-overflow: ellipsis; }
+  .st, .ver { overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+  .st > span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .badge { display: inline-block; font: 600 .72rem var(--sans); padding: .12rem .5rem; border-radius: 999px; border: 1px solid transparent; }
   .badge.portable { color: var(--blue); background: rgba(88,166,255,.12); border-color: rgba(88,166,255,.3); }
   .badge.installer { color: var(--accent); background: rgba(227,161,60,.13); border-color: rgba(227,161,60,.35); }
