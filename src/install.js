@@ -8,6 +8,7 @@ const os = require('os');
 const { spawnSync } = require('child_process');
 const AdmZip = require('adm-zip');
 const { installerCmd } = require('./core');
+const { log } = require('./log');
 
 const isWin = process.platform === 'win32';
 
@@ -230,6 +231,7 @@ function installInstaller(filePath, install, opts = {}) {
   const command = [exe, ...args].join(' ');
   if (opts.dryRun) return { command, dryRun: true };
   if (!isWin) throw new Error('installer type is Windows-only');
+  log(`  installer (${install.kind}): ${command}`);
   // Launch the installer directly (no PowerShell). A requireAdministrator installer that
   // can't elevate from a non-elevated parent fails here; surface a clear message instead.
   const r = spawnSync(exe, args, {

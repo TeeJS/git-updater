@@ -12,6 +12,11 @@ const github = require('../src/github');
 const runner = require('../src/runner');
 const state = require('../src/state');
 const detect = require('../src/detect');
+const { log, LOG_FILE } = require('../src/log');
+
+log(`--- git-updater ${app.getVersion()} started ---`);
+process.on('uncaughtException', (e) => log(`UNCAUGHT: ${e && e.stack ? e.stack : e}`));
+process.on('unhandledRejection', (e) => log(`UNHANDLED: ${e && e.stack ? e.stack : e}`));
 
 function dirHasFiles(dir) {
   try {
@@ -120,6 +125,7 @@ ipcMain.handle('config:save', (_e, cfg) => {
   return { ok: true };
 });
 ipcMain.handle('config:open', () => shell.openPath(CONFIG_PATH));
+ipcMain.handle('log:open', () => shell.openPath(LOG_FILE));
 // Validate a repo has a usable release before it's added (throws -> rejects).
 ipcMain.handle('repo:validate', async (_e, { owner, repo, prerelease }) => {
   const rel = await github.getLatestRelease(owner, repo, { prerelease });

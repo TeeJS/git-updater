@@ -153,6 +153,7 @@
       <div class="row" style="margin-top:.6rem">
         <span style="color:var(--muted);font-size:.9rem;min-width:8rem">Advanced</span>
         <button id="editJson">Edit config.json</button>
+        <button id="openLog">Open log</button>
       </div>
       <p class="hint">Hand-edit for per-app overrides (asset pattern, install dir, installer kind/args, process name).</p>
     </details>
@@ -353,6 +354,7 @@ function cancelEdit() {
 }
 $('cancelEdit').onclick = cancelEdit;
 $('editJson').onclick = () => window.api.openConfig();
+$('openLog').onclick = () => window.api.openLog();
 
 $('addRepo').onclick = async () => {
   const parsed = parseRepo($('newRepo').value);

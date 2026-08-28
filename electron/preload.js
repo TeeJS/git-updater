@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('api', {
   getInstalled: () => ipcRenderer.invoke('installed:get'),
   saveConfig: (cfg) => ipcRenderer.invoke('config:save', cfg),
   openConfig: () => ipcRenderer.invoke('config:open'),
+  openLog: () => ipcRenderer.invoke('log:open'),
   openFolder: (appKey) => ipcRenderer.invoke('folder:open', appKey),
   validateRepo: (owner, repo) => ipcRenderer.invoke('repo:validate', { owner, repo }),
   pickFolder: () => ipcRenderer.invoke('pick-folder'),

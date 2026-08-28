@@ -11,6 +11,7 @@ const github = require('./github');
 const install = require('./install');
 const state = require('./state');
 const detect = require('./detect');
+const { log } = require('./log');
 
 // Display id ("owner/repo") vs storage/identity key (adds the type, so the same repo
 // tracked as both portable AND installed keeps separate state instead of colliding).
@@ -28,6 +29,7 @@ async function run(config, opts = {}) {
       results.push(await handleRepo(repo, id, st, opts));
     } catch (e) {
       results.push({ repo: id, id: appKey(repo), status: 'failed', reason: e.message });
+      log(`FAIL ${appKey(repo)}: ${e.message}`);
       if (e.rateLimited) break; // no point hammering a rate-limited API
     }
   }
@@ -99,8 +101,11 @@ async function handleRepo(repo, id, st, opts) {
   // Proactive check: a running app blocks both installers (in-use files) and portable
   // swaps (locked files). Tell the user up front instead of failing mid-download.
   if (detect.isRunning(repo.process || repo.repo)) {
+    log(`SKIP ${key}: ${repo.repo} is running`);
     return { ...base, status: 'failed', reason: `${repo.repo} is running — close it, then Retry` };
   }
+
+  log(`update ${key}: installed=${installed || '(none)'} -> latest=${core.normTag(latest)}, asset=${asset.name}`);
 
   // Stage under %LOCALAPPDATA%, NOT %TEMP% — EDR/ASR rules flag executables run from Temp.
   const stageBase = path.join(process.env.LOCALAPPDATA || os.homedir(), 'git-updater', 'staging');
@@ -141,6 +146,7 @@ async function handleRepo(repo, id, st, opts) {
       ...(files ? { files } : {}),
     };
     state.save(st, opts.statePath);
+    log(`OK ${key}: installed ${core.normTag(latest)}`);
     return { ...base, status: 'updated', note: v && v.note };
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
