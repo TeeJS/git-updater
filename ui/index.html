@@ -19,6 +19,9 @@
   input, select, button { font: inherit; padding: .4rem .5rem; border-radius: 6px;
           border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
           background: transparent; color: inherit; }
+  /* native select + its option list: theme-aware so it's readable in light and dark */
+  select { background: Field; color: FieldText; }
+  select option { background: Field; color: FieldText; }
   button { cursor: pointer; font-weight: 600; }
   button.primary { background: #2563eb; color: #fff; border-color: #2563eb; }
   button.danger { border-color: #dc2626; color: #dc2626; }
@@ -122,10 +125,14 @@ function renderRepos() {
 }
 
 async function saveConfig() {
+  config.portableRoot = $('portableRoot').value.trim(); // folder field is the source of truth
   try {
     await api('/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(config) });
     msg('Saved.');
-  } catch (e) { msg(e.message, true); }
+  } catch (e) {
+    msg(e.message, true);
+  }
+  await load(); // reflect what actually persisted — never show a row that didn't save
 }
 
 async function load() {

@@ -28,10 +28,15 @@ function readConfig() {
   return JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
 }
 
-// Validate a deep clone (validateConfig mutates: it fills portable dirs from
-// portableRoot). We persist the user's raw config so portableRoot stays the source.
+// Light structural check only — enough to store the list. The portable-folder
+// requirement is enforced later at check/update time, so apps can be added in any
+// order (before or after the folder is set) without the save being rejected.
 function saveConfig(cfg) {
-  core.validateConfig(JSON.parse(JSON.stringify(cfg))); // throws on invalid
+  if (!cfg || !Array.isArray(cfg.repos)) throw new Error('config: "repos" must be an array');
+  cfg.repos.forEach((r, i) => {
+    if (!r.owner || !r.repo) throw new Error(`app ${i + 1}: owner and repo are required`);
+    if (r.type !== 'portable' && r.type !== 'installer') throw new Error(`app ${i + 1}: type must be portable or installer`);
+  });
   if (fs.existsSync(CONFIG_PATH)) {
     const stamp = new Date().toISOString().replace(/[:.]/g, '-');
     fs.copyFileSync(CONFIG_PATH, `${CONFIG_PATH}.${stamp}.bak`);
