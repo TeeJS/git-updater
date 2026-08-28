@@ -10,6 +10,7 @@ const core = require('./core');
 const github = require('./github');
 const install = require('./install');
 const state = require('./state');
+const detect = require('./detect');
 
 // Display id ("owner/repo") vs storage/identity key (adds the type, so the same repo
 // tracked as both portable AND installed keeps separate state instead of colliding).
@@ -79,6 +80,12 @@ async function handleRepo(repo, id, st, opts) {
         ? `install ${asset.name} silently`
         : `extract ${asset.name} -> ${repo.install.dir}`;
     return { ...base, status: 'updated', note: plan };
+  }
+
+  // Proactive check: a running app blocks both installers (in-use files) and portable
+  // swaps (locked files). Tell the user up front instead of failing mid-download.
+  if (detect.isRunning(repo.process || repo.repo)) {
+    return { ...base, status: 'failed', reason: `${repo.repo} is running — close it, then Retry` };
   }
 
   // Stage under %LOCALAPPDATA%, NOT %TEMP% — EDR/ASR rules flag executables run from Temp.

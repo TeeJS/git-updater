@@ -59,4 +59,23 @@ function registryVersion(needle) {
   return hit ? hit.DisplayVersion : null;
 }
 
-module.exports = { registryVersion };
+// --- running-process detection (for a proactive "close the app" warning) ------
+// tasklist.exe: a signed MS utility, benign read, NO shell.
+const norm = (s) => String(s || '').toLowerCase().replace(/\.exe$/, '').replace(/[^a-z0-9]/g, '');
+
+function runningProcesses() {
+  if (process.platform !== 'win32') return [];
+  const r = spawnSync('tasklist', ['/fo', 'csv', '/nh'], { encoding: 'utf8', windowsHide: true, maxBuffer: 16 * 1024 * 1024 });
+  if (r.status !== 0 || !r.stdout) return [];
+  return r.stdout.split(/\r?\n/).map((l) => { const m = l.match(/^"([^"]+)"/); return m ? m[1] : null; }).filter(Boolean);
+}
+
+// Is a process whose name looks like `needle` running? Loose alphanumeric match
+// (so "notepad-plus-plus" matches "notepad++.exe"); override per app with `process`.
+function isRunning(needle) {
+  const t = norm(needle);
+  if (t.length < 3) return false;
+  return runningProcesses().some((p) => { const pn = norm(p); return pn.length >= 3 && (pn.includes(t) || t.includes(pn)); });
+}
+
+module.exports = { registryVersion, isRunning };
