@@ -79,7 +79,10 @@ async function handleRepo(repo, id, st, opts) {
     return { ...base, status: 'updated', note: plan };
   }
 
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'rw-dl-'));
+  // Stage under %LOCALAPPDATA%, NOT %TEMP% — EDR/ASR rules flag executables run from Temp.
+  const stageBase = path.join(process.env.LOCALAPPDATA || os.homedir(), 'git-updater', 'staging');
+  fs.mkdirSync(stageBase, { recursive: true });
+  const tmp = fs.mkdtempSync(path.join(stageBase, 'dl-'));
   try {
     const file = path.join(tmp, asset.name);
     await github.downloadAsset(asset.browser_download_url, file);

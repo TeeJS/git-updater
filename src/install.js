@@ -11,37 +11,6 @@ const { installerCmd } = require('./core');
 
 const isWin = process.platform === 'win32';
 
-// --- elevation helpers (Windows) -------------------------------------------
-
-function isElevated() {
-  if (!isWin) return true; // *nix: assume the user targets writable locations
-  try {
-    return spawnSync('net', ['session'], { windowsHide: true, stdio: 'ignore' }).status === 0;
-  } catch {
-    return false;
-  }
-}
-
-function dirWritable(dir) {
-  try {
-    fs.mkdirSync(dir, { recursive: true });
-    const probe = path.join(dir, `.rw-write-test-${process.pid}`);
-    fs.writeFileSync(probe, '');
-    fs.unlinkSync(probe);
-    return true;
-  } catch (e) {
-    if (e.code === 'EPERM' || e.code === 'EACCES') return false;
-    return true; // other errors: let the real operation surface them
-  }
-}
-
-// installers generally need admin; portable only if its target dir isn't writable.
-function needsElevation(repo, elevated) {
-  if (!isWin || elevated) return false;
-  if (repo.type === 'installer') return true;
-  return !dirWritable(repo.install.dir);
-}
-
 // --- portable swap ----------------------------------------------------------
 
 function moveFile(from, to) {
@@ -260,19 +229,24 @@ function installInstaller(filePath, install, opts = {}) {
   const command = [exe, ...args].join(' ');
   if (opts.dryRun) return { command, dryRun: true };
   if (!isWin) throw new Error('installer type is Windows-only');
+  // Launch the installer directly (no PowerShell). A requireAdministrator installer that
+  // can't elevate from a non-elevated parent fails here; surface a clear message instead.
   const r = spawnSync(exe, args, {
     windowsHide: true,
     timeout: opts.timeout || 10 * 60 * 1000,
     stdio: 'ignore',
   });
-  if (r.error) throw r.error;
+  if (r.error) {
+    if (r.error.code === 'EACCES' || r.error.code === 'EPERM' || r.error.errno === -4092) {
+      throw new Error('this installer needs administrator rights — right-click git-updater and "Run as administrator", then retry');
+    }
+    throw r.error;
+  }
   if (r.status !== 0 && r.status !== 3010) throw new Error(`installer exited ${r.status}`); // 3010 = reboot required
   return { command, status: r.status };
 }
 
 module.exports = {
-  isElevated,
-  needsElevation,
   installPortable,
   installInstaller,
   detectInstallerKind,

@@ -74,10 +74,13 @@ own update history.
 
 ## Elevation
 
-Portable installs under a user-writable `portableRoot` (e.g. `C:/PortableApps`) need no admin.
-Installers trigger their own UAC prompt when they run. To swap a portable app into a protected
-directory (e.g. `Program Files`) from the exe, right-click → **Run as administrator**; the CLI
-(`node server.js update`) instead self-elevates one repo at a time.
+git-updater uses **no PowerShell and no self-elevation** (both are EDR triggers). Portable installs
+under a user-writable `portableRoot` (e.g. `C:/PortableApps`) need no admin and just work. An
+installer that requires administrator rights, or a portable target under a protected directory
+(e.g. `Program Files`), will fail with a clear message — **run git-updater as administrator**
+(right-click → *Run as administrator*) for those updates.
+
+Downloads are staged under `%LOCALAPPDATA%\git-updater\staging`, never executed from `%TEMP%`.
 
 ## Auth (optional)
 

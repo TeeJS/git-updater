@@ -1,17 +1,13 @@
 #!/usr/bin/env node
 'use strict';
 
-// CLI: parse args -> run -> print summary -> set exit code.
-// Owns Windows self-elevation: repos that need admin are re-run in an elevated
-// child (one UAC prompt per such app); the child returns its result via a temp file.
+// CLI: parse args -> run -> print summary -> set exit code. No shell/PowerShell use.
+// Installers that need admin fail with a clear "run as administrator" message.
 
 const fs = require('fs');
 const path = require('path');
-const os = require('os');
-const { spawnSync } = require('child_process');
 const core = require('../src/core');
 const github = require('../src/github');
-const install = require('../src/install');
 const runner = require('../src/runner');
 const state = require('../src/state');
 
@@ -63,39 +59,6 @@ function usage() {
   process.exit(2);
 }
 
-// Re-run one repo in an elevated child; return its structured result.
-function relaunchElevated(repo, ctx) {
-  const id = `${repo.owner}/${repo.repo}`;
-  const resultFile = path.join(os.tmpdir(), `rw-result-${repo.repo}-${process.pid}.json`);
-  // As a SEA exe the app IS process.execPath and dispatches on argv — do NOT pass a
-  // script path (that would land in argv[2] and hide the "update" subcommand). As
-  // plain node, the first arg must be this script.
-  const cliArgs = [
-    'update',
-    '--only',
-    id,
-    '--_elevated',
-    '--_result',
-    resultFile,
-    '--config',
-    path.resolve(ctx.configPath),
-  ];
-  if (ctx.statePath) cliArgs.push('--state', path.resolve(ctx.statePath));
-  if (ctx.force) cliArgs.push('--force');
-  const nodeArgs = IS_SEA ? cliArgs : [path.resolve(__filename), ...cliArgs];
-
-  const quoted = nodeArgs.map((x) => `'${String(x).replace(/'/g, "''")}'`).join(',');
-  const ps = `Start-Process -Verb RunAs -Wait -FilePath '${process.execPath}' -ArgumentList ${quoted}`;
-  const r = spawnSync('powershell', ['-NoProfile', '-Command', ps], { stdio: 'ignore' });
-  try {
-    const out = JSON.parse(fs.readFileSync(resultFile, 'utf8'));
-    fs.unlinkSync(resultFile);
-    return out[0] || { repo: id, status: 'failed', reason: 'elevated run produced no result' };
-  } catch {
-    return { repo: id, status: 'failed', reason: `elevated run failed (exit ${r.status})` };
-  }
-}
-
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const cmd = args._[0];
@@ -130,47 +93,18 @@ async function main() {
     force: !!args.flags.force,
     dryRun: !!args.flags['dry-run'],
   };
-  const isChild = !!args.flags._elevated;
-  const elevated = isChild || install.isElevated();
 
-  // `only` may be a display id ("owner/repo") or a per-type key ("owner/repo#installer").
-  const matchOnly = (r) => {
-    if (!opts.only) return true;
-    const o = opts.only.toLowerCase();
-    return `${r.owner}/${r.repo}`.toLowerCase() === o || `${r.owner}/${r.repo}#${r.type}`.toLowerCase() === o;
-  };
-  const targets = config.repos.filter(matchOnly);
-
-  // Serialize real update runs so concurrent tabs/CLI/server can't clobber state.json.
-  // The elevated child skips locking — the parent that spawned it already holds it.
+  // No PowerShell / self-relaunch elevation (an EDR trigger). Installers that need admin
+  // fail with a clear "run as administrator" message; run git-updater elevated for those.
+  // Portable apps under a user-writable folder never need admin.
   let lock = null;
-  if (!opts.dryRun && !isChild) lock = state.acquireLock(statePath);
+  if (!opts.dryRun) lock = state.acquireLock(statePath);
   const results = [];
   try {
-    if (!opts.dryRun && !elevated) {
-      const inline = [];
-      for (const r of targets) {
-        if (install.needsElevation(r, elevated)) {
-          console.error(`  … ${r.owner}/${r.repo} needs admin — requesting elevation`);
-          results.push(relaunchElevated(r, { configPath, statePath, force: opts.force }));
-        } else {
-          inline.push(r);
-        }
-      }
-      const { results: inlineRes } = await runner.run({ repos: inline }, opts);
-      results.push(...inlineRes);
-    } else {
-      const { results: res } = await runner.run({ repos: targets }, opts);
-      results.push(...res);
-    }
+    const { results: res } = await runner.run(config, opts);
+    results.push(...res);
   } finally {
     state.releaseLock(lock);
-  }
-
-  // elevated child hands its result back through the temp file, no printing
-  if (isChild && typeof args.flags._result === 'string') {
-    fs.writeFileSync(args.flags._result, JSON.stringify(results));
-    return 0;
   }
 
   const summary = core.buildSummary(results);
