@@ -315,6 +315,8 @@ async function load() {
   await refreshInstalled(); // slower registry/manifest detection
   config.repos.forEach((r) => { const s = st[keyOf(r)]; if (s && s.ph === 'loading') s.ph = 'idle'; });
   renderRepos();
+  // Startup check against GitHub — surfaces a deleted/renamed repo and available updates.
+  if (config.repos.length) checkApps(config.repos.map(keyOf));
 }
 
 $('saveRoot').onclick = () => saveConfig().then(() => { msg('Saved.', 'ok'); refreshInstalled().then(renderRepos); });
@@ -328,8 +330,19 @@ $('addRepo').onclick = async () => {
   const type = selectedType();
   if (type === 'portable' && !$('portableRoot').value.trim()) { $('settings').open = true; msg('Set the portable apps folder first — see Settings.', 'bad'); return; }
   if (config.repos.some((r) => r.owner === parsed.owner && r.repo === parsed.repo && r.type === type)) return msg(`${parsed.owner}/${parsed.repo} (${type}) is already in your list.`, 'bad');
+  // Verify the repo exists and has a release before adding it.
+  $('addRepo').disabled = true;
+  msg(`Checking ${parsed.owner}/${parsed.repo}…`, 'info');
+  try {
+    await window.api.validateRepo(parsed.owner, parsed.repo);
+  } catch (e) {
+    $('addRepo').disabled = false;
+    return msg(`Can't add ${parsed.owner}/${parsed.repo} — ${clean(e)}. Check the owner/repo.`, 'bad');
+  }
+  $('addRepo').disabled = false;
   config.repos.push({ owner: parsed.owner, repo: parsed.repo, type });
   $('newRepo').value = '';
+  msg('Added.', 'ok');
   await saveConfig(); await refreshInstalled(); renderRepos();
 };
 $('newRepo').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('addRepo').click(); });
@@ -355,7 +368,11 @@ async function checkApps(keys) {
     for (const k of keys) {
       const { results } = await window.api.check({ only: k });
       const r = results.find((x) => (x.id || x.repo) === k) || results[0];
-      if (r) { const s = st[k] || {}; st[k] = { ...s, ph: r.status === 'current' ? 'current' : 'available', from: r.from || s.from, to: r.to, present: s.present }; }
+      if (r) {
+        const s = st[k] || {};
+        if (r.status === 'failed') st[k] = { ...s, ph: 'failed', reason: r.reason };
+        else st[k] = { ...s, ph: r.status === 'current' ? 'current' : 'available', from: r.from || s.from, to: r.to, present: s.present };
+      }
       renderRepos();
     }
     msg('Check complete.', 'ok');

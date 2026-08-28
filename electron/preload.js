@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld('api', {
   saveConfig: (cfg) => ipcRenderer.invoke('config:save', cfg),
   openConfig: () => ipcRenderer.invoke('config:open'),
   openFolder: (appKey) => ipcRenderer.invoke('folder:open', appKey),
+  validateRepo: (owner, repo) => ipcRenderer.invoke('repo:validate', { owner, repo }),
   pickFolder: () => ipcRenderer.invoke('pick-folder'),
   openRelease: (owner, repo) => ipcRenderer.invoke('release:open', { owner, repo }),
   previewAsset: (appKey) => ipcRenderer.invoke('asset:preview', appKey),

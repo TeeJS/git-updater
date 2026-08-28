@@ -30,20 +30,41 @@ async function ghJson(url) {
     e.rateLimited = true;
     throw e;
   }
-  if (res.status === 404) throw new Error('no release found (404)');
-  if (!res.ok) throw new Error(`GitHub ${res.status} for ${url}`);
+  if (!res.ok) {
+    const e = new Error(`GitHub ${res.status} for ${url}`);
+    e.status = res.status;
+    throw e;
+  }
   return res.json();
 }
 
-// /releases/latest excludes prereleases + drafts; opts.prerelease uses /releases[0] (first non-draft).
-async function getLatestRelease(owner, repo, opts = {}) {
-  if (opts.prerelease) {
-    const list = await ghJson(`${API}/repos/${owner}/${repo}/releases?per_page=10`);
-    const rel = (list || []).find((r) => !r.draft);
-    if (!rel) throw new Error('no releases found');
-    return rel;
+// True if the repo itself is gone (deleted/renamed/private) rather than just release-less.
+async function repoMissing(owner, repo) {
+  try {
+    await ghJson(`${API}/repos/${owner}/${repo}`);
+    return false;
+  } catch (e) {
+    return e.status === 404;
   }
-  return ghJson(`${API}/repos/${owner}/${repo}/releases/latest`);
+}
+
+// /releases/latest excludes prereleases + drafts; opts.prerelease uses /releases[0] (first non-draft).
+// On 404, distinguish a missing repo (deleted/renamed) from a repo with no releases.
+async function getLatestRelease(owner, repo, opts = {}) {
+  try {
+    if (opts.prerelease) {
+      const list = await ghJson(`${API}/repos/${owner}/${repo}/releases?per_page=10`);
+      const rel = (list || []).find((r) => !r.draft);
+      if (!rel) throw Object.assign(new Error('x'), { status: 404 });
+      return rel;
+    }
+    return await ghJson(`${API}/repos/${owner}/${repo}/releases/latest`);
+  } catch (e) {
+    if (e.status === 404) {
+      throw new Error((await repoMissing(owner, repo)) ? 'repository not found (deleted, renamed, or private)' : 'no releases found for this repository');
+    }
+    throw e;
+  }
 }
 
 async function listAssets(owner, repo, opts = {}) {

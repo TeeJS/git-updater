@@ -120,6 +120,11 @@ ipcMain.handle('config:save', (_e, cfg) => {
   return { ok: true };
 });
 ipcMain.handle('config:open', () => shell.openPath(CONFIG_PATH));
+// Validate a repo has a usable release before it's added (throws -> rejects).
+ipcMain.handle('repo:validate', async (_e, { owner, repo, prerelease }) => {
+  const rel = await github.getLatestRelease(owner, repo, { prerelease });
+  return { ok: true, tag: rel.tag_name };
+});
 ipcMain.handle('release:open', (_e, { owner, repo }) =>
   shell.openExternal(`https://github.com/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/releases`)
 );
