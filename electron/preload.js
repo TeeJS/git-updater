@@ -7,8 +7,10 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('api', {
   getConfig: () => ipcRenderer.invoke('config:get'),
   getState: () => ipcRenderer.invoke('state:get'),
+  getInstalled: () => ipcRenderer.invoke('installed:get'),
   saveConfig: (cfg) => ipcRenderer.invoke('config:save', cfg),
   openConfig: () => ipcRenderer.invoke('config:open'),
+  openFolder: (appKey) => ipcRenderer.invoke('folder:open', appKey),
   pickFolder: () => ipcRenderer.invoke('pick-folder'),
   openRelease: (owner, repo) => ipcRenderer.invoke('release:open', { owner, repo }),
   previewAsset: (appKey) => ipcRenderer.invoke('asset:preview', appKey),

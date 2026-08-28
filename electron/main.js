@@ -11,6 +11,19 @@ const core = require('../src/core');
 const github = require('../src/github');
 const runner = require('../src/runner');
 const state = require('../src/state');
+const detect = require('../src/detect');
+
+function dirHasFiles(dir) {
+  try {
+    return !!dir && fs.existsSync(dir) && fs.readdirSync(dir).length > 0;
+  } catch {
+    return false;
+  }
+}
+function portableDir(cfg, r) {
+  if (r.install && r.install.dir) return r.install.dir;
+  return cfg.portableRoot ? `${cfg.portableRoot.replace(/[\\/]+$/, '')}/${r.repo}` : null;
+}
 
 // Config lives with state under %APPDATA%\git-updater — never the launch cwd.
 const DATA_DIR = path.join(process.env.APPDATA || app.getPath('appData'), 'git-updater');
@@ -72,7 +85,36 @@ function createWindow() {
 
 // --- IPC: the only bridge between the renderer and the engine -----------------
 ipcMain.handle('config:get', () => readConfig());
-ipcMain.handle('state:get', () => state.load()); // per-app installed versions map
+ipcMain.handle('state:get', () => state.load());
+
+// Locally-installed version + presence per app, BEFORE checking GitHub.
+// Installer -> uninstall-registry DisplayVersion; Portable -> our manifest + folder.
+ipcMain.handle('installed:get', () => {
+  const cfg = readConfig();
+  const stt = state.load();
+  const out = {};
+  for (const r of cfg.repos) {
+    const key = `${r.owner}/${r.repo}#${r.type}`;
+    if (r.type === 'installer') {
+      let v = null;
+      try {
+        v = detect.registryVersion(r.detect || r.repo);
+      } catch {}
+      out[key] = { current: v, present: !!v };
+    } else {
+      const dir = portableDir(cfg, r);
+      const rec = stt[key];
+      out[key] = { current: (rec && rec.version) || null, present: dirHasFiles(dir) };
+    }
+  }
+  return out;
+});
+ipcMain.handle('folder:open', (_e, appKey) => {
+  const cfg = readConfig();
+  const r = cfg.repos.find((x) => `${x.owner}/${x.repo}#${x.type}` === appKey);
+  const dir = r && portableDir(cfg, r);
+  return dir ? shell.openPath(dir) : 'no folder';
+});
 ipcMain.handle('config:save', (_e, cfg) => {
   saveConfigFile(cfg);
   return { ok: true };
