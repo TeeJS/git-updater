@@ -238,11 +238,22 @@ function installInstaller(filePath, install, opts = {}) {
   });
   if (r.error) {
     if (r.error.code === 'EACCES' || r.error.code === 'EPERM' || r.error.errno === -4092) {
-      throw new Error('this installer needs administrator rights — right-click git-updater and "Run as administrator", then retry');
+      throw new Error('needs administrator rights — right-click git-updater and "Run as administrator", then Retry');
     }
     throw r.error;
   }
-  if (r.status !== 0 && r.status !== 3010) throw new Error(`installer exited ${r.status}`); // 3010 = reboot required
+  if (r.status !== 0 && r.status !== 3010) {
+    // 3010 = reboot required (success). Give an actionable message; a nonzero exit is
+    // most often the app being open (files in use).
+    const byCode = {
+      1602: 'installer was cancelled',
+      1603: 'installer failed — close the app if it is running, then Retry (or it may need admin rights)',
+      1618: 'another installer is already running — wait for it to finish, then Retry',
+      1619: 'installer package could not be opened',
+      1620: 'installer package is invalid',
+    };
+    throw new Error(byCode[r.status] || `installer failed (exit ${r.status}) — if the app is open, close it and Retry`);
+  }
   return { command, status: r.status };
 }
 
