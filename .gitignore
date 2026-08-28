@@ -1,0 +1,7 @@
+node_modules/
+dist/
+config.json
+config.json.*.bak
+repos.json
+state.json
+*.bak
