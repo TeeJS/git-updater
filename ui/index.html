@@ -169,7 +169,7 @@ function phaseView(s) {
     case 'verifying': return { text: 'Verifying SHA-256', cls: 'c-work' };
     case 'installing': return { text: 'Installing…', cls: 'c-work' };
     case 'current': return { text: `up to date${s.to ? ' · ' + s.to : ''}`, cls: 'c-muted' };
-    case 'available': return { text: 'update available', cls: 'c-up' };
+    case 'available': return { text: `update to ${s.to}`, cls: 'c-up' };
     case 'updated': return { text: `updated → ${s.to}`, cls: 'c-ok' };
     case 'failed': return { text: s.reason || 'failed', cls: 'c-bad' };
     default: return { text: s.from ? `installed · ${s.from}` : 'not checked', cls: 'c-muted' };
