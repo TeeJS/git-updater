@@ -49,23 +49,36 @@ async function handleRepo(repo, id, st, opts) {
   const rel = await github.getLatestRelease(repo.owner, repo.repo, { prerelease: repo.prerelease });
   const latest = rel.tag_name;
   const prev = st[key] || {};
-  const seen = prev.tag;
 
-  const cmp = core.cmpVersion(latest, seen || '');
-  let isNew = cmp > 0;
-  // Non-semantic tags (e.g. "release-2026-08") both parse to version 0, so cmp is 0 —
-  // fall back to tag identity: a changed tag (including first install vs empty) is an update.
-  if (!isNew && cmp === 0 && core.normTag(latest) !== core.normTag(seen || '')) isNew = true;
+  // Compare against the ACTUAL installed version, not just our update history:
+  // installer -> uninstall-registry DisplayVersion; portable -> our install manifest.
+  let installed = null;
+  if (repo.type === 'installer') {
+    try {
+      installed = detect.registryVersion(repo.detect || repo.repo);
+    } catch {}
+  } else {
+    installed = prev.version || null;
+  }
+  const baseline = installed || prev.tag || '';
+  const tracked = installed || prev.tag; // do we believe it's installed at all?
 
-  // If we recorded a portable app as installed but its folder is now missing/empty
-  // (user deleted it, or a prior run half-failed), reinstall instead of reporting "current".
-  if (!isNew && !opts.force && seen && repo.type === 'portable' && repo.install && !dirHasFiles(repo.install.dir)) {
+  const cmp = core.cmpVersion(latest, baseline);
+  let isNew = cmp > 0 || !tracked; // newer than installed, or not installed yet
+  // Only NON-numeric tags (e.g. "release-2026-08", which collapse to version 0) fall back
+  // to tag identity — otherwise 1.26.0 vs 1.26.0.0 would look like an update.
+  if (!isNew && !/^\d/.test(core.normTag(latest)) && prev.tag && core.normTag(latest) !== core.normTag(prev.tag)) {
+    isNew = true;
+  }
+  // Portable recorded as installed but its folder is gone/empty -> reinstall.
+  if (!isNew && !opts.force && tracked && repo.type === 'portable' && repo.install && !dirHasFiles(repo.install.dir)) {
     isNew = true;
   }
 
-  if (!isNew && !opts.force) return { repo: id, id: key, status: 'current', to: core.normTag(latest) };
+  const fromV = installed ? core.normTag(installed) : prev.tag && core.normTag(prev.tag);
+  if (!isNew && !opts.force) return { repo: id, id: key, status: 'current', from: fromV, to: core.normTag(latest) };
 
-  const base = { repo: id, id: key, from: seen && core.normTag(seen), to: core.normTag(latest) };
+  const base = { repo: id, id: key, from: fromV, to: core.normTag(latest) };
 
   if (opts.mode === 'check') return { ...base, status: 'updated' };
 
