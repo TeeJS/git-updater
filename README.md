@@ -1,15 +1,13 @@
 # git-updater
 
-On-demand Windows updater for a hand-picked list of apps distributed via **GitHub releases** —
+On-demand Windows GUI that updates a hand-picked list of apps distributed via **GitHub releases** —
 **portable** apps get their files swapped in place, **installed** apps get a silent install. A
 self-hosted **Ninite replacement**: you own the list, it pulls straight from GitHub.
 
-- **Config mode** — a local web UI to add/manage which repos to track and where portable apps live.
-- **Update mode** — poll each tracked repo; if the latest release is newer than last seen, download
-  the right asset and apply it. Portable = zip extract + in-place swap (with `.bak` rollback);
-  installer = silent install.
-- Ships as a single **portable `git-updater.exe`** — the target PC needs **no Node, no Python, and
-  nothing installed**.
+A native **Electron** window: add repos, pick a portable-apps folder, Check and Update. **On-demand**
+— nothing runs until you open it, and closing the window exits every process. **EDR-conscious by
+design**: no localhost server, no PowerShell/shell, no self-elevation, installers never run from
+`%TEMP%`.
 
 > Not related to `itzg/github-release-watcher` (a Java release *viewer*). This project supersedes the
 > local `github-release-watcher` engine it grew out of and reuses its IO-free `src/core.js`.
@@ -18,29 +16,34 @@ self-hosted **Ninite replacement**: you own the list, it pulls straight from Git
 
 ```bash
 npm install
-npm start          # starts the local UI and opens your browser
+npm start          # launches the Electron app
 ```
 
-Config is written to `./config.json` (override with `GITUPDATER_CONFIG`). Port defaults to 8756
-(`GITUPDATER_PORT`).
+Config + state live under `%APPDATA%\git-updater\` (override config with `GITUPDATER_CONFIG`).
 
-## Build the portable exe
+## Build installers
 
 ```bash
-npm run build      # -> dist/git-updater.exe  (needs Node >= 22 to build; target needs nothing)
+npm run dist       # -> dist/  : per-user NSIS installer + portable ZIP (x64; add --arm64 for arm)
 ```
 
-## CLI (optional / power users)
+Signing (recommended — the biggest EDR/SmartScreen trust lever) uses Azure Trusted Signing:
+`az login`, then `npm run dist:signed` (see the windows-app-signing notes). An unsigned build works
+but will draw SmartScreen/EDR warnings until it earns reputation.
 
-The same entry point exposes the original headless commands, with per-repo Windows self-elevation:
+## CLI (optional — scripting / OpenQuake sidecar)
+
+The engine is also a headless CLI (no shell, no elevation tricks):
 
 ```bash
-node server.js check                     # what's new, no download
-node server.js update                    # check + download + apply
-node server.js update --dry-run          # print the plan, run nothing
-node server.js update --only owner/repo
-node server.js list-assets owner/repo    # discover an asset pattern
+node bin/watch.js check                     # what's new, no download
+node bin/watch.js update                     # check + download + apply
+node bin/watch.js update --dry-run           # print the plan, run nothing
+node bin/watch.js update --only owner/repo   # or owner/repo#installer
+node bin/watch.js list-assets owner/repo     # inspect a release's assets
 ```
+
+OpenQuake (also Electron) loads the same engine directly — no separate runtime, no server.
 
 ## Config shape (`config.json`)
 
@@ -87,7 +90,20 @@ Downloads are staged under `%LOCALAPPDATA%\git-updater\staging`, never executed 
 All tracked repos are public, so no token is needed. Set `GITHUB_TOKEN` only to lift the
 ~60-request/hour unauthenticated GitHub rate limit.
 
-## Later: open-quake
+## Architecture
 
-`src/core.js` is IO-free and reusable verbatim; the web UI is served the same way open-quake serves
-its panels, so this drops in as an open-quake tile/service without a rewrite.
+```
+electron/main.js   Electron main process — window + IPC + native folder dialog; calls the engine
+electron/preload.js  narrow contextBridge: the renderer only sees window.api.*
+ui/index.html      the renderer (no network; talks over IPC)
+src/               the engine (no UI, no shell):
+  core.js          IO-free: version compare, Windows-asset pick, installer switches, validation
+  github.js        release fetch + asset download + sha256 verify
+  install.js       portable swap (manifest + rollback), .7z via 7z-wasm, silent installer, prune
+  runner.js        orchestration; state keyed per (repo + type)
+  state.js         atomic state + cross-process update lock  (%APPDATA%\git-updater)
+bin/watch.js       headless CLI over the same engine
+```
+
+**OpenQuake** (also Electron/Node) loads `src/*` directly in its main process and renders an
+"Application Updates" panel — same engine, no separate runtime, no server, no sidecar.

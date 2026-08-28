@@ -1,18 +1,19 @@
 {
   "name": "git-updater",
   "version": "0.1.0",
-  "description": "On-demand Windows updater for GitHub-release apps (portable swap or silent install) with a local web UI. A self-hosted Ninite replacement.",
+  "description": "On-demand Windows GUI that updates apps from their GitHub releases (portable & installed). Electron front-end, no localhost server, no shell.",
   "bin": {
-    "git-updater": "server.js"
+    "git-updater": "bin/watch.js"
   },
-  "main": "server.js",
+  "main": "electron/main.js",
   "engines": {
     "node": ">=22"
   },
   "scripts": {
-    "start": "node server.js",
+    "start": "electron .",
     "test": "node --test",
-    "build": "powershell -NoProfile -ExecutionPolicy Bypass -File ./build.ps1"
+    "dist": "electron-builder --win",
+    "dist:signed": "electron-builder --win -c.win.azureSignOptions.publisherName=\"$AZURE_PUBLISHER\""
   },
   "license": "MIT",
   "dependencies": {
@@ -20,6 +21,29 @@
     "adm-zip": "^0.6.0"
   },
   "devDependencies": {
-    "esbuild": "^0.24.0"
+    "electron": "^33.4.11",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.teejs.gitupdater",
+    "productName": "git-updater",
+    "artifactName": "git-updater-${version}-${arch}.${ext}",
+    "files": [
+      "electron/**/*",
+      "ui/**/*",
+      "src/**/*",
+      "node_modules/**/*"
+    ],
+    "win": {
+      "target": [
+        { "target": "zip", "arch": ["x64", "arm64"] },
+        { "target": "nsis", "arch": ["x64", "arm64"] }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true
+    }
   }
 }

@@ -3,18 +3,16 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:; font-src 'self'">
 <title>git-updater</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
     --bg: #0d1117; --panel: #161b22; --panel-2: #1c2128; --border: #30363d;
     --text: #e6edf3; --muted: #8b949e; --faint: #6e7681;
     --accent: #e3a13c; --accent-ink: #1a1206;
     --green: #3fb950; --blue: #58a6ff; --red: #f85149;
-    --mono: 'IBM Plex Mono', ui-monospace, 'Cascadia Code', Consolas, monospace;
-    --sans: 'IBM Plex Sans', 'Segoe UI', system-ui, sans-serif;
+    --mono: 'Cascadia Code', 'Cascadia Mono', Consolas, ui-monospace, monospace;
+    --sans: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
   }
   * { box-sizing: border-box; }
   html, body { height: 100%; }
@@ -155,19 +153,14 @@ let config = { portableRoot: '', repos: [] };
 let statusById = {}; // "owner/repo" -> {text, cls}
 
 const $ = (id) => document.getElementById(id);
-const idOf = (r) => `${r.owner}/${r.repo}`;
+const idOf = (r) => `${r.owner}/${r.repo}#${r.type}`; // matches the engine's per-type key
 const msg = (t, cls) => { const m = $('msg'); m.textContent = t || ''; m.className = cls || ''; };
 const selectedType = () => $('newType').querySelector('button.active').dataset.type;
 $('newType').querySelectorAll('button').forEach((b) =>
   b.onclick = () => { $('newType').querySelectorAll('button').forEach((x) => x.classList.remove('active')); b.classList.add('active'); });
 
-async function api(path, opts = {}) {
-  opts.headers = { ...(opts.headers || {}), 'X-Git-Updater': '1' }; // same-origin CSRF guard
-  const r = await fetch(path, opts);
-  const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(j.error || r.statusText);
-  return j;
-}
+// Talks to the Electron main process over IPC (window.api) — no network, no server.
+const clean = (e) => String(e && e.message ? e.message : e).replace(/^Error:\s*/, '');
 
 function parseRepo(s) {
   s = s.trim();
@@ -214,15 +207,15 @@ function renderRepos() {
 async function saveConfig() {
   config.portableRoot = $('portableRoot').value.trim(); // folder field is the source of truth
   try {
-    await api('/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(config) });
+    await window.api.saveConfig(config);
     msg('Saved.', 'ok');
-  } catch (e) { msg(e.message, 'bad'); }
+  } catch (e) { msg(clean(e), 'bad'); }
   await load();
 }
 
 async function load() {
   const saved = statusById;
-  config = await api('/api/config');
+  config = await window.api.getConfig();
   if (!config.repos) config.repos = [];
   statusById = saved;
   $('portableRoot').value = config.portableRoot || '';
@@ -232,12 +225,11 @@ async function load() {
 $('saveRoot').onclick = () => saveConfig();
 
 $('browse').onclick = async () => {
-  msg('Opening folder picker…', 'info');
   try {
-    const { path } = await api('/api/pick-folder');
+    const { path } = await window.api.pickFolder();
     if (path) { $('portableRoot').value = path; await saveConfig(); }
     else msg('No folder chosen.', 'info');
-  } catch (e) { msg(e.message, 'bad'); }
+  } catch (e) { msg(clean(e), 'bad'); }
 };
 
 $('addRepo').onclick = () => {
@@ -272,9 +264,9 @@ async function run(kind) {
   $('checkBtn').disabled = $('updateBtn').disabled = true;
   msg(kind === 'check' ? 'Checking releases…' : 'Updating…', 'info');
   try {
-    const { results } = await api(kind === 'check' ? '/api/check' : '/api/update',
-      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dryRun: dry, force: $('force').checked }) });
-    results.forEach((r) => (statusById[r.repo] = toStatus(r, kind, dry)));
+    const body = { dryRun: dry, force: $('force').checked };
+    const { results } = kind === 'check' ? await window.api.check(body) : await window.api.update(body);
+    results.forEach((r) => (statusById[r.id || r.repo] = toStatus(r, kind, dry)));
     renderRepos();
     const n = results.filter((r) => r.status === 'updated').length;
     const f = results.filter((r) => r.status === 'failed').length;
