@@ -11,17 +11,22 @@ const github = require('./github');
 const install = require('./install');
 const state = require('./state');
 
+// Display id ("owner/repo") vs storage/identity key (adds the type, so the same repo
+// tracked as both portable AND installed keeps separate state instead of colliding).
+const displayId = (repo) => `${repo.owner}/${repo.repo}`;
+const appKey = (repo) => `${repo.owner}/${repo.repo}#${repo.type}`;
+
 async function run(config, opts = {}) {
   const st = state.load(opts.statePath);
   const only = opts.only ? opts.only.toLowerCase() : null;
   const results = [];
   for (const repo of config.repos) {
-    const id = `${repo.owner}/${repo.repo}`;
-    if (only && id.toLowerCase() !== only) continue;
+    const id = displayId(repo);
+    if (only && id.toLowerCase() !== only && appKey(repo).toLowerCase() !== only) continue;
     try {
       results.push(await handleRepo(repo, id, st, opts));
     } catch (e) {
-      results.push({ repo: id, status: 'failed', reason: e.message });
+      results.push({ repo: id, id: appKey(repo), status: 'failed', reason: e.message });
       if (e.rateLimited) break; // no point hammering a rate-limited API
     }
   }
@@ -37,11 +42,17 @@ function dirHasFiles(dir) {
 }
 
 async function handleRepo(repo, id, st, opts) {
+  const key = appKey(repo);
   const rel = await github.getLatestRelease(repo.owner, repo.repo, { prerelease: repo.prerelease });
   const latest = rel.tag_name;
-  const prev = st[id] || {};
+  const prev = st[key] || {};
   const seen = prev.tag;
-  let isNew = core.cmpVersion(latest, seen || '') > 0;
+
+  const cmp = core.cmpVersion(latest, seen || '');
+  let isNew = cmp > 0;
+  // Non-semantic tags (e.g. "release-2026-08") both parse to version 0, so cmp is 0 —
+  // fall back to tag identity: a changed tag (including first install vs empty) is an update.
+  if (!isNew && cmp === 0 && core.normTag(latest) !== core.normTag(seen || '')) isNew = true;
 
   // If we recorded a portable app as installed but its folder is now missing/empty
   // (user deleted it, or a prior run half-failed), reinstall instead of reporting "current".
@@ -49,9 +60,9 @@ async function handleRepo(repo, id, st, opts) {
     isNew = true;
   }
 
-  if (!isNew && !opts.force) return { repo: id, status: 'current', to: core.normTag(latest) };
+  if (!isNew && !opts.force) return { repo: id, id: key, status: 'current', to: core.normTag(latest) };
 
-  const base = { repo: id, from: seen && core.normTag(seen), to: core.normTag(latest) };
+  const base = { repo: id, id: key, from: seen && core.normTag(seen), to: core.normTag(latest) };
 
   if (opts.mode === 'check') return { ...base, status: 'updated' };
 
@@ -76,16 +87,24 @@ async function handleRepo(repo, id, st, opts) {
 
     let files; // portable manifest, for stale-file pruning
     if (repo.type === 'installer') {
-      // Detect the installer's silent-install technology from its bytes (safer than
-      // assuming NSIS); explicit install.kind still wins.
-      const kind = (repo.install && repo.install.kind) || install.detectInstallerKind(file) || core.guessKind(asset.name);
+      // Detect the installer's silent-install technology from its bytes. If it can't be
+      // identified, FAIL rather than blindly running an unknown .exe with NSIS's /S switch.
+      const kind = (repo.install && repo.install.kind) || install.detectInstallerKind(file);
+      if (!kind) {
+        throw new Error(
+          `could not identify the installer type for ${asset.name} — add "install":{"kind":"nsis|inno|msi"} for ${id} in config.json`
+        );
+      }
       install.installInstaller(file, { ...repo.install, kind });
     } else {
-      files = await install.installPortable(file, repo.install);
-      install.pruneStale(repo.install.dir, prev.files || [], files);
+      const installed = await install.installPortable(file, repo.install);
+      const stale = install.pruneStale(repo.install.dir, prev.files || [], installed);
+      files = [...installed, ...stale]; // keep un-pruned stale files so they're retried next time
     }
 
-    st[id] = {
+    st[key] = {
+      repo: id,
+      type: repo.type,
       tag: latest,
       version: core.normTag(latest),
       assetName: asset.name,

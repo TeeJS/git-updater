@@ -7,6 +7,7 @@ const os = require('os');
 const path = require('path');
 const core = require('../src/core');
 const install = require('../src/install');
+const state = require('../src/state');
 
 // --- version compare (#9) ---------------------------------------------------
 
@@ -74,6 +75,34 @@ test('pruneStale: removes files gone from the new version, keeps the rest', () =
 });
 
 // --- swapInPlace returns a manifest and clears stale .bak (#6) ---------------
+
+test('pruneStale: refuses to delete outside the app folder (path traversal)', () => {
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'gu-trav-'));
+  try {
+    const appDir = path.join(base, 'app');
+    fs.mkdirSync(appDir);
+    fs.writeFileSync(path.join(base, 'victim.txt'), 'do not delete me');
+    // A poisoned manifest tries to escape the app dir.
+    install.pruneStale(appDir, ['../victim.txt', '..\\victim.txt'], []);
+    assert.ok(fs.existsSync(path.join(base, 'victim.txt')), 'file outside app dir must survive');
+  } finally {
+    fs.rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test('acquireLock: serializes update runs, steals nothing while held', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gu-lock-'));
+  const sp = path.join(dir, 'state.json');
+  try {
+    const tok = state.acquireLock(sp);
+    assert.throws(() => state.acquireLock(sp), /in progress/);
+    state.releaseLock(tok);
+    const tok2 = state.acquireLock(sp); // free again after release
+    state.releaseLock(tok2);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
 
 test('swapInPlace: installs files, returns manifest, cleans backups', () => {
   const src = fs.mkdtempSync(path.join(os.tmpdir(), 'gu-src-'));

@@ -22,7 +22,10 @@ try {
 } catch {}
 
 const SUBCOMMANDS = new Set(['check', 'update', 'list-assets']);
-const CONFIG_PATH = process.env.GITUPDATER_CONFIG || path.resolve('config.json');
+// Config lives next to the app (exe dir when packaged, repo root in dev), not the launch
+// cwd — so shortcuts and OpenQuake hosting resolve the same file.
+const APP_DIR = IS_SEA ? path.dirname(process.execPath) : __dirname;
+const CONFIG_PATH = process.env.GITUPDATER_CONFIG || path.join(APP_DIR, 'config.json');
 const PORT = Number(process.env.GITUPDATER_PORT) || 8756;
 
 // Spawn this same app as the CLI and return its parsed {results, summary}. As a SEA

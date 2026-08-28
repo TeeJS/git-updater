@@ -59,14 +59,18 @@ preferring x64).
 ```
 
 The chosen file matches the machine's architecture (x64 / arm64 / x86). For installers, the
-silent-install technology (NSIS / Inno / MSI) is **detected from the downloaded file's bytes**, not
-guessed from the extension.
+silent-install technology (NSIS / Inno / MSI) is **detected from the downloaded file's bytes**. If a
+particular installer can't be identified, the update **fails safely** rather than guessing — set an
+explicit `install.kind` for it (see below).
 
 Optional overrides (rarely needed):
 - `"asset": "*-win-x64.zip"` (glob or `/regex/`) pins a specific file instead of auto-pick.
 - Portable: `"install": { "dir": "D:/Custom" }` to override the folder.
-- Installer: `"install": { "kind": "inno", "args": ["/VERYSILENT"] }` if detection can't identify an
-  unusual installer (`kind` is `msi` | `nsis` | `inno`).
+- Installer: `"install": { "kind": "inno", "args": ["/VERYSILENT"] }` — required when detection can't
+  identify an unusual installer (`kind` is `msi` | `nsis` | `inno`).
+
+You can track the same repo as **both** portable and installed — each is a separate entry with its
+own update history.
 
 ## Elevation
 

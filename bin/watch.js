@@ -13,6 +13,7 @@ const core = require('../src/core');
 const github = require('../src/github');
 const install = require('../src/install');
 const runner = require('../src/runner');
+const state = require('../src/state');
 
 // Are we running as the packaged single-exe (SEA)? Then process.execPath IS the
 // app exe and there is no script file to pass as an argument.
@@ -20,6 +21,11 @@ let IS_SEA = false;
 try {
   IS_SEA = require('node:sea').isSea();
 } catch {}
+
+// Config resolved next to the app (exe dir when packaged, repo root in dev) — NOT the
+// launch cwd, so shortcuts / different working dirs all see the same config.
+const APP_DIR = IS_SEA ? path.dirname(process.execPath) : path.join(__dirname, '..');
+const DEFAULT_CONFIG = path.join(APP_DIR, 'config.json');
 
 function parseArgs(argv) {
   const a = { _: [], flags: {} };
@@ -93,7 +99,7 @@ function relaunchElevated(repo, ctx) {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const cmd = args._[0];
-  const configPath = args.flags.config || './config.json'; // aligned with the web UI's default
+  const configPath = args.flags.config || DEFAULT_CONFIG; // app-dir default, aligned with the web UI
   const statePath = typeof args.flags.state === 'string' ? args.flags.state : undefined;
   const asJson = !!args.flags.json; // emit machine-readable output (used by the web server)
 
@@ -127,26 +133,38 @@ async function main() {
   const isChild = !!args.flags._elevated;
   const elevated = isChild || install.isElevated();
 
-  const targets = config.repos.filter(
-    (r) => !opts.only || `${r.owner}/${r.repo}`.toLowerCase() === opts.only.toLowerCase()
-  );
+  // `only` may be a display id ("owner/repo") or a per-type key ("owner/repo#installer").
+  const matchOnly = (r) => {
+    if (!opts.only) return true;
+    const o = opts.only.toLowerCase();
+    return `${r.owner}/${r.repo}`.toLowerCase() === o || `${r.owner}/${r.repo}#${r.type}`.toLowerCase() === o;
+  };
+  const targets = config.repos.filter(matchOnly);
 
+  // Serialize real update runs so concurrent tabs/CLI/server can't clobber state.json.
+  // The elevated child skips locking — the parent that spawned it already holds it.
+  let lock = null;
+  if (!opts.dryRun && !isChild) lock = state.acquireLock(statePath);
   const results = [];
-  if (!opts.dryRun && !elevated) {
-    const inline = [];
-    for (const r of targets) {
-      if (install.needsElevation(r, elevated)) {
-        console.error(`  … ${r.owner}/${r.repo} needs admin — requesting elevation`);
-        results.push(relaunchElevated(r, { configPath, statePath, force: opts.force }));
-      } else {
-        inline.push(r);
+  try {
+    if (!opts.dryRun && !elevated) {
+      const inline = [];
+      for (const r of targets) {
+        if (install.needsElevation(r, elevated)) {
+          console.error(`  … ${r.owner}/${r.repo} needs admin — requesting elevation`);
+          results.push(relaunchElevated(r, { configPath, statePath, force: opts.force }));
+        } else {
+          inline.push(r);
+        }
       }
+      const { results: inlineRes } = await runner.run({ repos: inline }, opts);
+      results.push(...inlineRes);
+    } else {
+      const { results: res } = await runner.run({ repos: targets }, opts);
+      results.push(...res);
     }
-    const { results: inlineRes } = await runner.run({ repos: inline }, opts);
-    results.push(...inlineRes);
-  } else {
-    const { results: res } = await runner.run({ repos: targets }, opts);
-    results.push(...res);
+  } finally {
+    state.releaseLock(lock);
   }
 
   // elevated child hands its result back through the temp file, no printing

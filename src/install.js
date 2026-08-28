@@ -136,18 +136,33 @@ function swapInPlace(src, dir) {
   return files;
 }
 
-// Remove files we installed in a previous version that are gone from the new one,
-// then drop any directories left empty. Runtime-created files (user settings) are
-// never in the manifest, so they are preserved.
+// True only if `rel` resolves to a path INSIDE root (blocks "../escape" and absolute
+// paths that a poisoned state.json manifest could smuggle in — critical since a prune
+// can run elevated).
+function within(root, rel) {
+  const r = path.relative(root, path.resolve(root, rel));
+  return r !== '' && !r.startsWith('..') && !path.isAbsolute(r);
+}
+
+// Remove files we installed in a previous version that are gone from the new one, then
+// drop any directories left empty. Runtime-created files (user settings) are never in
+// the manifest, so they are preserved. Returns the files that could NOT be deleted
+// (e.g. locked) so the caller keeps tracking them for a retry next update.
 function pruneStale(dir, oldFiles, newFiles) {
+  const root = path.resolve(dir);
   const keep = new Set((newFiles || []).map((f) => f.replace(/\\/g, '/')));
+  const stillStale = [];
   for (const rel of oldFiles || []) {
     if (keep.has(rel.replace(/\\/g, '/'))) continue;
+    if (!within(root, rel)) continue; // path-traversal guard: never touch anything outside dir
     try {
-      fs.rmSync(path.join(dir, rel), { force: true });
-    } catch {}
+      fs.rmSync(path.resolve(root, rel), { force: true });
+    } catch {
+      stillStale.push(rel); // deletion failed -> keep it in the manifest and retry later
+    }
   }
   removeEmptyDirs(dir);
+  return stillStale;
 }
 
 function removeEmptyDirs(dir) {
