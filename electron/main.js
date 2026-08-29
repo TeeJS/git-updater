@@ -12,6 +12,7 @@ const github = require('../src/github');
 const runner = require('../src/runner');
 const state = require('../src/state');
 const detect = require('../src/detect');
+const catalog = require('../src/catalog');
 const { log, LOG_FILE } = require('../src/log');
 
 log(`--- git-updater ${app.getVersion()} started ---`);
@@ -127,6 +128,44 @@ ipcMain.handle('config:save', (_e, cfg) => {
 });
 ipcMain.handle('config:open', () => shell.openPath(CONFIG_PATH));
 ipcMain.handle('log:open', () => shell.openPath(LOG_FILE));
+
+// --- "Scan this PC" window: find installed catalog apps and add selected ---
+let scanWin = null;
+ipcMain.handle('scan:open', () => {
+  if (scanWin && !scanWin.isDestroyed()) return scanWin.focus();
+  scanWin = new BrowserWindow({
+    width: 620,
+    height: 640,
+    parent: win,
+    backgroundColor: '#0d1117',
+    autoHideMenuBar: true,
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false },
+  });
+  scanWin.loadFile(path.join(__dirname, '..', 'ui', 'scan.html'));
+});
+ipcMain.handle('scan:run', () => {
+  detect.clearCache();
+  const tracked = new Set(readConfig().repos.map((r) => `${r.owner}/${r.repo}`.toLowerCase()));
+  return catalog.matchInstalled(detect.allInstalled(), tracked);
+});
+// Add the selected repos (as installer type — they were found in the uninstall registry).
+ipcMain.handle('scan:add', (_e, repos) => {
+  if (!Array.isArray(repos)) throw new Error('repos must be an array');
+  const cfg = readConfig();
+  if (!Array.isArray(cfg.repos)) cfg.repos = [];
+  let added = 0;
+  for (const full of repos) {
+    const m = /^([^/]+)\/([^/]+)$/.exec(String(full));
+    if (!m) continue;
+    if (cfg.repos.some((r) => r.owner === m[1] && r.repo === m[2] && r.type === 'installer')) continue;
+    cfg.repos.push({ owner: m[1], repo: m[2], type: 'installer' });
+    added++;
+  }
+  if (added) saveConfigFile(cfg);
+  if (win && !win.isDestroyed()) win.webContents.send('config-changed');
+  if (scanWin && !scanWin.isDestroyed()) scanWin.close();
+  return { added };
+});
 // Close a tracked app's running processes (graceful; force on request).
 ipcMain.handle('app:close', async (_e, { appKey, force }) => {
   const r = readConfig().repos.find((x) => `${x.owner}/${x.repo}#${x.type}` === appKey);

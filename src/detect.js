@@ -127,4 +127,4 @@ async function closeApp(needle, opts = {}) {
   return { closed: procs.length, stillRunning: isRunning(needle) };
 }
 
-module.exports = { registryVersion, installedFlavor, isRunning, closeApp, clearCache };
+module.exports = { registryVersion, installedFlavor, isRunning, closeApp, clearCache, allInstalled };

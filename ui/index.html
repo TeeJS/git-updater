@@ -113,6 +113,7 @@
   <div class="panel">
     <div class="toolbar">
       <span class="count" id="count"></span>
+      <button id="scanPc" title="Find installed programs git-updater can manage">Scan this PC</button>
       <button id="checkAll">Check all</button>
       <button id="updateSel" disabled>Update selected</button>
       <button id="updateAll" class="primary">Update all</button>
@@ -486,6 +487,9 @@ window.api.onProgress(({ id, phase, pct }) => {
   st[id].ph = phase; if (phase === 'downloading') st[id].pct = pct;
   renderRepos();
 });
+
+$('scanPc').onclick = () => window.api.openScan();
+window.api.onConfigChanged(() => load()); // scan window added apps -> refresh the list
 
 $('checkAll').onclick = () => checkApps(config.repos.map(keyOf));
 $('updateAll').onclick = () => runBatch(config.repos.map(keyOf));

@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:; font-src 'self'">
+<title>Scan this PC — git-updater</title>
+<style>
+  :root {
+    --bg: #0d1117; --panel: #161b22; --border: #30363d;
+    --text: #e6edf3; --muted: #8b949e; --faint: #6e7681;
+    --accent: #e3a13c; --accent-ink: #1a1206; --green: #3fb950;
+    --mono: 'Cascadia Code', 'Cascadia Mono', Consolas, ui-monospace, monospace;
+    --sans: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 1.25rem; color: var(--text); font: 15px/1.5 var(--sans); background: var(--bg); }
+  h1 { font: 600 1.05rem var(--mono); margin: 0 0 .2rem; }
+  .sub { color: var(--muted); font-size: .88rem; margin: 0 0 1rem; }
+  table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  th { font: 600 .68rem var(--mono); letter-spacing: .07em; text-transform: uppercase; color: var(--faint); text-align: left; padding: 0 .35rem .5rem; }
+  td { padding: .5rem .35rem; border-top: 1px solid var(--border); vertical-align: middle; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  input[type=checkbox] { width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; }
+  .app { font: 500 14px var(--mono); }
+  .muted { color: var(--muted); } .ok { color: var(--green); font-size: .85rem; }
+  .repo { font: 400 12.5px var(--mono); color: var(--muted); }
+  button { font: 600 13.5px var(--sans); cursor: pointer; border-radius: 8px; padding: .48rem .85rem;
+           border: 1px solid var(--border); background: #21262d; color: var(--text); }
+  button:hover:not(:disabled) { background: #2a313a; }
+  button:disabled { opacity: .4; cursor: default; }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+  .bar { display: flex; gap: .55rem; align-items: center; margin-top: 1rem; }
+  .bar .count { margin-right: auto; color: var(--muted); font-size: .9rem; }
+  #status { min-height: 1.2rem; color: var(--muted); margin: .6rem 0 0; font-size: .9rem; }
+</style>
+</head>
+<body>
+<h1>Scan this PC</h1>
+<p class="sub">Installed programs that git-updater knows how to update from GitHub.</p>
+
+<table id="tbl"><thead><tr>
+  <th style="width:30px"><input type="checkbox" id="selAll" title="Select all"></th>
+  <th style="width:26%">App</th><th style="width:16%">Installed</th><th>GitHub repo</th>
+</tr></thead><tbody></tbody></table>
+<div id="status">Scanning…</div>
+
+<div class="bar">
+  <span class="count" id="count"></span>
+  <button id="close">Close</button>
+  <button id="add" class="primary" disabled>Add selected</button>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let rows = [];
+const selected = new Set();
+
+const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
+
+function render() {
+  const tb = $('tbl').querySelector('tbody');
+  tb.innerHTML = '';
+  for (const r of rows) {
+    const tr = document.createElement('tr');
+    const tdCb = document.createElement('td');
+    if (r.tracked) {
+      tdCb.appendChild(el('span', 'ok', '✓'));
+    } else {
+      const cb = el('input'); cb.type = 'checkbox'; cb.checked = selected.has(r.repo);
+      cb.onchange = () => { cb.checked ? selected.add(r.repo) : selected.delete(r.repo); sync(); };
+      tdCb.appendChild(cb);
+    }
+    tr.appendChild(tdCb);
+    const app = el('td'); const a = el('span', 'app', r.name); a.title = r.displayName; app.appendChild(a); tr.appendChild(app);
+    tr.appendChild(el('td', 'muted', r.version || '—'));
+    tr.appendChild(el('td', 'repo', r.repo + (r.tracked ? '  (already tracked)' : '')));
+    tb.appendChild(tr);
+  }
+  sync();
+}
+function sync() {
+  const addable = rows.filter((r) => !r.tracked);
+  $('count').textContent = `${selected.size} of ${addable.length} selected`;
+  $('add').disabled = selected.size === 0;
+  $('selAll').checked = addable.length > 0 && selected.size === addable.length;
+}
+
+$('selAll').onchange = (e) => {
+  selected.clear();
+  if (e.target.checked) rows.filter((r) => !r.tracked).forEach((r) => selected.add(r.repo));
+  render();
+};
+$('add').onclick = async () => {
+  $('add').disabled = true;
+  try { await window.api.scanAdd([...selected]); } // main adds, refreshes the app list, closes this window
+  catch (e) { $('status').textContent = String(e.message || e); $('add').disabled = false; }
+};
+$('close').onclick = () => window.close();
+
+(async () => {
+  try {
+    rows = await window.api.scanRun();
+    const found = rows.length, addable = rows.filter((r) => !r.tracked).length;
+    $('status').textContent = found
+      ? `Found ${found} known app${found > 1 ? 's' : ''}; ${addable} not yet tracked.`
+      : 'No known apps found on this PC.';
+    render();
+  } catch (e) { $('status').textContent = String(e.message || e); }
+})();
+</script>
+</body>
+</html>

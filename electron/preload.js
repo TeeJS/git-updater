@@ -20,4 +20,8 @@ contextBridge.exposeInMainWorld('api', {
   check: (body) => ipcRenderer.invoke('check', body),
   update: (body) => ipcRenderer.invoke('update', body),
   onProgress: (cb) => ipcRenderer.on('update:progress', (_e, data) => cb(data)),
+  openScan: () => ipcRenderer.invoke('scan:open'),
+  scanRun: () => ipcRenderer.invoke('scan:run'),
+  scanAdd: (repos) => ipcRenderer.invoke('scan:add', repos),
+  onConfigChanged: (cb) => ipcRenderer.on('config-changed', () => cb()),
 });
