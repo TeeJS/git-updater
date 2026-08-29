@@ -58,11 +58,12 @@
   /* Compact add/scan area — matches the table's scale, not a separate page. */
   .sec-h { font: 600 15px var(--sans); margin: 0 0 .5rem; }
   .sec-h2 { font: 600 13.5px var(--sans); color: var(--text); }
-  .helper { font-size: 12px; line-height: 16px; color: var(--faint); margin: .5rem 0 0; }
+  .helper { font-size: 12px; line-height: 16px; color: var(--muted); margin: .5rem 0 0; }
   .add-row { display: flex; gap: .55rem; align-items: center; }
   .add-row input { flex: 1; min-width: 10rem; height: 35px; }
   .add-row button, .scan-row button { height: 35px; }
   .scan-row { display: flex; align-items: center; justify-content: space-between; gap: .75rem; }
+  .scan-label { display: inline-flex; align-items: center; gap: .4rem; }
   details.settings { margin-top: 1rem; }
   @media (max-width: 620px) {
     .add-row { flex-wrap: wrap; }
@@ -77,6 +78,7 @@
   table { width: 100%; border-collapse: collapse; table-layout: fixed; }
   th { font: 600 .68rem var(--mono); letter-spacing: .07em; text-transform: uppercase; color: var(--faint); text-align: left; padding: 0 .35rem .5rem; }
   td { padding: .5rem .35rem; border-top: 1px solid var(--border); vertical-align: middle; overflow: hidden; }
+  th.gap-r, td.gap-r { padding-right: 18px; }
   .app { font: 500 14px var(--mono); display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .st, .ver { overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
   .st > span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -138,11 +140,11 @@
     <table id="repos"><thead><tr>
       <th style="width:30px"><input type="checkbox" id="selAll" title="Select all"></th>
       <th>App</th>
-      <th style="width:94px">Type</th>
-      <th style="width:88px">Current</th>
+      <th style="width:88px">Type</th>
+      <th style="width:100px" class="gap-r">Current</th>
       <th style="width:88px">Available</th>
-      <th style="width:176px">Status</th>
-      <th style="width:148px"></th>
+      <th style="width:150px">Status</th>
+      <th style="width:146px"></th>
     </tr></thead><tbody></tbody></table>
     <div class="empty" id="empty" style="display:none">No apps tracked yet — add one below.</div>
 
@@ -165,7 +167,7 @@
     <div class="divider"></div>
 
     <div class="scan-row">
-      <span class="helper" style="margin:0"><strong class="sec-h2">Find installed apps</strong> · Scan for recognized programs.</span>
+      <span class="scan-label"><strong class="sec-h2">Find installed apps</strong><span class="helper" style="margin:0">· Scan for recognized programs.</span></span>
       <button id="scanPc">Scan this PC</button>
     </div>
   </div>
@@ -264,7 +266,7 @@ function renderRepos() {
     else if (s.from) cur = el('span', 'ver cur', s.from);
     else if (s.present) { cur = el('span', 'ver none', 'Unknown'); cur.title = 'Installed, but the version could not be detected.'; }
     else cur = el('span', 'ver none', 'Not installed');
-    tr.appendChild(cell(cur));
+    tr.appendChild(cell(cur, 'gap-r'));
 
     // Available
     tr.appendChild(cell(s.to ? el('span', 'ver avail', s.to) : el('span', 'ver dash', '—')));
