@@ -267,7 +267,7 @@ const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls)
 const cell = (node, cls) => { const td = document.createElement('td'); if (cls) td.className = cls; if (node) td.appendChild(node); return td; };
 
 function renderRepos() {
-  const tb = $('repos').querySelector('tbody');
+  const tb = $('rows');
   tb.innerHTML = '';
   $('empty').style.display = config.repos.length ? 'none' : '';
   config.repos.forEach((r) => {
