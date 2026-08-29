@@ -59,7 +59,7 @@ async function handleRepo(repo, id, st, opts) {
   let installed = null;
   if (repo.type === 'installer') {
     try {
-      installed = detect.registryVersion(repo.detect || repo.repo);
+      installed = await detect.registryVersion(repo.detect || repo.repo);
     } catch {}
   } else {
     installed = prev.version || null;
@@ -89,7 +89,7 @@ async function handleRepo(repo, id, st, opts) {
   // Manual `asset` pattern overrides; otherwise auto-pick the Windows asset from the type.
   // For installers, match the flavor of the EXISTING install (msi vs exe) so the update
   // upgrades in place instead of installing a duplicate side-by-side.
-  const flavor = repo.type === 'installer' ? detect.installedFlavor(repo.detect || repo.repo) : null;
+  const flavor = repo.type === 'installer' ? await detect.installedFlavor(repo.detect || repo.repo) : null;
   const asset = repo.asset
     ? core.matchAsset(rel.assets, repo.asset)
     : core.pickWindowsAsset(rel.assets, repo.type, null, flavor);
@@ -105,7 +105,7 @@ async function handleRepo(repo, id, st, opts) {
 
   // Proactive check: a running app blocks both installers (in-use files) and portable
   // swaps (locked files). Tell the user up front instead of failing mid-download.
-  if (detect.isRunning(repo.process || repo.repo)) {
+  if (await detect.isRunning(repo.process || repo.repo)) {
     log(`SKIP ${key}: ${repo.repo} is running`);
     return { ...base, status: 'failed', reason: `${repo.repo} is running — close it, then Retry` };
   }

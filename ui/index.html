@@ -113,7 +113,6 @@
   <div class="panel">
     <div class="toolbar">
       <span class="count" id="count"></span>
-      <button id="scanPc" title="Find installed programs git-updater can manage">Scan this PC</button>
       <button id="checkAll">Check all</button>
       <button id="updateSel" disabled>Update selected</button>
       <button id="updateAll" class="primary">Update all</button>
@@ -141,6 +140,10 @@
       <button id="cancelEdit" style="display:none">Cancel</button>
     </div>
     <p class="hint" id="addHint">Paste the releases link, pick a type — it grabs the right Windows file automatically.</p>
+    <div class="row" style="margin-top:.6rem">
+      <button id="scanPc" title="Find installed programs git-updater can manage">Scan this PC</button>
+      <span class="hint" style="margin:0">…or scan for installed programs git-updater already knows.</span>
+    </div>
 
     <details class="settings" id="settings">
       <summary>Settings</summary>

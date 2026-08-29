@@ -95,7 +95,7 @@ ipcMain.handle('state:get', () => state.load());
 
 // Locally-installed version + presence per app, BEFORE checking GitHub.
 // Installer -> uninstall-registry DisplayVersion; Portable -> our manifest + folder.
-ipcMain.handle('installed:get', () => {
+ipcMain.handle('installed:get', async () => {
   detect.clearCache(); // fresh scan — versions change after installs
   const cfg = readConfig();
   const stt = state.load();
@@ -105,7 +105,7 @@ ipcMain.handle('installed:get', () => {
     if (r.type === 'installer') {
       let v = null;
       try {
-        v = detect.registryVersion(r.detect || r.repo);
+        v = await detect.registryVersion(r.detect || r.repo);
       } catch {}
       out[key] = { current: v, present: !!v };
     } else {
@@ -143,10 +143,10 @@ ipcMain.handle('scan:open', () => {
   });
   scanWin.loadFile(path.join(__dirname, '..', 'ui', 'scan.html'));
 });
-ipcMain.handle('scan:run', () => {
+ipcMain.handle('scan:run', async () => {
   detect.clearCache();
   const tracked = new Set(readConfig().repos.map((r) => `${r.owner}/${r.repo}`.toLowerCase()));
-  return catalog.matchInstalled(detect.allInstalled(), tracked);
+  return catalog.matchInstalled(await detect.allInstalled(), tracked);
 });
 // Add the selected repos (as installer type — they were found in the uninstall registry).
 ipcMain.handle('scan:add', (_e, repos) => {
