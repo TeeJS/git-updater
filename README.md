@@ -1,137 +1,68 @@
 # git-updater
 
-On-demand Windows GUI that updates a hand-picked list of apps distributed via **GitHub releases** —
-**portable** apps get their files swapped in place, **installed** apps get a silent install. A
-self-hosted **Ninite replacement**: you own the list, it pulls straight from GitHub.
+**Keep your Windows apps up to date straight from their GitHub releases.**
 
-A native **Electron** window, app-centric: each row shows the app, its **installed version**
-(read from Windows, not just update history), the **available version**, live status
-(Downloading 42% → Verifying → Installing), and a per-row Check/Update/Install button with an
-overflow menu (Edit, Force reinstall, Close app & update, View release, Open folder, Stop
-tracking). Batch updates run as a queue, one app at a time. **On-demand** — nothing runs until
-you open it, and closing the window exits every process. **EDR-conscious by design**: no
-localhost server, no PowerShell/shell, no self-elevation, installers never run from `%TEMP%`.
+A ton of great software ships on GitHub — and nothing keeps it updated. git-updater is a
+self-hosted **Ninite replacement**: you pick the apps, it checks their latest releases and
+updates them, portable apps and installed programs alike. No accounts, no background
+services, no store — just your list and GitHub.
 
-**Scan this PC** finds installed programs git-updater already recognizes (a curated catalog of
-120+ apps with known GitHub repos — browsers, media, dev tools, AI tools, runtimes) and adds the
-ones you pick, with Select all / Add selected.
+## Get it
 
-> Not related to `itzg/github-release-watcher` (a Java release *viewer*). This project supersedes the
-> local `github-release-watcher` engine it grew out of and reuses its IO-free `src/core.js`.
+1. Download the zip for your machine from **[Releases](https://github.com/TeeJS/git-updater/releases)** (x64 or arm64).
+2. Unzip anywhere and run **`git-updater.exe`**.
 
-## Run (development)
+That's the whole install: it's fully portable — no setup, no admin rights, and closing the
+window exits everything. Binaries are Authenticode-signed (Thomas Schmitz, via Azure
+Trusted Signing).
+
+## What it does
+
+- **Tracks any app that ships GitHub releases.** Paste a releases URL (or `owner/repo`),
+  say whether you want it *portable* or *installed*, done. It figures out the right Windows
+  download by itself — architecture, zip vs installer, even matching an existing MSI vs EXE
+  install so you never end up with duplicates.
+- **Shows what you actually have.** *Current* comes from Windows itself (the uninstall
+  registry, or the portable folder) — not from what some tool remembers doing. Next to it:
+  the latest available version and a live status.
+- **Updates on your terms.** Per-app Check/Update buttons, or *Check all* / *Update all*
+  batches with live progress (Downloading 42% → Verifying → Installing). Each row has an
+  overflow menu: Edit, Force reinstall, Close app & update, View release, Open folder,
+  Stop tracking.
+- **Scan this PC.** Finds programs you already have that git-updater recognizes — a curated
+  catalog of 120+ GitHub-released apps (browsers, media, dev tools, AI tools, runtimes) —
+  and adds the ones you pick. Or browse the whole catalog and cherry-pick.
+- **Safe by default.** Every download is checksum-verified. Portable updates are
+  transactional — a failed or interrupted update restores the previous version completely,
+  and your settings inside the app folder survive. Installers that need admin rights fall
+  back to their own window with a normal UAC prompt.
+- **Quiet by design.** Nothing runs at startup, nothing phones home, no background service.
+  Open it, update, close it. It even tells you when git-updater itself has a new release.
+
+## Quick start
+
+1. Open Settings (top right) and pick your **portable apps folder** (e.g. `C:\PortableApps`).
+2. **Add app** → paste a GitHub releases URL → choose Portable or Installer.
+3. **Check all**, then **Update all**. That's it.
+
+Prefer beta builds for a specific app? Tick *include beta (pre-release) versions* when
+adding it.
+
+## On the open-quake panel
+
+git-updater is also available as a **drop-in app for [open-quake](https://github.com/TeeJS/open-quake)**
+(Settings → Drop-In Apps → Browse). It shares the same app list and state with the desktop
+version — add apps here, update them from the panel, or vice versa.
+
+## For developers
 
 ```bash
-npm install
-npm start          # launches the Electron app
+npm install && npm start   # run from source
+npm test                   # engine tests
+npm run dist               # build the portable zips (signed when the machine has the signing setup)
 ```
 
-Config + state live under `%APPDATA%\git-updater\` (override config with `GITUPDATER_CONFIG`).
-
-## Build (portable — run as is)
-
-git-updater itself is **portable only**: unzip anywhere, run `git-updater.exe`. Nothing installs.
-
-```bash
-npm run dist       # -> dist/  : portable ZIPs (x64 + arm64)
-```
-
-Builds are **Authenticode-signed** (Azure Trusted Signing) automatically when the machine has the
-signing setup (`sign.js` hook; `.signing/` dlib + metadata, SignTool, per-user pwsh7, and a live
-`Connect-AzAccount` session — see the windows-app-signing skill). Without it the build still works
-but logs a warning and leaves binaries unsigned.
-
-## Self-update
-
-**Check all** also checks git-updater's own GitHub releases (nothing runs at startup). If a newer
-release exists, a banner links to the download page.
-
-Publishing a release: `gh release create vX.Y.Z dist/*.zip`.
-
-## CLI (optional — scripting / OpenQuake sidecar)
-
-The engine is also a headless CLI (no shell, no elevation tricks):
-
-```bash
-node bin/watch.js check                     # what's new, no download
-node bin/watch.js update                     # check + download + apply
-node bin/watch.js update --dry-run           # print the plan, run nothing
-node bin/watch.js update --only owner/repo   # or owner/repo#installer
-node bin/watch.js list-assets owner/repo     # inspect a release's assets
-```
-
-OpenQuake (also Electron) loads the same engine directly — no separate runtime, no server.
-
-## Config shape (`config.json`)
-
-Each app is just a repo plus **portable or installer** — git-updater picks the right Windows file
-from the latest release automatically (portable → the Windows `.zip`/`.7z`; installer → the `.exe`/`.msi`,
-preferring x64).
-
-```jsonc
-{
-  "portableRoot": "C:/PortableApps",     // portable apps install to <portableRoot>/<repo>
-  "repos": [
-    { "owner": "ShareX", "repo": "ShareX", "type": "portable" },
-    { "owner": "TeeJS", "repo": "tts-stt-windows", "type": "installer" }
-  ]
-}
-```
-
-The chosen file matches the machine's architecture (x64 / arm64 / x86) and, for installers, the
-**flavor of the existing install** (an MSI-installed app gets the `.msi`, an EXE-installed app the
-`.exe` — never a side-by-side duplicate). Silent-install technology (NSIS / Inno / MSI) is
-**detected from the downloaded file's bytes**; an unidentifiable installer is never guessed at —
-its own installer window is opened instead (with a normal UAC prompt).
-
-Downloads are verified against GitHub's asset digest, or a checksums file shipped in the release
-(`SHA256SUMS`, `<asset>.sha256`, ...) when GitHub has none; a release with neither is logged as a
-warning. Portable updates are **transactional**: the new version is staged next to the app folder
-and swapped in by directory rename — on any failure (including a crash) the complete previous
-version is restored, and your settings files inside the folder are carried across updates.
-
-Optional overrides (rarely needed):
-- `"asset": "*-win-x64.zip"` (glob or `/regex/`) pins a specific file instead of auto-pick.
-- Portable: `"install": { "dir": "D:/Custom" }` to override the folder.
-- Installer: `"install": { "kind": "inno", "args": ["/VERYSILENT"] }` — required when detection can't
-  identify an unusual installer (`kind` is `msi` | `nsis` | `inno`).
-
-You can track the same repo as **both** portable and installed — each is a separate entry with its
-own update history.
-
-## Elevation
-
-git-updater uses **no PowerShell and no self-elevation** (both are EDR triggers). Portable installs
-under a user-writable `portableRoot` (e.g. `C:/PortableApps`) need no admin and just work. An
-installer that needs administrator rights falls back to **its own installer window** with a normal
-UAC prompt (the row shows "Waiting for installer…" and updates itself when it finishes). Running
-git-updater as administrator instead makes those installs fully silent.
-
-Downloads are staged under `%LOCALAPPDATA%\git-updater\staging`, never executed from `%TEMP%`.
-
-## Auth (optional)
-
-All tracked repos are public, so no token is needed. Set `GITHUB_TOKEN` only to lift the
-~60-request/hour unauthenticated GitHub rate limit.
-
-## Architecture
-
-```
-electron/main.js   Electron main process — window + IPC + native folder dialog; calls the engine
-electron/preload.js  narrow contextBridge: the renderer only sees window.api.*
-ui/index.html      the renderer (no network; talks over IPC)
-src/               the engine (no UI, no shell):
-  core.js          IO-free: version compare, Windows-asset pick, installer switches, validation
-  github.js        release fetch + download + digest/checksums-file verify (sha256/sha512)
-  install.js       transactional portable dir-swap, .7z via 7z-wasm, silent installer
-  runner.js        orchestration + progress events; state keyed per (repo + type)
-  state.js         atomic state + cross-process update lock  (%APPDATA%\git-updater)
-  detect.js        installed versions/flavor (uninstall registry), running-app check (async)
-  catalog.js       known-apps catalog for "Scan this PC"
-  log.js           file log -> %APPDATA%\git-updater\logs (Settings -> Open log)
-bin/watch.js       headless CLI over the same engine
-ui/scan.html       the Scan this PC window
-```
-
-**OpenQuake** (also Electron/Node) loads `src/*` directly in its main process and renders an
-"Application Updates" panel — same engine, no separate runtime, no server, no sidecar.
+There's also a headless CLI (`node bin/watch.js check|update`) for scripting. Config lives at
+`%APPDATA%\git-updater\config.json` — per-app overrides (asset patterns, custom install dirs,
+installer switches), architecture notes, and design details are in
+**[docs/INTERNALS.md](docs/INTERNALS.md)**.
