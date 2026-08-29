@@ -32,7 +32,7 @@
   h1 .g { color: var(--accent); }
   .tagline { color: var(--muted); margin: 0 0 1.1rem; font-size: .92rem; }
   .panel { background: linear-gradient(180deg, var(--panel), var(--panel-2));
-           border: 1px solid var(--border); border-radius: 12px; padding: 1rem 1.1rem;
+           border: 1px solid var(--border); border-radius: 12px; padding: 1.4rem;
            margin-bottom: 1rem; box-shadow: 0 8px 24px -18px #000; }
   .row { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
   input[type=text] { font: 400 14px var(--mono); padding: .5rem .65rem; border-radius: 8px; color: var(--text);
@@ -49,10 +49,25 @@
   button.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
   button.primary:hover:not(:disabled) { background: #efb457; }
   button.ghost { background: transparent; }
+  /* Muted segmented control — the selected type must not compete with the Add app button. */
   .seg { display: inline-flex; padding: 3px; gap: 3px; border-radius: 9px; background: #0d1117; border: 1px solid var(--border); }
-  .seg button { border: 0; background: transparent; color: var(--muted); padding: .36rem .75rem; border-radius: 6px; }
+  .seg button { border: 1px solid transparent; background: transparent; color: var(--muted); padding: .36rem .8rem; border-radius: 6px; }
   .seg button:hover { background: transparent; color: var(--text); }
-  .seg button.active { background: var(--accent); color: var(--accent-ink); }
+  .seg button.active { background: #21262d; color: var(--text); border-color: #444c56; }
+
+  .add-section h2, section h2 { margin-bottom: .75rem; }
+  .lbl { display: block; font-size: .82rem; font-weight: 600; color: var(--muted); margin: 0 0 .35rem; }
+  input.full { display: block; width: 100%; }
+  .type-row { display: flex; align-items: flex-end; justify-content: space-between; gap: .75rem; margin-top: .8rem; }
+  .type-actions { display: flex; gap: .55rem; }
+  .scan-row { display: flex; align-items: center; justify-content: space-between; gap: .75rem; }
+  details.settings { margin-top: 1.4rem; }
+  @media (max-width: 560px) {
+    .type-row { flex-direction: column; align-items: stretch; }
+    .type-actions { flex-direction: column; }
+    .type-actions button { width: 100%; }
+    .scan-row { flex-direction: column; align-items: stretch; }
+  }
 
   .toolbar { display: flex; align-items: center; gap: .55rem; margin-bottom: .7rem; }
   .toolbar .count { color: var(--muted); font-size: .92rem; margin-right: auto; font-weight: 600; }
@@ -130,24 +145,42 @@
     <div class="empty" id="empty" style="display:none">No apps tracked yet — add one below.</div>
 
     <div class="divider"></div>
-    <div class="row">
-      <input type="text" id="newRepo" placeholder="github.com/owner/repo  ·  or  owner/repo" style="flex:1;min-width:16rem">
-      <div class="seg" id="newType" role="group" aria-label="App type">
-        <button type="button" data-type="portable" class="active">Portable</button>
-        <button type="button" data-type="installer">Installer</button>
-      </div>
-      <button id="addRepo" class="primary">Add</button>
-      <button id="cancelEdit" style="display:none">Cancel</button>
-    </div>
-    <div class="row" style="margin-top:.55rem; justify-content:flex-end">
-      <span class="hint" style="margin:0">…or scan for installed programs git-updater already knows:</span>
-      <button id="scanPc" title="Find installed programs git-updater can manage">Scan this PC</button>
-    </div>
-    <p class="hint" id="addHint">Paste the releases link, pick a type — it grabs the right Windows file automatically.</p>
 
-    <details class="settings" id="settings">
-      <summary>Settings</summary>
-      <div class="row" style="margin-top:.5rem">
+    <section class="add-section">
+      <h2>Add an app</h2>
+      <label class="lbl" for="newRepo">GitHub repository</label>
+      <input type="text" id="newRepo" placeholder="github.com/owner/repo  or  owner/repo" class="full">
+      <div class="type-row">
+        <div>
+          <span class="lbl">Package type</span>
+          <div class="seg" id="newType" role="group" aria-label="Package type">
+            <button type="button" data-type="portable" class="active">Portable</button>
+            <button type="button" data-type="installer">Installer</button>
+          </div>
+        </div>
+        <div class="type-actions">
+          <button id="cancelEdit" style="display:none">Cancel</button>
+          <button id="addRepo" class="primary">Add app</button>
+        </div>
+      </div>
+      <p class="hint" id="addHint">Paste a GitHub releases URL; git-updater selects the appropriate Windows download automatically.</p>
+    </section>
+
+    <div class="divider"></div>
+
+    <section>
+      <h2>Find installed apps</h2>
+      <div class="scan-row">
+        <span class="hint" style="margin:0">Scan for programs that git-updater already recognizes.</span>
+        <button id="scanPc">Scan this PC</button>
+      </div>
+    </section>
+  </div>
+
+  <details class="settings" id="settings">
+    <summary>Settings</summary>
+    <div class="panel" style="margin-top:.6rem">
+      <div class="row">
         <span style="color:var(--muted);font-size:.9rem;min-width:8rem">Portable apps folder</span>
         <input type="text" id="portableRoot" placeholder="Click Browse to choose" style="flex:1;min-width:12rem">
         <button id="browse">Browse…</button>
@@ -160,8 +193,8 @@
         <button id="openLog">Open log</button>
       </div>
       <p class="hint">Hand-edit for per-app overrides (asset pattern, install dir, installer kind/args, process name).</p>
-    </details>
-  </div>
+    </div>
+  </details>
 </div>
 
 <script>
@@ -339,7 +372,7 @@ $('browse').onclick = async () => {
   catch (e) { msg(clean(e), 'bad'); }
 };
 let editingKey = null;
-const ADD_HINT = 'Paste the releases link, pick a type — it grabs the right Windows file automatically.';
+const ADD_HINT = 'Paste a GitHub releases URL; git-updater selects the appropriate Windows download automatically.';
 function setTypeToggle(type) { $('newType').querySelectorAll('button').forEach((b) => b.classList.toggle('active', b.dataset.type === type)); }
 
 function startEdit(r) {
@@ -355,7 +388,7 @@ function startEdit(r) {
 function cancelEdit() {
   editingKey = null;
   $('newRepo').value = '';
-  $('addRepo').textContent = 'Add';
+  $('addRepo').textContent = 'Add app';
   $('cancelEdit').style.display = 'none';
   $('addHint').textContent = ADD_HINT;
   msg('', '');
