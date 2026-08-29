@@ -167,9 +167,10 @@ async function handleRepo(repo, id, st, opts) {
       try {
         install.installInstaller(file, { ...repo.install, kind });
       } catch (e) {
-        // Silent MSI machine-installs can't show a UAC prompt, so unelevated they exit
-        // 1603. Fall back to the installer's own window. (No PowerShell, no self-elevation.)
-        if (e.status === 1603 && kind === 'msi' && interactive(asset.name)) return interactiveResult;
+        // Silent installs can't show a UAC prompt, so unelevated they fail — MSI with
+        // exit 1603, EXE installers with an elevation spawn error. Fall back to the
+        // installer's own window in both cases. (No PowerShell, no self-elevation.)
+        if ((e.status === 1603 || e.elevation) && interactive(asset.name)) return interactiveResult;
         throw e;
       }
     } else {

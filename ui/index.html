@@ -75,13 +75,40 @@
   .toolbar { display: flex; align-items: center; gap: .55rem; margin-bottom: .7rem; }
   .toolbar .count { color: var(--muted); font-size: .92rem; margin-right: auto; font-weight: 600; }
 
-  table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-  th { font: 600 .68rem var(--mono); letter-spacing: .07em; text-transform: uppercase; color: var(--faint); text-align: left; padding: 0 .35rem .5rem; }
-  td { padding: .5rem .35rem; border-top: 1px solid var(--border); vertical-align: middle; overflow: hidden; }
-  th.gap-r, td.gap-r { padding-right: 18px; }
-  .app { font: 500 14px var(--mono); display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .st, .ver { overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
-  .st > span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* One shared grid defines every column for the header AND each row — no per-cell
+     margins/padding/positioning. Values can never cross a column boundary. */
+  .table-header,
+  .app-row {
+    display: grid;
+    grid-template-columns:
+      24px                  /* checkbox */
+      minmax(240px, 1fr)    /* app */
+      66px                  /* type */
+      100px                 /* current */
+      100px                 /* available */
+      130px                 /* status */
+      104px;                /* actions */
+    column-gap: 12px;
+    align-items: center;
+  }
+  .table-header > *,
+  .app-row > * { min-width: 0; }
+  .app-name, .current-version, .available-version, .status {
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .current-version, .available-version { font-variant-numeric: tabular-nums; }
+  .row-actions { display: flex; justify-content: flex-end; gap: 6px; white-space: nowrap; }
+
+  .table-header > span { font: 600 .68rem var(--mono); letter-spacing: .07em; text-transform: uppercase; color: var(--faint); padding-bottom: .5rem; }
+  .app-row { padding: .5rem 0; border-top: 1px solid var(--border); }
+  .app-name { font: 500 14px var(--mono); }
+  .status { display: inline-flex; align-items: center; gap: .4rem; font-size: .88rem; }
+  .status .txt { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  @media (max-width: 760px) {
+    /* Deliberate narrow layout: drop the Available column rather than compressing. */
+    .table-header, .app-row { grid-template-columns: 24px minmax(160px, 1fr) 66px 100px 130px 104px; }
+    .table-header > :nth-child(5), .app-row > :nth-child(5) { display: none; }
+  }
   .badge { display: inline-block; font: 600 .72rem var(--sans); padding: .12rem .5rem; border-radius: 999px; border: 1px solid transparent; }
   .badge.portable { color: var(--blue); background: rgba(88,166,255,.12); border-color: rgba(88,166,255,.3); }
   .badge.installer { color: var(--accent); background: rgba(227,161,60,.13); border-color: rgba(227,161,60,.35); }
@@ -137,15 +164,11 @@
       <button id="updateAll" class="primary">Update all</button>
     </div>
 
-    <table id="repos"><thead><tr>
-      <th style="width:30px"><input type="checkbox" id="selAll" title="Select all"></th>
-      <th>App</th>
-      <th style="width:80px">Type</th>
-      <th style="width:96px" class="gap-r">Current</th>
-      <th style="width:80px">Available</th>
-      <th style="width:118px">Status</th>
-      <th style="width:132px"></th>
-    </tr></thead><tbody></tbody></table>
+    <div class="table-header">
+      <span><input type="checkbox" id="selAll" title="Select all"></span>
+      <span>App</span><span>Type</span><span>Current</span><span>Available</span><span>Status</span><span></span>
+    </div>
+    <div id="rows"></div>
     <div class="empty" id="empty" style="display:none">No apps tracked yet — add one below.</div>
 
     <div class="divider"></div>
@@ -250,46 +273,49 @@ function renderRepos() {
   config.repos.forEach((r) => {
     const key = keyOf(r);
     const s = st[key] || (st[key] = { ph: 'idle' });
-    const tr = document.createElement('tr');
+    const row = el('div', 'app-row'); // 7 grid children, same template as the header
 
     const cb = el('input'); cb.type = 'checkbox'; cb.checked = selected.has(key);
     cb.onchange = () => { cb.checked ? selected.add(key) : selected.delete(key); syncBar(); };
-    tr.appendChild(cell(cb));
+    row.appendChild(cb);
 
-    const appSpan = el('span', 'app', `${r.owner}/${r.repo}`); appSpan.title = `${r.owner}/${r.repo}`;
-    tr.appendChild(cell(appSpan));
-    tr.appendChild(cell(el('span', 'badge ' + (r.type === 'installer' ? 'installer' : 'portable'), r.type === 'installer' ? 'Installer' : 'Portable')));
+    const appSpan = el('span', 'app-name', `${r.owner}/${r.repo}`); appSpan.title = `${r.owner}/${r.repo}`;
+    row.appendChild(appSpan);
+    row.appendChild(el('span', 'badge ' + (r.type === 'installer' ? 'installer' : 'portable'), r.type === 'installer' ? 'Installer' : 'Portable'));
 
     // Current
     let cur;
-    if (s.ph === 'loading') cur = el('span', 'ver dash', '…');
-    else if (s.from) cur = el('span', 'ver cur', s.from);
-    else if (s.present) { cur = el('span', 'ver none', 'Unknown'); cur.title = 'Installed, but the version could not be detected.'; }
-    else cur = el('span', 'ver none', 'Not installed');
-    tr.appendChild(cell(cur, 'gap-r'));
+    if (s.ph === 'loading') cur = el('span', 'current-version ver dash', '…');
+    else if (s.from) { cur = el('span', 'current-version ver cur', s.from); cur.title = s.from; }
+    else if (s.present) { cur = el('span', 'current-version ver none', 'Unknown'); cur.title = 'Installed, but the version could not be detected.'; }
+    else cur = el('span', 'current-version ver none', 'Not installed');
+    row.appendChild(cur);
 
     // Available
-    tr.appendChild(cell(s.to ? el('span', 'ver avail', s.to) : el('span', 'ver dash', '—')));
+    const av = s.to ? el('span', 'available-version ver avail', s.to) : el('span', 'available-version ver dash', '—');
+    if (s.to) av.title = s.to;
+    row.appendChild(av);
 
     // Status
     const sv = statusView(s);
-    const stTxt = el('span', null, sv.text); stTxt.title = sv.text;
-    const stEl = el('span', 'st ' + sv.cls); stEl.append(el('span', 'dot'), stTxt);
-    tr.appendChild(cell(stEl));
+    const stTxt = el('span', 'txt', sv.text); stTxt.title = sv.text;
+    const stEl = el('span', 'status st ' + sv.cls); stEl.append(el('span', 'dot'), stTxt);
+    row.appendChild(stEl);
 
-    // Action
-    const act = el('td', 'act');
+    // Actions
+    const act = el('div', 'row-actions');
     const runningFail = s.ph === 'failed' && /is running/.test(s.reason || '');
-    const label = runningFail ? 'Close & retry' : primaryAction(s);
+    const label = runningFail ? 'Retry' : primaryAction(s);
     const b = el('button', 'primary rowbtn', label); b.disabled = busy;
+    if (runningFail) b.title = 'Close the app and retry the update';
     b.onclick = () => (runningFail ? closeAndRetry(r, key) : label === 'Check' ? checkApps([key]) : runBatch([key]));
     act.appendChild(b);
     const kb = el('button', 'kebab ghost', '⋯'); kb.title = 'More';
     kb.onclick = (ev) => { ev.stopPropagation(); openMenu(r, kb); };
     act.appendChild(kb);
-    tr.appendChild(act);
+    row.appendChild(act);
 
-    tb.appendChild(tr);
+    tb.appendChild(row);
   });
   syncBar();
 }

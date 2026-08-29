@@ -7,8 +7,12 @@
 // leading-"v" strip and prerelease handling.
 // ---------------------------------------------------------------------------
 
+// Strip the leading "v" AND any word prefix before the first digit ("Audacity-3.7.8",
+// "release/v2.6.2" -> "3.7.8", "2.6.2") — otherwise such tags parse as version 0 and
+// updates are never detected. Tags with no digits at all are left untouched.
 function normTag(t) {
-  return String(t == null ? '' : t).trim().replace(/^[vV]/, '');
+  const s = String(t == null ? '' : t).trim();
+  return /\d/.test(s) ? s.replace(/^[^0-9]*(?=[0-9])/, '') : s;
 }
 
 // { nums:[1,2,0], pre:'rc1' } from "v1.2.0-rc1". Build metadata ("+abc") is
@@ -108,7 +112,7 @@ function matchAsset(assets, pattern) {
 // ---------------------------------------------------------------------------
 
 const NON_WINDOWS =
-  /\.(deb|rpm|dmg|pkg|appimage|apk|snap|flatpak|tar\.gz|tgz|tar\.xz|tar\.bz2)$|(?:^|[-_.])(linux|darwin|mac(?:os)?|osx|android|freebsd|source)(?:[-_.0-9]|$)/i;
+  /\.(deb|rpm|dmg|pkg|appimage|apk|snap|flatpak|tar\.gz|tgz|tar\.xz|tar\.bz2)$|(?:^|[-_.])(linux|darwin|mac(?:os)?|osx|x11|android|freebsd|source)(?:[-_.0-9]|$)/i;
 // Portable can be an archive OR a single portable .exe (e.g. app-portable.exe).
 const PORTABLE_EXT = /\.(zip|7z|exe)$/i;
 const INSTALLER_EXT = /\.(exe|msi)$/i;
@@ -178,7 +182,20 @@ function pickWindowsAsset(assets, type, arch, flavor) {
       bestScore = sc;
     }
   }
-  if (!best) throw new Error(`no Windows ${type} asset in release. Assets: ${list.map((a) => a.name).join(', ') || '(none)'}`);
+  if (!best) {
+    // If the OTHER package type would match, the app just isn't shipped this way —
+    // point the user at the fix instead of a dead end.
+    const other = type === 'installer' ? 'portable' : 'installer';
+    const otherHit = list.some((a) => scoreAsset(a.name, other, a4, null) !== -Infinity);
+    if (otherHit) {
+      throw new Error(
+        type === 'installer'
+          ? 'this app only ships portable builds — Edit the app and change its type to Portable'
+          : 'this app only ships an installer — Edit the app and change its type to Installer'
+      );
+    }
+    throw new Error(`no Windows ${type} asset in release. Assets: ${list.map((a) => a.name).join(', ') || '(none)'}`);
+  }
   return best;
 }
 

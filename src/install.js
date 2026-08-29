@@ -241,7 +241,9 @@ function installInstaller(filePath, install, opts = {}) {
   });
   if (r.error) {
     if (r.error.code === 'EACCES' || r.error.code === 'EPERM' || r.error.errno === -4092) {
-      throw new Error('needs administrator rights — right-click git-updater and "Run as administrator", then Retry');
+      const err = new Error('needs administrator rights');
+      err.elevation = true; // callers fall back to the installer's own window (UAC)
+      throw err;
     }
     throw r.error;
   }

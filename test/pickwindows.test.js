@@ -53,6 +53,26 @@ test('installer: falls back to .exe when there is no .msi', () => {
   assert.equal(core.pickWindowsAsset(assets, 'installer').name, 'ShareX-21.0.0-setup-x64.exe');
 });
 
+test('normTag strips word prefixes so such tags compare correctly', () => {
+  assert.equal(core.normTag('Audacity-3.7.8'), '3.7.8');
+  assert.equal(core.normTag('release/v2.6.3'), '2.6.3');
+  assert.ok(core.cmpVersion('release/v2.6.3', '2.6.2') > 0); // was parsed as version 0 before
+  assert.equal(core.cmpVersion('Audacity-3.7.8', '3.7.8'), 0);
+  assert.equal(core.normTag('ODP'), 'ODP'); // digit-less tags untouched
+});
+
+test('godot-style release: portable picks the win64 exe.zip; installer suggests Portable', () => {
+  const assets = A(
+    'Godot_v4.7.2-stable_win64.exe.zip',
+    'Godot_v4.7.2-stable_mono_win64.zip',
+    'Godot_v4.7.2-stable_x11.64.zip',
+    'Godot_v4.7.2-stable_osx.universal.zip',
+    'Godot_v4.7.2-stable_web_editor.zip'
+  );
+  assert.equal(core.pickWindowsAsset(assets, 'portable').name, 'Godot_v4.7.2-stable_win64.exe.zip');
+  assert.throws(() => core.pickWindowsAsset(assets, 'installer'), /change its type to Portable/);
+});
+
 test('throws when no Windows asset of the requested type exists', () => {
   const assets = A('tool-linux.tar.gz', 'tool-macos.dmg');
   assert.throws(() => core.pickWindowsAsset(assets, 'portable'), /no Windows portable asset/);
