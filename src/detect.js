@@ -6,6 +6,7 @@
 // native RegOpenKeyEx binding only if a child process is unacceptable.
 
 const { spawnSync } = require('child_process');
+const { cmpVersion } = require('./core');
 
 const HIVES = [
   'HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall',
@@ -59,11 +60,14 @@ function allInstalled() {
 function registryVersion(needle) {
   const t = norm(needle);
   if (t.length < 2) return null;
-  const hit = allInstalled().find((e) => {
+  // An app can have several entries (e.g. an old EXE install alongside a newer MSI
+  // install) — report the highest version.
+  const hits = allInstalled().filter((e) => {
     const dn = norm(e.DisplayName);
     return dn.length >= 2 && (dn.includes(t) || t.includes(dn));
   });
-  return hit ? hit.DisplayVersion : null;
+  if (!hits.length) return null;
+  return hits.map((h) => h.DisplayVersion).sort(cmpVersion).pop();
 }
 
 // --- running-process detection (for a proactive "close the app" warning) ------

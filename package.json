@@ -35,7 +35,6 @@
       "node_modules/**/*"
     ],
     "win": {
-      "requestedExecutionLevel": "requireAdministrator",
       "target": [
         { "target": "zip", "arch": ["x64", "arm64"] },
         { "target": "nsis", "arch": ["x64", "arm64"] }
