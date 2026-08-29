@@ -75,21 +75,32 @@
   .toolbar { display: flex; align-items: center; gap: .55rem; margin-bottom: .7rem; }
   .toolbar .count { color: var(--muted); font-size: .92rem; margin-right: auto; font-weight: 600; }
 
-  /* One shared grid defines every column for the header AND each row — no per-cell
-     margins/padding/positioning. Values can never cross a column boundary. */
+  /* One shared grid defines every column for the header AND each row. The App column
+     absorbs available space and ellipsizes — no hard minimum, so the table can never
+     grow wider than the card. */
+  .table-wrapper {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: hidden;
+    container-type: inline-size;
+  }
   .table-header,
   .app-row {
+    width: 100%;
+    min-width: 0;
     display: grid;
     grid-template-columns:
-      24px                  /* checkbox */
-      minmax(240px, 1fr)    /* app */
-      66px                  /* type */
-      100px                 /* current */
-      100px                 /* available */
-      130px                 /* status */
-      104px;                /* actions */
-    column-gap: 12px;
+      24px              /* checkbox */
+      minmax(0, 1fr)    /* app */
+      66px              /* type */
+      94px              /* current */
+      94px              /* available */
+      130px             /* status */
+      100px;            /* actions */
+    column-gap: 10px;
     align-items: center;
+    box-sizing: border-box;
   }
   .table-header > *,
   .app-row > * { min-width: 0; }
@@ -104,10 +115,12 @@
   .app-name { font: 500 14px var(--mono); }
   .status { display: inline-flex; align-items: center; gap: .4rem; font-size: .88rem; }
   .status .txt { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  @media (max-width: 760px) {
-    /* Deliberate narrow layout: drop the Available column rather than compressing. */
-    .table-header, .app-row { grid-template-columns: 24px minmax(160px, 1fr) 66px 100px 130px 104px; }
-    .table-header > :nth-child(5), .app-row > :nth-child(5) { display: none; }
+  /* Narrow card: hide the Type column (container query on the card, not the viewport). */
+  @container (max-width: 720px) {
+    .table-header,
+    .app-row { grid-template-columns: 24px minmax(0, 1fr) 88px 88px 120px 100px; column-gap: 8px; }
+    /* .badge sets display later in the cascade; child selector out-specifies it */
+    .table-header > .type-cell, .app-row > .type-cell { display: none; }
   }
   .badge { display: inline-block; font: 600 .72rem var(--sans); padding: .12rem .5rem; border-radius: 999px; border: 1px solid transparent; }
   .badge.portable { color: var(--blue); background: rgba(88,166,255,.12); border-color: rgba(88,166,255,.3); }
@@ -164,11 +177,13 @@
       <button id="updateAll" class="primary">Update all</button>
     </div>
 
-    <div class="table-header">
-      <span><input type="checkbox" id="selAll" title="Select all"></span>
-      <span>App</span><span>Type</span><span>Current</span><span>Available</span><span>Status</span><span></span>
+    <div class="table-wrapper">
+      <div class="table-header">
+        <span><input type="checkbox" id="selAll" title="Select all"></span>
+        <span>App</span><span class="type-cell">Type</span><span>Current</span><span>Available</span><span>Status</span><span></span>
+      </div>
+      <div id="rows"></div>
     </div>
-    <div id="rows"></div>
     <div class="empty" id="empty" style="display:none">No apps tracked yet — add one below.</div>
 
     <div class="divider"></div>
@@ -281,7 +296,7 @@ function renderRepos() {
 
     const appSpan = el('span', 'app-name', `${r.owner}/${r.repo}`); appSpan.title = `${r.owner}/${r.repo}`;
     row.appendChild(appSpan);
-    row.appendChild(el('span', 'badge ' + (r.type === 'installer' ? 'installer' : 'portable'), r.type === 'installer' ? 'Installer' : 'Portable'));
+    row.appendChild(el('span', 'type-cell badge ' + (r.type === 'installer' ? 'installer' : 'portable'), r.type === 'installer' ? 'Installer' : 'Portable'));
 
     // Current
     let cur;
