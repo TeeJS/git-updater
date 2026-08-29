@@ -373,7 +373,10 @@ function openMenu(r, anchor) {
 
   document.body.appendChild(menuEl);
   const rect = anchor.getBoundingClientRect();
-  menuEl.style.top = `${window.scrollY + rect.bottom + 4}px`;
+  // Open upward when the menu would fall below the window fold.
+  const below = rect.bottom + 4 + menuEl.offsetHeight <= window.innerHeight;
+  const top = below ? rect.bottom + 4 : Math.max(8, rect.top - menuEl.offsetHeight - 4);
+  menuEl.style.top = `${window.scrollY + top}px`;
   menuEl.style.left = `${Math.max(8, window.scrollX + rect.right - menuEl.offsetWidth)}px`;
   setTimeout(() => document.addEventListener('click', closeMenu), 0);
 }
