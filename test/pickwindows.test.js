@@ -61,6 +61,15 @@ test('normTag strips word prefixes so such tags compare correctly', () => {
   assert.equal(core.normTag('ODP'), 'ODP'); // digit-less tags untouched
 });
 
+test('brave-style version schemes align (registry 152.1.94.117 vs tag 1.94.117)', () => {
+  assert.equal(core.alignInstalledVersion('152.1.94.117', '1.94.117'), '1.94.117');
+  // same scheme -> no alignment
+  assert.equal(core.alignInstalledVersion('1.94.117', '1.94.118'), null);
+  // aligned compare: up to date now, update detected for the next Brave release
+  assert.equal(core.cmpVersion('1.94.117', '1.94.117'), 0);
+  assert.ok(core.cmpVersion('1.95.20', '1.94.117') > 0);
+});
+
 test('godot-style release: portable picks the win64 exe.zip; installer suggests Portable', () => {
   const assets = A(
     'Godot_v4.7.2-stable_win64.exe.zip',

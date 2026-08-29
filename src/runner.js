@@ -61,6 +61,13 @@ async function handleRepo(repo, id, st, opts) {
     try {
       installed = await detect.registryVersion(repo.detect || repo.repo);
     } catch {}
+    // Scheme mismatch (e.g. Brave: registry 152.1.94.117 vs tag 1.94.117): the install
+    // looks "newer" than any release, so updates would never be detected. Align the
+    // installed version to the tag's scheme; Current then displays comparably too.
+    if (installed && core.cmpVersion(latest, installed) < 0) {
+      const aligned = core.alignInstalledVersion(installed, latest);
+      if (aligned) installed = aligned;
+    }
   } else {
     installed = prev.version || null;
   }

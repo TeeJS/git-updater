@@ -56,6 +56,19 @@ function naturalCmp(a, b) {
   return 0;
 }
 
+// Some apps prefix the registry DisplayVersion with another product's version —
+// Brave: "152.1.94.117" = Chromium 152 + Brave 1.94.117, while release tags are plain
+// "1.94.117". When the installed version has MORE numeric parts than the tag scheme,
+// return its trailing parts in the tag's scheme; else null.
+function alignInstalledVersion(installed, latest) {
+  const i = splitVer(installed);
+  const l = splitVer(latest);
+  if (l.nums.length >= 2 && i.nums.length > l.nums.length) {
+    return i.nums.slice(-l.nums.length).join('.');
+  }
+  return null;
+}
+
 // >0 if a is newer than b. Handles "1.2" == "1.2.0" and prerelease < release.
 function cmpVersion(a, b) {
   const va = splitVer(a);
@@ -290,6 +303,7 @@ function buildSummary(results) {
 module.exports = {
   normTag,
   cmpVersion,
+  alignInstalledVersion,
   compilePattern,
   matchAsset,
   pickWindowsAsset,
