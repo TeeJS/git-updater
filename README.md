@@ -4,10 +4,17 @@ On-demand Windows GUI that updates a hand-picked list of apps distributed via **
 **portable** apps get their files swapped in place, **installed** apps get a silent install. A
 self-hosted **Ninite replacement**: you own the list, it pulls straight from GitHub.
 
-A native **Electron** window: add repos, pick a portable-apps folder, Check and Update. **On-demand**
-— nothing runs until you open it, and closing the window exits every process. **EDR-conscious by
-design**: no localhost server, no PowerShell/shell, no self-elevation, installers never run from
-`%TEMP%`.
+A native **Electron** window, app-centric: each row shows the app, its **installed version**
+(read from Windows, not just update history), the **available version**, live status
+(Downloading 42% → Verifying → Installing), and a per-row Check/Update/Install button with an
+overflow menu (Edit, Force reinstall, Close app & update, View release, Open folder, Stop
+tracking). Batch updates run as a queue, one app at a time. **On-demand** — nothing runs until
+you open it, and closing the window exits every process. **EDR-conscious by design**: no
+localhost server, no PowerShell/shell, no self-elevation, installers never run from `%TEMP%`.
+
+**Scan this PC** finds installed programs git-updater already recognizes (a curated catalog of
+120+ apps with known GitHub repos — browsers, media, dev tools, AI tools, runtimes) and adds the
+ones you pick, with Select all / Add selected.
 
 > Not related to `itzg/github-release-watcher` (a Java release *viewer*). This project supersedes the
 > local `github-release-watcher` engine it grew out of and reuses its IO-free `src/core.js`.
@@ -61,10 +68,17 @@ preferring x64).
 }
 ```
 
-The chosen file matches the machine's architecture (x64 / arm64 / x86). For installers, the
-silent-install technology (NSIS / Inno / MSI) is **detected from the downloaded file's bytes**. If a
-particular installer can't be identified, the update **fails safely** rather than guessing — set an
-explicit `install.kind` for it (see below).
+The chosen file matches the machine's architecture (x64 / arm64 / x86) and, for installers, the
+**flavor of the existing install** (an MSI-installed app gets the `.msi`, an EXE-installed app the
+`.exe` — never a side-by-side duplicate). Silent-install technology (NSIS / Inno / MSI) is
+**detected from the downloaded file's bytes**; an unidentifiable installer is never guessed at —
+its own installer window is opened instead (with a normal UAC prompt).
+
+Downloads are verified against GitHub's asset digest, or a checksums file shipped in the release
+(`SHA256SUMS`, `<asset>.sha256`, ...) when GitHub has none; a release with neither is logged as a
+warning. Portable updates are **transactional**: the new version is staged next to the app folder
+and swapped in by directory rename — on any failure (including a crash) the complete previous
+version is restored, and your settings files inside the folder are carried across updates.
 
 Optional overrides (rarely needed):
 - `"asset": "*-win-x64.zip"` (glob or `/regex/`) pins a specific file instead of auto-pick.
@@ -79,9 +93,9 @@ own update history.
 
 git-updater uses **no PowerShell and no self-elevation** (both are EDR triggers). Portable installs
 under a user-writable `portableRoot` (e.g. `C:/PortableApps`) need no admin and just work. An
-installer that requires administrator rights, or a portable target under a protected directory
-(e.g. `Program Files`), will fail with a clear message — **run git-updater as administrator**
-(right-click → *Run as administrator*) for those updates.
+installer that needs administrator rights falls back to **its own installer window** with a normal
+UAC prompt (the row shows "Waiting for installer…" and updates itself when it finishes). Running
+git-updater as administrator instead makes those installs fully silent.
 
 Downloads are staged under `%LOCALAPPDATA%\git-updater\staging`, never executed from `%TEMP%`.
 
@@ -98,11 +112,15 @@ electron/preload.js  narrow contextBridge: the renderer only sees window.api.*
 ui/index.html      the renderer (no network; talks over IPC)
 src/               the engine (no UI, no shell):
   core.js          IO-free: version compare, Windows-asset pick, installer switches, validation
-  github.js        release fetch + asset download + sha256 verify
-  install.js       portable swap (manifest + rollback), .7z via 7z-wasm, silent installer, prune
-  runner.js        orchestration; state keyed per (repo + type)
+  github.js        release fetch + download + digest/checksums-file verify (sha256/sha512)
+  install.js       transactional portable dir-swap, .7z via 7z-wasm, silent installer
+  runner.js        orchestration + progress events; state keyed per (repo + type)
   state.js         atomic state + cross-process update lock  (%APPDATA%\git-updater)
+  detect.js        installed versions/flavor (uninstall registry), running-app check (async)
+  catalog.js       known-apps catalog for "Scan this PC"
+  log.js           file log -> %APPDATA%\git-updater\logs (Settings -> Open log)
 bin/watch.js       headless CLI over the same engine
+ui/scan.html       the Scan this PC window
 ```
 
 **OpenQuake** (also Electron/Node) loads `src/*` directly in its main process and renders an
