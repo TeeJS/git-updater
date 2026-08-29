@@ -48,12 +48,6 @@ Trusted Signing).
 Prefer beta builds for a specific app? Tick *include beta (pre-release) versions* when
 adding it.
 
-## On the open-quake panel
-
-git-updater is also available as a **drop-in app for [open-quake](https://github.com/TeeJS/open-quake)**
-(Settings → Drop-In Apps → Browse). It shares the same app list and state with the desktop
-version — add apps here, update them from the panel, or vice versa.
-
 ## For developers
 
 ```bash
