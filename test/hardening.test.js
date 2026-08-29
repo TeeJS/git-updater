@@ -54,37 +54,64 @@ test('detectInstallerKind: recognizes MSI, Inno, NSIS from bytes; null when unkn
   }
 });
 
-// --- stale-file pruning (#6) ------------------------------------------------
+// --- transactional portable install (#6) -------------------------------------
 
-test('pruneStale: removes files gone from the new version, keeps the rest', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gu-prune-'));
+const AdmZip = require('adm-zip');
+function makeZip(dir, entries) {
+  const z = new AdmZip();
+  for (const [name, content] of Object.entries(entries)) z.addFile(name, Buffer.from(content));
+  const p = path.join(dir, 'pkg.zip');
+  z.writeZip(p);
+  return p;
+}
+
+test('installPortable: dir-swap upgrade drops stale files, keeps user files, no leftovers', async () => {
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'gu-txn-'));
   try {
-    fs.writeFileSync(path.join(dir, 'keep.dll'), 'x');
-    fs.writeFileSync(path.join(dir, 'old.dll'), 'x'); // was installed before, gone now
-    fs.mkdirSync(path.join(dir, 'settings'));
-    fs.writeFileSync(path.join(dir, 'settings', 'user.cfg'), 'x'); // runtime file, not in any manifest
+    const dest = path.join(base, 'app');
+    fs.mkdirSync(path.join(dest, 'settings'), { recursive: true });
+    fs.writeFileSync(path.join(dest, 'keep.dll'), 'old-version');
+    fs.writeFileSync(path.join(dest, 'stale.dll'), 'gone in new version');
+    fs.writeFileSync(path.join(dest, 'settings', 'user.cfg'), 'my settings'); // runtime file
 
-    install.pruneStale(dir, ['keep.dll', 'old.dll'], ['keep.dll']);
+    const zip = makeZip(base, { 'keep.dll': 'new-version', 'extra.txt': 'new' });
+    const manifest = await install.installPortable(zip, { dir: dest }, ['keep.dll', 'stale.dll']);
 
-    assert.ok(fs.existsSync(path.join(dir, 'keep.dll')), 'keep.dll stays');
-    assert.ok(!fs.existsSync(path.join(dir, 'old.dll')), 'old.dll removed');
-    assert.ok(fs.existsSync(path.join(dir, 'settings', 'user.cfg')), 'user settings preserved');
+    assert.deepEqual(manifest.sort(), ['extra.txt', 'keep.dll']);
+    assert.equal(fs.readFileSync(path.join(dest, 'keep.dll'), 'utf8'), 'new-version');
+    assert.ok(!fs.existsSync(path.join(dest, 'stale.dll')), 'stale file gone with the old dir');
+    assert.equal(fs.readFileSync(path.join(dest, 'settings', 'user.cfg'), 'utf8'), 'my settings');
+    assert.ok(!fs.existsSync(dest + '.git-updater-old'), 'old dir removed on commit');
   } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(base, { recursive: true, force: true });
   }
 });
 
-// --- swapInPlace returns a manifest and clears stale .bak (#6) ---------------
-
-test('pruneStale: refuses to delete outside the app folder (path traversal)', () => {
-  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'gu-trav-'));
+test('installPortable: a bad archive leaves the current install completely untouched', async () => {
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'gu-txn2-'));
   try {
-    const appDir = path.join(base, 'app');
-    fs.mkdirSync(appDir);
-    fs.writeFileSync(path.join(base, 'victim.txt'), 'do not delete me');
-    // A poisoned manifest tries to escape the app dir.
-    install.pruneStale(appDir, ['../victim.txt', '..\\victim.txt'], []);
-    assert.ok(fs.existsSync(path.join(base, 'victim.txt')), 'file outside app dir must survive');
+    const dest = path.join(base, 'app');
+    fs.mkdirSync(dest, { recursive: true });
+    fs.writeFileSync(path.join(dest, 'app.exe'), 'v1');
+    const empty = makeZip(base, {}); // extracts to zero files
+    await assert.rejects(() => install.installPortable(empty, { dir: dest }), /no files/);
+    assert.equal(fs.readFileSync(path.join(dest, 'app.exe'), 'utf8'), 'v1');
+  } finally {
+    fs.rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test('installPortable: recovers a crashed swap (parked old dir, missing dest)', async () => {
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'gu-txn3-'));
+  try {
+    const dest = path.join(base, 'app');
+    // Simulate a crash after the old dir was parked but before the new one moved in.
+    fs.mkdirSync(dest + '.git-updater-old', { recursive: true });
+    fs.writeFileSync(path.join(dest + '.git-updater-old', 'app.exe'), 'v1');
+    const zip = makeZip(base, { 'app.exe': 'v2' });
+    await install.installPortable(zip, { dir: dest });
+    assert.equal(fs.readFileSync(path.join(dest, 'app.exe'), 'utf8'), 'v2');
+    assert.ok(!fs.existsSync(dest + '.git-updater-old'));
   } finally {
     fs.rmSync(base, { recursive: true, force: true });
   }
@@ -104,18 +131,3 @@ test('acquireLock: serializes update runs, steals nothing while held', () => {
   }
 });
 
-test('swapInPlace: installs files, returns manifest, cleans backups', () => {
-  const src = fs.mkdtempSync(path.join(os.tmpdir(), 'gu-src-'));
-  const dst = fs.mkdtempSync(path.join(os.tmpdir(), 'gu-dst-'));
-  try {
-    fs.writeFileSync(path.join(src, 'a.txt'), 'new');
-    fs.writeFileSync(path.join(dst, 'a.txt'), 'old'); // existing -> backed up then replaced
-    const manifest = install.swapInPlace(src, dst);
-    assert.deepEqual(manifest, ['a.txt']);
-    assert.equal(fs.readFileSync(path.join(dst, 'a.txt'), 'utf8'), 'new');
-    assert.ok(!fs.existsSync(path.join(dst, 'a.txt.git-updater.bak')), 'backup cleaned on success');
-  } finally {
-    fs.rmSync(src, { recursive: true, force: true });
-    fs.rmSync(dst, { recursive: true, force: true });
-  }
-});

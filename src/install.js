@@ -14,20 +14,6 @@ const isWin = process.platform === 'win32';
 
 // --- portable swap ----------------------------------------------------------
 
-function moveFile(from, to) {
-  try {
-    fs.renameSync(from, to);
-  } catch (e) {
-    if (e.code === 'EXDEV') {
-      // cross-volume (temp on C:, target on D:): copy then remove
-      fs.copyFileSync(from, to);
-      fs.unlinkSync(from);
-    } else {
-      throw e;
-    }
-  }
-}
-
 function walk(root, base = root, out = []) {
   for (const name of fs.readdirSync(root)) {
     const full = path.join(root, name);
@@ -49,109 +35,7 @@ function stripDirs(root, n) {
   return cur;
 }
 
-const BAK = '.git-updater.bak'; // distinct suffix so we never clash with an app's own .bak files
-
-// Swap new files into dir: back up each existing target, move new in, delete
-// backups on success / restore on failure. Returns the list of installed
-// relative paths (for stale-file bookkeeping). A locked file aborts + rolls back.
-function swapInPlace(src, dir) {
-  const files = walk(src);
-  const backups = []; // {to, bak}
-  const placed = []; // to
-  try {
-    for (const rel of files) {
-      const from = path.join(src, rel);
-      const to = path.join(dir, rel);
-      fs.mkdirSync(path.dirname(to), { recursive: true });
-      if (fs.existsSync(to)) {
-        const bak = to + BAK;
-        if (fs.existsSync(bak)) fs.rmSync(bak, { force: true }); // clear a stale backup from a prior crash
-        fs.renameSync(to, bak); // EBUSY/EPERM here if the file is in use
-        backups.push({ to, bak });
-      }
-      moveFile(from, to);
-      placed.push(to);
-    }
-  } catch (e) {
-    for (const to of placed) {
-      try {
-        fs.rmSync(to, { force: true });
-      } catch {}
-    }
-    const restoreFailed = [];
-    for (const { to, bak } of backups) {
-      try {
-        fs.renameSync(bak, to);
-      } catch {
-        restoreFailed.push(to);
-      }
-    }
-    if (e.code === 'EBUSY' || e.code === 'EPERM' || e.code === 'EACCES') {
-      const err = new Error(`file in use (${e.path || 'target'}); close the app and re-run`);
-      err.locked = true;
-      throw err;
-    }
-    if (restoreFailed.length) {
-      throw new Error(
-        `update failed and rollback was incomplete — restore these from their "${BAK}" copies: ${restoreFailed.join(', ')}`
-      );
-    }
-    throw e;
-  }
-  for (const { bak } of backups) {
-    try {
-      fs.rmSync(bak, { force: true });
-    } catch {}
-  }
-  return files;
-}
-
-// True only if `rel` resolves to a path INSIDE root (blocks "../escape" and absolute
-// paths that a poisoned state.json manifest could smuggle in — critical since a prune
-// can run elevated).
-function within(root, rel) {
-  const r = path.relative(root, path.resolve(root, rel));
-  return r !== '' && !r.startsWith('..') && !path.isAbsolute(r);
-}
-
-// Remove files we installed in a previous version that are gone from the new one, then
-// drop any directories left empty. Runtime-created files (user settings) are never in
-// the manifest, so they are preserved. Returns the files that could NOT be deleted
-// (e.g. locked) so the caller keeps tracking them for a retry next update.
-function pruneStale(dir, oldFiles, newFiles) {
-  const root = path.resolve(dir);
-  const keep = new Set((newFiles || []).map((f) => f.replace(/\\/g, '/')));
-  const stillStale = [];
-  for (const rel of oldFiles || []) {
-    if (keep.has(rel.replace(/\\/g, '/'))) continue;
-    if (!within(root, rel)) continue; // path-traversal guard: never touch anything outside dir
-    try {
-      fs.rmSync(path.resolve(root, rel), { force: true });
-    } catch {
-      stillStale.push(rel); // deletion failed -> keep it in the manifest and retry later
-    }
-  }
-  removeEmptyDirs(dir);
-  return stillStale;
-}
-
-function removeEmptyDirs(dir) {
-  let entries;
-  try {
-    entries = fs.readdirSync(dir);
-  } catch {
-    return;
-  }
-  for (const name of entries) {
-    const full = path.join(dir, name);
-    try {
-      if (fs.statSync(full).isDirectory()) removeEmptyDirs(full);
-    } catch {}
-  }
-  try {
-    if (fs.readdirSync(dir).length === 0) fs.rmdirSync(dir);
-  } catch {}
-}
+const OLD_SUFFIX = '.git-updater-old'; // previous version parked here during the swap
 
 // Extract a .7z into destDir using 7z-wasm (pure WASM, no external binary).
 // Mounts destDir into the wasm FS, copies the archive in, extracts, cleans up.
@@ -190,21 +74,75 @@ async function extract7z(archivePath, destDir) {
   }
 }
 
-// Returns the list of installed relative paths (manifest) for stale-file bookkeeping.
-async function installPortable(archivePath, install) {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'rw-extract-'));
+// Transactional portable install: extract into a staging dir ON THE SAME VOLUME as
+// the target, then swap whole directories by rename — the app dir is always either
+// the complete old version or the complete new one, never a mix. prevManifest (what
+// WE shipped last time, from state) separates stale shipped files (dropped) from
+// runtime-created user files (carried over). Returns the new manifest.
+async function installPortable(archivePath, install, prevManifest) {
+  const dest = path.resolve(install.dir);
+  const parent = path.dirname(dest);
+  const base = path.basename(dest);
+  fs.mkdirSync(parent, { recursive: true });
+  const oldDir = dest + OLD_SUFFIX;
+
+  // Crash recovery: a previous run parked the old version and died before finishing.
+  if (fs.existsSync(oldDir) && !fs.existsSync(dest)) fs.renameSync(oldDir, dest);
+  fs.rmSync(oldDir, { recursive: true, force: true }); // any other leftover is disposable
+
+  // Stage next to the destination so the renames below are same-volume (atomic-ish).
+  const stage = fs.mkdtempSync(path.join(parent, `.${base}.git-updater-stage-`));
   try {
-    if (/\.7z$/i.test(archivePath)) await extract7z(archivePath, tmp);
-    else if (/\.zip$/i.test(archivePath)) new AdmZip(archivePath).extractAllTo(tmp, /* overwrite */ true); // adm-zip >=0.5.10 is zip-slip-safe
-    else fs.copyFileSync(archivePath, path.join(tmp, path.basename(archivePath))); // bare portable file (e.g. a single .exe): place it as-is
-    // Auto-flatten version-named wrapper folders (e.g. deskflow-1.26.0-.../) so updates
-    // overwrite in place instead of piling up a new folder per release. Explicit strip wins.
-    const src = install.strip != null ? stripDirs(tmp, install.strip) : stripDirs(tmp, Infinity);
-    if (walk(src).length === 0) throw new Error('archive contained no files');
-    fs.mkdirSync(install.dir, { recursive: true });
-    return swapInPlace(src, install.dir);
+    if (/\.7z$/i.test(archivePath)) await extract7z(archivePath, stage);
+    else if (/\.zip$/i.test(archivePath)) new AdmZip(archivePath).extractAllTo(stage, /* overwrite */ true); // adm-zip >=0.5.10 is zip-slip-safe
+    else fs.copyFileSync(archivePath, path.join(stage, path.basename(archivePath))); // bare portable file (e.g. a single .exe)
+    // Auto-flatten version-named wrapper folders (deskflow-1.26.0-.../). Explicit strip wins.
+    const src = install.strip != null ? stripDirs(stage, install.strip) : stripDirs(stage, Infinity);
+    const files = walk(src);
+    if (files.length === 0) throw new Error('archive contained no files');
+
+    // Swap: park the old dir, move the new one in; restore the old on any failure.
+    const hadOld = fs.existsSync(dest);
+    if (hadOld) {
+      try {
+        fs.renameSync(dest, oldDir); // EBUSY/EPERM here if the app is running
+      } catch (e) {
+        if (e.code === 'EBUSY' || e.code === 'EPERM' || e.code === 'EACCES') {
+          const err = new Error('app files are in use — close the app and Retry');
+          err.locked = true;
+          throw err;
+        }
+        throw e;
+      }
+    }
+    try {
+      fs.renameSync(src, dest);
+    } catch (e) {
+      if (hadOld) fs.renameSync(oldDir, dest); // complete rollback: old version restored whole
+      throw e;
+    }
+
+    // Carry over runtime files (user settings etc.): in the old dir, not shipped by the
+    // new version, and not shipped by the PREVIOUS version either (those are stale and
+    // stay dropped). Compared as strings only — a poisoned manifest can't reach outside.
+    if (hadOld) {
+      const norm = (f) => f.replace(/\\/g, '/');
+      const shipped = new Set(files.map(norm));
+      const prevShipped = new Set((prevManifest || []).map(norm));
+      for (const rel of walk(oldDir)) {
+        const n = norm(rel);
+        if (shipped.has(n) || prevShipped.has(n)) continue;
+        const to = path.join(dest, rel);
+        try {
+          fs.mkdirSync(path.dirname(to), { recursive: true });
+          fs.copyFileSync(path.join(oldDir, rel), to);
+        } catch {}
+      }
+      fs.rmSync(oldDir, { recursive: true, force: true }); // commit: old version gone
+    }
+    return files;
   } finally {
-    fs.rmSync(tmp, { recursive: true, force: true });
+    fs.rmSync(stage, { recursive: true, force: true });
   }
 }
 
@@ -268,8 +206,7 @@ module.exports = {
   installPortable,
   installInstaller,
   detectInstallerKind,
-  pruneStale,
   // exported for tests
-  swapInPlace,
   stripDirs,
+  walk,
 };

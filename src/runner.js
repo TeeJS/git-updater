@@ -181,9 +181,8 @@ async function handleRepo(repo, id, st, opts) {
         throw e;
       }
     } else {
-      const installed = await install.installPortable(file, repo.install);
-      const stale = install.pruneStale(repo.install.dir, prev.files || [], installed);
-      files = [...installed, ...stale]; // keep un-pruned stale files so they're retried next time
+      // Transactional dir swap: stale files vanish with the old dir, user files carry over.
+      files = await install.installPortable(file, repo.install, prev.files);
     }
 
     st[key] = {
