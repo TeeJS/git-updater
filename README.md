@@ -28,10 +28,12 @@ npm start          # launches the Electron app
 
 Config + state live under `%APPDATA%\git-updater\` (override config with `GITUPDATER_CONFIG`).
 
-## Build installers
+## Build (portable — run as is)
+
+git-updater itself is **portable only**: unzip anywhere, run `git-updater.exe`. Nothing installs.
 
 ```bash
-npm run dist       # -> dist/  : per-user NSIS installer + portable ZIP (x64; add --arm64 for arm)
+npm run dist       # -> dist/  : portable ZIPs (x64 + arm64)
 ```
 
 Signing (recommended — the biggest EDR/SmartScreen trust lever) uses Azure Trusted Signing:
@@ -40,17 +42,10 @@ but will draw SmartScreen/EDR warnings until it earns reputation.
 
 ## Self-update
 
-git-updater keeps itself current from its own GitHub Releases. **Check all** also checks the
-app itself (nothing runs at startup). If a newer release exists:
+**Check all** also checks git-updater's own GitHub releases (nothing runs at startup). If a newer
+release exists, a banner links to the download page.
 
-- **Installed (NSIS):** a banner offers **Restart & update** — electron-updater downloads the
-  installer to `%LOCALAPPDATA%` (never `%TEMP%`) and relaunches into the new version.
-- **Portable (zip):** the banner links to the release download page; auto-replacing a running
-  portable copy isn't attempted.
-
-Publishing a release: `npm run dist:publish` (needs `GH_TOKEN`) uploads the installers plus the
-`latest.yml` feed file electron-updater reads. Alternatively `gh release create vX.Y.Z dist/*.exe
-dist/*.zip dist/latest*.yml`.
+Publishing a release: `gh release create vX.Y.Z dist/*.zip`.
 
 ## CLI (optional — scripting / OpenQuake sidecar)
 

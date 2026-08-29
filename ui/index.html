@@ -586,24 +586,15 @@ $('browseAll').onclick = () => window.api.openScan('all');
 window.api.onConfigChanged(() => load()); // scan window added apps -> refresh the list
 
 // git-updater's own update — piggybacks on Check all (no startup network calls).
-// Installed via NSIS: in-app download + restart. Zip/portable run: open the release page.
+// Portable-only app: the banner links to the release download page.
 async function selfCheck() {
   try {
     const u = await window.api.selfUpdateCheck();
     if (!u) return;
     $('selfupText').textContent = `git-updater ${u.version} is available.`;
     const btn = $('selfupBtn');
-    if (u.mode === 'installer') {
-      btn.textContent = 'Restart & update';
-      btn.onclick = async () => {
-        btn.disabled = true; btn.textContent = 'Downloading…';
-        try { await window.api.selfUpdateInstall(); } // app quits + installer runs on success
-        catch (e) { msg(clean(e), 'bad'); btn.disabled = false; btn.textContent = 'Restart & update'; }
-      };
-    } else {
-      btn.textContent = 'Open download page';
-      btn.onclick = () => window.api.openRelease('TeeJS', 'git-updater');
-    }
+    btn.textContent = 'Open download page';
+    btn.onclick = () => window.api.openRelease('TeeJS', 'git-updater');
     $('selfup').classList.add('show');
   } catch {} // never let the self-check disturb the app check
 }

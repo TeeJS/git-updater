@@ -202,45 +202,20 @@ ipcMain.handle('asset:preview', async (_e, appKey) => {
   const asset = repo.asset ? core.matchAsset(rel.assets, repo.asset) : core.pickWindowsAsset(rel.assets, repo.type);
   return { tag: rel.tag_name, asset: asset.name };
 });
-// --- Self-update (electron-updater + GitHub Releases) -------------------------
+// --- Self-update (portable, run-as-is) ----------------------------------------
 // Checked only when the user runs "Check all" — no network at startup, same as
-// tracked apps. NSIS-installed -> in-app download + quitAndInstall; zip/portable
-// run -> compare the latest release tag and point at the download page (the zip
-// build also carries app-update.yml, so presence of the NSIS uninstaller is the
-// discriminator — auto-installing would silently convert a portable copy).
-function isNsisInstall() {
-  return fs.existsSync(path.join(process.resourcesPath, 'app-update.yml')) &&
-    fs.existsSync(path.join(path.dirname(process.execPath), `Uninstall ${app.getName()}.exe`));
-}
-function selfUpdater() {
-  const { autoUpdater } = require('electron-updater');
-  autoUpdater.autoDownload = false;
-  autoUpdater.logger = { info: log, warn: log, error: log, debug: () => {} };
-  return autoUpdater;
-}
+// tracked apps. Compares the latest release tag with the running version; the
+// banner links to the release download page.
 ipcMain.handle('selfupdate:check', async () => {
   if (!app.isPackaged) return null; // dev run
   try {
-    if (isNsisInstall()) {
-      const r = await selfUpdater().checkForUpdates();
-      const info = r && r.updateInfo;
-      const avail = r && (typeof r.isUpdateAvailable === 'boolean'
-        ? r.isUpdateAvailable
-        : info && core.cmpVersion(core.normTag(info.version), app.getVersion()) > 0);
-      return avail ? { version: info.version, mode: 'installer' } : null;
-    }
     const rel = await github.getLatestRelease('TeeJS', 'git-updater');
     const tag = core.normTag(rel.tag_name || '');
-    return core.cmpVersion(tag, app.getVersion()) > 0 ? { version: tag, mode: 'portable' } : null;
+    return core.cmpVersion(tag, app.getVersion()) > 0 ? { version: tag } : null;
   } catch (e) {
     log(`selfupdate check: ${e && e.message ? e.message : e}`); // e.g. no releases yet
     return null;
   }
-});
-ipcMain.handle('selfupdate:install', async () => {
-  const u = selfUpdater();
-  await u.downloadUpdate(); // resolves once the installer is staged under %LOCALAPPDATA%
-  u.quitAndInstall();
 });
 
 ipcMain.handle('pick-folder', async () => {
