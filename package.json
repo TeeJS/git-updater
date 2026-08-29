@@ -12,8 +12,7 @@
   "scripts": {
     "start": "electron .",
     "test": "node --test",
-    "dist": "electron-builder --win",
-    "dist:signed": "electron-builder --win -c.win.azureSignOptions.publisherName=\"$AZURE_PUBLISHER\""
+    "dist": "electron-builder --win"
   },
   "license": "MIT",
   "dependencies": {
@@ -35,6 +34,7 @@
       "node_modules/**/*"
     ],
     "win": {
+      "sign": "./sign.js",
       "target": [
         {
           "target": "zip",

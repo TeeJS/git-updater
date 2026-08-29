@@ -36,9 +36,10 @@ git-updater itself is **portable only**: unzip anywhere, run `git-updater.exe`. 
 npm run dist       # -> dist/  : portable ZIPs (x64 + arm64)
 ```
 
-Signing (recommended — the biggest EDR/SmartScreen trust lever) uses Azure Trusted Signing:
-`az login`, then `npm run dist:signed` (see the windows-app-signing notes). An unsigned build works
-but will draw SmartScreen/EDR warnings until it earns reputation.
+Builds are **Authenticode-signed** (Azure Trusted Signing) automatically when the machine has the
+signing setup (`sign.js` hook; `.signing/` dlib + metadata, SignTool, per-user pwsh7, and a live
+`Connect-AzAccount` session — see the windows-app-signing skill). Without it the build still works
+but logs a warning and leaves binaries unsigned.
 
 ## Self-update
 
