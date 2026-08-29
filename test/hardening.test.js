@@ -117,6 +117,22 @@ test('installPortable: recovers a crashed swap (parked old dir, missing dest)', 
   }
 });
 
+// --- checksum-file fallback (#2) ----------------------------------------------
+
+test('verifyDigest: sha512 digests verify too', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gu-sum-'));
+  try {
+    const f = path.join(dir, 'x.bin');
+    fs.writeFileSync(f, 'hello');
+    const crypto = require('crypto');
+    const h = crypto.createHash('sha512').update('hello').digest('hex');
+    assert.deepEqual(require('../src/github').verifyDigest(f, `sha512:${h}`), { verified: true });
+    assert.throws(() => require('../src/github').verifyDigest(f, `sha512:${'0'.repeat(128)}`), /mismatch/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('acquireLock: serializes update runs, steals nothing while held', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gu-lock-'));
   const sp = path.join(dir, 'state.json');

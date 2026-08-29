@@ -138,7 +138,20 @@ async function handleRepo(repo, id, st, opts) {
     emit('downloading', 0);
     await github.downloadAsset(asset.browser_download_url, file, (pct) => emit('downloading', pct));
     emit('verifying');
-    const v = github.verifyDigest(file, asset.digest);
+    // Prefer GitHub's own digest; fall back to a checksums file shipped in the release
+    // (SHA256SUMS, <asset>.sha256, ...). Only truly digest-less releases skip.
+    let digest = asset.digest;
+    let digestNote = null;
+    if (!digest) {
+      const found = await github.fetchChecksumFromRelease(rel, asset.name);
+      if (found) {
+        digest = `${found.algo}:${found.expected}`;
+        digestNote = 'verified via release checksums file';
+      }
+    }
+    const v = github.verifyDigest(file, digest);
+    if (v && v.verified && digestNote) v.note = digestNote;
+    if (v && v.skipped) log(`  WARN ${key}: ${v.note}`);
 
     emit('installing');
     let files; // portable manifest, for stale-file pruning

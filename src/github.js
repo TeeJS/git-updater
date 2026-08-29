@@ -3,6 +3,7 @@
 // IO edge: GitHub REST + asset download + digest verify. Uses Node 18+ global fetch.
 
 const fs = require('fs');
+const path = require('path');
 const crypto = require('crypto');
 const { Readable } = require('stream');
 const { pipeline } = require('stream/promises');
@@ -102,12 +103,47 @@ async function downloadAsset(url, destPath, onProgress) {
   return destPath;
 }
 
+// Fallback when GitHub provides no asset.digest: many releases ship a checksums file
+// (SHA256SUMS, <name>.sha256, SHA512-SUMS.txt, checksums.txt...). Find one in the same
+// release, download it (small), and pull the hash for assetName from it.
+// Returns { algo, expected } or null when the release has nothing usable.
+const SUMS_FILE = /(sha(256|512)[-_.]?sums?|checksums?)(\.txt)?$|\.(sha256|sha512)$/i;
+const MAX_SUMS_BYTES = 1024 * 1024;
+
+async function fetchChecksumFromRelease(rel, assetName) {
+  const candidates = (rel.assets || []).filter(
+    (a) => SUMS_FILE.test(a.name) && a.size <= MAX_SUMS_BYTES &&
+      // "<name>.sha256"-style files must belong to OUR asset
+      (!/\.(sha256|sha512)$/i.test(a.name) || a.name.toLowerCase().startsWith(assetName.toLowerCase()))
+  );
+  for (const c of candidates) {
+    try {
+      const res = await fetch(c.browser_download_url, { headers: { 'User-Agent': UA } });
+      if (!res.ok) continue;
+      const text = await res.text();
+      // Lines look like "<hex>  <filename>" (or "<hex> *<filename>"), or a bare hex
+      // for per-asset .sha256 files.
+      for (const line of text.split(/\r?\n/)) {
+        const m = line.trim().match(/^([a-f0-9]{64}|[a-f0-9]{128})\s+\*?(.+)$/i);
+        if (m && path.basename(m[2].trim()).toLowerCase() === assetName.toLowerCase()) {
+          return { algo: m[1].length === 64 ? 'sha256' : 'sha512', expected: m[1] };
+        }
+      }
+      const bare = text.trim().match(/^([a-f0-9]{64}|[a-f0-9]{128})\b/i);
+      if (bare && /\.(sha256|sha512)$/i.test(c.name)) {
+        return { algo: bare[1].length === 64 ? 'sha256' : 'sha512', expected: bare[1] };
+      }
+    } catch {}
+  }
+  return null;
+}
+
 // digest: GitHub asset.digest like "sha256:abc..." . Missing/unsupported -> skip with a note.
 function verifyDigest(filePath, digest) {
   if (!digest) return { skipped: true, note: 'no digest from GitHub; checksum skipped' };
   const [algo, expected] = String(digest).split(':');
-  if (algo !== 'sha256' || !expected) return { skipped: true, note: `unsupported digest "${digest}"; skipped` };
-  const hash = crypto.createHash('sha256');
+  if (!['sha256', 'sha512'].includes(algo) || !expected) return { skipped: true, note: `unsupported digest "${digest}"; skipped` };
+  const hash = crypto.createHash(algo);
   hash.update(fs.readFileSync(filePath)); // ponytail: whole-file read; stream if assets get very large
   const actual = hash.digest('hex');
   if (actual.toLowerCase() !== expected.toLowerCase()) {
@@ -116,4 +152,4 @@ function verifyDigest(filePath, digest) {
   return { verified: true };
 }
 
-module.exports = { getLatestRelease, listAssets, downloadAsset, verifyDigest };
+module.exports = { getLatestRelease, listAssets, downloadAsset, verifyDigest, fetchChecksumFromRelease };
