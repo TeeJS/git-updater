@@ -199,14 +199,22 @@
         <button id="cancelEdit" style="display:none">Cancel</button>
         <button id="addRepo" class="primary">Add app</button>
       </div>
+      <div class="row" style="margin-top:.45rem; gap:.4rem">
+        <label style="display:flex;align-items:center;gap:.35rem;font-size:12px;color:var(--muted);cursor:pointer">
+          <input type="checkbox" id="preRel"> include beta (pre-release) versions
+        </label>
+      </div>
       <p class="helper" id="addHint">GitHub releases URL; the Windows download is selected automatically.</p>
     </section>
 
     <div class="divider"></div>
 
     <div class="scan-row">
-      <span class="scan-label"><strong class="sec-h2">Find installed apps</strong><span class="helper" style="margin:0">· Scan for recognized programs.</span></span>
-      <button id="scanPc">Scan this PC</button>
+      <span class="scan-label"><strong class="sec-h2">Known apps</strong><span class="helper" style="margin:0">· Scan this PC, or browse everything git-updater can manage.</span></span>
+      <span style="display:flex;gap:.5rem">
+        <button id="scanPc">Scan this PC</button>
+        <button id="browseAll">Browse all apps</button>
+      </span>
     </div>
   </div>
 
@@ -294,7 +302,8 @@ function renderRepos() {
     cb.onchange = () => { cb.checked ? selected.add(key) : selected.delete(key); syncBar(); };
     row.appendChild(cb);
 
-    const appSpan = el('span', 'app-name', `${r.owner}/${r.repo}`); appSpan.title = `${r.owner}/${r.repo}`;
+    const appSpan = el('span', 'app-name', `${r.owner}/${r.repo}${r.prerelease ? ' β' : ''}`);
+    appSpan.title = `${r.owner}/${r.repo}` + (r.prerelease ? ' — tracking beta (pre-release) versions' : '');
     row.appendChild(appSpan);
     row.appendChild(el('span', 'type-cell badge ' + (r.type === 'installer' ? 'installer' : 'portable'), r.type === 'installer' ? 'Installer' : 'Portable'));
 
@@ -418,6 +427,7 @@ function startEdit(r) {
   editingKey = keyOf(r);
   $('newRepo').value = `${r.owner}/${r.repo}`;
   setTypeToggle(r.type);
+  $('preRel').checked = !!r.prerelease;
   $('addRepo').textContent = 'Save';
   $('cancelEdit').style.display = '';
   $('addHint').textContent = `Editing ${r.owner}/${r.repo} — change the repo or type, then Save.`;
@@ -429,6 +439,7 @@ function cancelEdit() {
   $('newRepo').value = '';
   $('addRepo').textContent = 'Add app';
   $('cancelEdit').style.display = 'none';
+  $('preRel').checked = false;
   $('addHint').textContent = ADD_HINT;
   msg('', '');
 }
@@ -447,7 +458,7 @@ $('addRepo').onclick = async () => {
   $('addRepo').disabled = true;
   msg(`Checking ${parsed.owner}/${parsed.repo}…`, 'info');
   try {
-    await window.api.validateRepo(parsed.owner, parsed.repo);
+    await window.api.validateRepo(parsed.owner, parsed.repo, $('preRel').checked);
   } catch (e) {
     $('addRepo').disabled = false;
     return msg(`Can't ${editingKey ? 'save' : 'add'} ${parsed.owner}/${parsed.repo} — ${clean(e)}. Check the owner/repo.`, 'bad');
@@ -458,7 +469,9 @@ $('addRepo').onclick = async () => {
     delete st[editingKey]; selected.delete(editingKey);
     config.repos = config.repos.filter((r) => keyOf(r) !== editingKey);
   }
-  config.repos.push({ owner: parsed.owner, repo: parsed.repo, type });
+  const entry = { owner: parsed.owner, repo: parsed.repo, type };
+  if ($('preRel').checked) entry.prerelease = true;
+  config.repos.push(entry);
   const wasEditing = !!editingKey;
   cancelEdit();
   msg(wasEditing ? 'Saved.' : 'Added.', 'ok');
@@ -564,6 +577,7 @@ window.api.onProgress(({ id, phase, pct }) => {
 });
 
 $('scanPc').onclick = () => window.api.openScan();
+$('browseAll').onclick = () => window.api.openScan('all');
 window.api.onConfigChanged(() => load()); // scan window added apps -> refresh the list
 
 $('checkAll').onclick = () => checkApps(config.repos.map(keyOf));

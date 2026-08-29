@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:; font-src 'self'">
-<title>Scan this PC — git-updater</title>
+<title>Add known apps — git-updater</title>
 <style>
   :root {
     --bg: #0d1117; --panel: #161b22; --border: #30363d;
@@ -13,99 +13,163 @@
     --sans: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
   }
   * { box-sizing: border-box; }
-  body { margin: 0; padding: 1.25rem; color: var(--text); font: 15px/1.5 var(--sans); background: var(--bg); }
-  h1 { font: 600 1.05rem var(--mono); margin: 0 0 .2rem; }
-  .sub { color: var(--muted); font-size: .88rem; margin: 0 0 1rem; }
-  table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-  th { font: 600 .68rem var(--mono); letter-spacing: .07em; text-transform: uppercase; color: var(--faint); text-align: left; padding: 0 .35rem .5rem; }
-  td { padding: .5rem .35rem; border-top: 1px solid var(--border); vertical-align: middle; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  body { margin: 0; padding: 1.1rem 1.25rem; color: var(--text); font: 15px/1.5 var(--sans); background: var(--bg);
+         display: flex; flex-direction: column; height: 100vh; }
+  h1 { font: 600 1rem var(--mono); margin: 0 0 .6rem; }
+  .seg { display: inline-flex; padding: 3px; gap: 3px; border-radius: 9px; background: #161b22; border: 1px solid var(--border); }
+  .seg button { border: 1px solid transparent; background: transparent; color: var(--muted); padding: .3rem .7rem; border-radius: 6px; font: 600 13px var(--sans); cursor: pointer; }
+  .seg button.active { background: #21262d; color: var(--text); border-color: #444c56; }
+  .seg.mini button { padding: .14rem .45rem; font-size: 11.5px; }
+  .list { flex: 1; overflow-y: auto; margin-top: .6rem; border-top: 1px solid var(--border); }
+  .row { display: grid; grid-template-columns: 26px minmax(0,1fr) 90px minmax(0,1.2fr) 128px; column-gap: 10px;
+         align-items: center; padding: .42rem 0; border-bottom: 1px solid var(--border); }
+  .row > * { min-width: 0; }
   input[type=checkbox] { width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; }
-  .app { font: 500 14px var(--mono); }
-  .muted { color: var(--muted); } .ok { color: var(--green); font-size: .85rem; }
-  .repo { font: 400 12.5px var(--mono); color: var(--muted); }
-  button { font: 600 13.5px var(--sans); cursor: pointer; border-radius: 8px; padding: .48rem .85rem;
+  .app { font: 500 13.5px var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ver { color: var(--muted); font: 400 12.5px var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .repo { font: 400 12px var(--mono); color: var(--faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ok { color: var(--green); font-size: .85rem; }
+  button.act { font: 600 13.5px var(--sans); cursor: pointer; border-radius: 8px; padding: .46rem .85rem;
            border: 1px solid var(--border); background: #21262d; color: var(--text); }
-  button:hover:not(:disabled) { background: #2a313a; }
-  button:disabled { opacity: .4; cursor: default; }
+  button.act:hover:not(:disabled) { background: #2a313a; }
+  button.act:disabled { opacity: .4; cursor: default; }
   button.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
-  .bar { display: flex; gap: .55rem; align-items: center; margin-top: 1rem; }
+  .bar { display: flex; gap: .55rem; align-items: center; padding-top: .8rem; }
   .bar .count { margin-right: auto; color: var(--muted); font-size: .9rem; }
-  #status { min-height: 1.2rem; color: var(--muted); margin: .6rem 0 0; font-size: .9rem; }
+  #status { min-height: 1.15rem; color: var(--muted); margin-top: .45rem; font-size: .88rem; }
 </style>
 </head>
 <body>
-<h1>Scan this PC</h1>
-<p class="sub">Installed programs that git-updater knows how to update from GitHub.</p>
-
-<table id="tbl"><thead><tr>
-  <th style="width:30px"><input type="checkbox" id="selAll" title="Select all"></th>
-  <th style="width:26%">App</th><th style="width:16%">Installed</th><th>GitHub repo</th>
-</tr></thead><tbody></tbody></table>
+<h1>Add known apps</h1>
+<div class="row" style="display:flex;border:0;padding:0">
+  <div class="seg" id="mode">
+    <button type="button" data-mode="installed" class="active">Installed on this PC</button>
+    <button type="button" data-mode="all">All known apps</button>
+  </div>
+</div>
 <div id="status">Scanning…</div>
 
+<div class="list" id="list"></div>
+
 <div class="bar">
+  <label style="display:flex;align-items:center;gap:.35rem;font-size:.9rem;color:var(--muted)">
+    <input type="checkbox" id="selAll"> Select all
+  </label>
   <span class="count" id="count"></span>
-  <button id="close">Close</button>
-  <button id="add" class="primary" disabled>Add selected</button>
+  <button class="act" id="close">Close</button>
+  <button class="act primary" id="add" disabled>Add selected</button>
 </div>
 
 <script>
 const $ = (id) => document.getElementById(id);
-let rows = [];
-const selected = new Set();
+let mode = 'installed';
+let installedRows = null; // cached scan result
+let catalogRows = null;   // cached full catalog
+const selected = new Map(); // repo -> chosen type
 
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
 
+function rowsFor() { return (mode === 'installed' ? installedRows : catalogRows) || []; }
+
 function render() {
-  const tb = $('tbl').querySelector('tbody');
-  tb.innerHTML = '';
-  for (const r of rows) {
-    const tr = document.createElement('tr');
-    const tdCb = document.createElement('td');
-    if (r.tracked) {
-      tdCb.appendChild(el('span', 'ok', '✓'));
-    } else {
+  const list = $('list');
+  list.innerHTML = '';
+  for (const r of rowsFor()) {
+    const row = el('div', 'row');
+
+    const cbWrap = el('span');
+    if (r.tracked) cbWrap.appendChild(el('span', 'ok', '✓'));
+    else {
       const cb = el('input'); cb.type = 'checkbox'; cb.checked = selected.has(r.repo);
-      cb.onchange = () => { cb.checked ? selected.add(r.repo) : selected.delete(r.repo); sync(); };
-      tdCb.appendChild(cb);
+      cb.onchange = () => { cb.checked ? selected.set(r.repo, r.type) : selected.delete(r.repo); sync(); };
+      cbWrap.appendChild(cb);
     }
-    tr.appendChild(tdCb);
-    const app = el('td'); const a = el('span', 'app', r.name); a.title = r.displayName; app.appendChild(a); tr.appendChild(app);
-    tr.appendChild(el('td', 'muted', r.version || '—'));
-    tr.appendChild(el('td', 'repo', r.repo + (r.tracked ? '  (already tracked)' : '')));
-    tb.appendChild(tr);
+    row.appendChild(cbWrap);
+
+    const app = el('span', 'app', r.name); app.title = r.displayName || r.name;
+    row.appendChild(app);
+    row.appendChild(el('span', 'ver', mode === 'installed' ? (r.version || '—') : ''));
+    const repo = el('span', 'repo', r.repo + (r.tracked ? '  (tracked)' : '')); repo.title = r.repo;
+    row.appendChild(repo);
+
+    // Type: fixed "Installer" for installed-scan; a per-row choice when browsing.
+    const typeWrap = el('span');
+    if (!r.tracked) {
+      if (mode === 'installed') typeWrap.appendChild(el('span', 'ver', 'Installer'));
+      else {
+        const seg = el('span', 'seg mini');
+        for (const t of ['portable', 'installer']) {
+          const b = el('button', r.type === t ? 'active' : null, t === 'portable' ? 'Portable' : 'Installer');
+          b.type = 'button';
+          b.onclick = () => {
+            r.type = t;
+            if (selected.has(r.repo)) selected.set(r.repo, t);
+            render();
+          };
+          seg.appendChild(b);
+        }
+        typeWrap.appendChild(seg);
+      }
+    }
+    row.appendChild(typeWrap);
+    list.appendChild(row);
   }
   sync();
 }
+
 function sync() {
-  const addable = rows.filter((r) => !r.tracked);
-  $('count').textContent = `${selected.size} of ${addable.length} selected`;
+  const addable = rowsFor().filter((r) => !r.tracked);
+  $('count').textContent = `${selected.size} selected`;
   $('add').disabled = selected.size === 0;
-  $('selAll').checked = addable.length > 0 && selected.size === addable.length;
+  $('selAll').checked = addable.length > 0 && addable.every((r) => selected.has(r.repo));
 }
 
 $('selAll').onchange = (e) => {
-  selected.clear();
-  if (e.target.checked) rows.filter((r) => !r.tracked).forEach((r) => selected.add(r.repo));
+  for (const r of rowsFor()) {
+    if (r.tracked) continue;
+    e.target.checked ? selected.set(r.repo, r.type) : selected.delete(r.repo);
+  }
   render();
 };
+
+$('mode').querySelectorAll('button').forEach((b) => {
+  b.onclick = async () => {
+    $('mode').querySelectorAll('button').forEach((x) => x.classList.toggle('active', x === b));
+    mode = b.dataset.mode;
+    selected.clear();
+    await load();
+  };
+});
+
+async function load() {
+  $('status').textContent = 'Loading…';
+  try {
+    if (mode === 'installed') {
+      if (!installedRows) installedRows = (await window.api.scanRun()).map((r) => ({ ...r, type: 'installer' }));
+      const n = installedRows.length, add = installedRows.filter((r) => !r.tracked).length;
+      $('status').textContent = n ? `Found ${n} known installed app${n > 1 ? 's' : ''}; ${add} not yet tracked.` : 'No known apps found on this PC.';
+    } else {
+      if (!catalogRows) catalogRows = (await window.api.catalogAll()).map((r) => ({ ...r, type: r.type || 'portable' }));
+      $('status').textContent = `${catalogRows.length} apps git-updater knows how to update — pick the package type for each.`;
+    }
+    render();
+  } catch (e) { $('status').textContent = String(e.message || e); }
+}
+
 $('add').onclick = async () => {
   $('add').disabled = true;
-  try { await window.api.scanAdd([...selected]); } // main adds, refreshes the app list, closes this window
-  catch (e) { $('status').textContent = String(e.message || e); $('add').disabled = false; }
+  try {
+    await window.api.scanAdd([...selected.entries()].map(([repo, type]) => ({ repo, type })));
+  } catch (e) { $('status').textContent = String(e.message || e); $('add').disabled = false; }
 };
 $('close').onclick = () => window.close();
 
-(async () => {
-  try {
-    rows = await window.api.scanRun();
-    const found = rows.length, addable = rows.filter((r) => !r.tracked).length;
-    $('status').textContent = found
-      ? `Found ${found} known app${found > 1 ? 's' : ''}; ${addable} not yet tracked.`
-      : 'No known apps found on this PC.';
-    render();
-  } catch (e) { $('status').textContent = String(e.message || e); }
-})();
+// Optional start mode via ?mode=all
+if (new URLSearchParams(location.search).get('mode') === 'all') {
+  mode = 'all';
+  $('mode').querySelectorAll('button').forEach((x) => x.classList.toggle('active', x.dataset.mode === 'all'));
+}
+load();
 </script>
 </body>
 </html>

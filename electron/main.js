@@ -133,34 +133,45 @@ ipcMain.handle('log:open', () => shell.openPath(LOG_FILE));
 
 // --- "Scan this PC" window: find installed catalog apps and add selected ---
 let scanWin = null;
-ipcMain.handle('scan:open', () => {
+ipcMain.handle('scan:open', (_e, mode) => {
   if (scanWin && !scanWin.isDestroyed()) return scanWin.focus();
   scanWin = new BrowserWindow({
-    width: 620,
-    height: 640,
+    width: 680,
+    height: 680,
     parent: win,
     backgroundColor: '#0d1117',
     autoHideMenuBar: true,
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false },
   });
-  scanWin.loadFile(path.join(__dirname, '..', 'ui', 'scan.html'));
+  scanWin.loadFile(path.join(__dirname, '..', 'ui', 'scan.html'), mode === 'all' ? { query: { mode: 'all' } } : undefined);
 });
 ipcMain.handle('scan:run', async () => {
   detect.clearCache();
   const tracked = new Set(readConfig().repos.map((r) => `${r.owner}/${r.repo}`.toLowerCase()));
   return catalog.matchInstalled(await detect.allInstalled(), tracked);
 });
-// Add the selected repos (as installer type — they were found in the uninstall registry).
-ipcMain.handle('scan:add', (_e, repos) => {
-  if (!Array.isArray(repos)) throw new Error('repos must be an array');
+// The whole catalog (for "All known apps" browsing), tracked entries flagged.
+ipcMain.handle('catalog:all', () => {
+  const tracked = new Set(readConfig().repos.map((r) => `${r.owner}/${r.repo}`.toLowerCase()));
+  return catalog.CATALOG
+    .map((c) => ({ name: c.name, repo: c.repo, tracked: tracked.has(c.repo.toLowerCase()) }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+});
+// Add selected repos: [{repo: "owner/name", type: "portable"|"installer"}].
+ipcMain.handle('scan:add', (_e, items) => {
+  if (!Array.isArray(items)) throw new Error('items must be an array');
   const cfg = readConfig();
   if (!Array.isArray(cfg.repos)) cfg.repos = [];
+  if (items.some((i) => i && i.type === 'portable') && !cfg.portableRoot) {
+    throw new Error('set the portable apps folder first (main window → Settings), then add portable apps');
+  }
   let added = 0;
-  for (const full of repos) {
-    const m = /^([^/]+)\/([^/]+)$/.exec(String(full));
+  for (const it of items) {
+    const m = /^([^/]+)\/([^/]+)$/.exec(String(it && it.repo));
+    const type = it && it.type === 'portable' ? 'portable' : 'installer';
     if (!m) continue;
-    if (cfg.repos.some((r) => r.owner === m[1] && r.repo === m[2] && r.type === 'installer')) continue;
-    cfg.repos.push({ owner: m[1], repo: m[2], type: 'installer' });
+    if (cfg.repos.some((r) => r.owner === m[1] && r.repo === m[2] && r.type === type)) continue;
+    cfg.repos.push({ owner: m[1], repo: m[2], type });
     added++;
   }
   if (added) saveConfigFile(cfg);
