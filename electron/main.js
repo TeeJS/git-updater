@@ -95,6 +95,7 @@ ipcMain.handle('state:get', () => state.load());
 // Locally-installed version + presence per app, BEFORE checking GitHub.
 // Installer -> uninstall-registry DisplayVersion; Portable -> our manifest + folder.
 ipcMain.handle('installed:get', () => {
+  detect.clearCache(); // fresh scan — versions change after installs
   const cfg = readConfig();
   const stt = state.load();
   const out = {};

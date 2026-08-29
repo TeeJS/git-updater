@@ -20,6 +20,7 @@ const displayId = (repo) => `${repo.owner}/${repo.repo}`;
 const appKey = (repo) => `${repo.owner}/${repo.repo}#${repo.type}`;
 
 async function run(config, opts = {}) {
+  detect.clearCache(); // fresh registry scan each run — an install may have just changed versions
   const st = state.load(opts.statePath);
   const only = opts.only ? opts.only.toLowerCase() : null;
   const results = [];

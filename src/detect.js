@@ -36,7 +36,10 @@ function queryHive(hive) {
   return out;
 }
 
-let cache = null; // one scan per process is plenty
+let cache = null; // one scan per run; cleared after installs so fresh versions show
+function clearCache() {
+  cache = null;
+}
 function allInstalled() {
   if (cache) return cache;
   cache = [];
@@ -103,4 +106,4 @@ async function closeApp(needle, opts = {}) {
   return { closed: procs.length, stillRunning: isRunning(needle) };
 }
 
-module.exports = { registryVersion, isRunning, closeApp };
+module.exports = { registryVersion, isRunning, closeApp, clearCache };
