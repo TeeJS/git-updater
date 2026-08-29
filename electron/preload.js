@@ -25,4 +25,6 @@ contextBridge.exposeInMainWorld('api', {
   catalogAll: () => ipcRenderer.invoke('catalog:all'),
   scanAdd: (items) => ipcRenderer.invoke('scan:add', items),
   onConfigChanged: (cb) => ipcRenderer.on('config-changed', () => cb()),
+  selfUpdateCheck: () => ipcRenderer.invoke('selfupdate:check'),
+  selfUpdateInstall: () => ipcRenderer.invoke('selfupdate:install'),
 });
