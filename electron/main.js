@@ -4,7 +4,7 @@
 // the renderer talks to the engine over IPC (no socket), the engine runs in-process
 // (no shell, no self-elevation), and closing the window exits everything (on-demand).
 
-const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, screen } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const core = require('../src/core');
@@ -73,9 +73,11 @@ function saveConfigFile(cfg) {
 
 let win;
 function createWindow() {
+  // Tall enough for the whole UI without scrolling, capped at the screen's work area.
+  const wa = screen.getPrimaryDisplay().workAreaSize;
   win = new BrowserWindow({
     width: 840,
-    height: 760,
+    height: Math.min(1000, wa.height),
     minWidth: 640,
     minHeight: 480,
     backgroundColor: '#0d1117',

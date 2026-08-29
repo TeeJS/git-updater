@@ -32,7 +32,7 @@
   h1 .g { color: var(--accent); }
   .tagline { color: var(--muted); margin: 0 0 1.1rem; font-size: .92rem; }
   .panel { background: linear-gradient(180deg, var(--panel), var(--panel-2));
-           border: 1px solid var(--border); border-radius: 12px; padding: 1.4rem;
+           border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px;
            margin-bottom: 1rem; box-shadow: 0 8px 24px -18px #000; }
   .row { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
   input[type=text] { font: 400 14px var(--mono); padding: .5rem .65rem; border-radius: 8px; color: var(--text);
@@ -55,17 +55,19 @@
   .seg button:hover { background: transparent; color: var(--text); }
   .seg button.active { background: #21262d; color: var(--text); border-color: #444c56; }
 
-  .add-section h2, section h2 { margin-bottom: .75rem; }
-  .lbl { display: block; font-size: .82rem; font-weight: 600; color: var(--muted); margin: 0 0 .35rem; }
-  input.full { display: block; width: 100%; }
-  .type-row { display: flex; align-items: flex-end; justify-content: space-between; gap: .75rem; margin-top: .8rem; }
-  .type-actions { display: flex; gap: .55rem; }
+  /* Compact add/scan area — matches the table's scale, not a separate page. */
+  .sec-h { font: 600 15px var(--sans); margin: 0 0 .5rem; }
+  .sec-h2 { font: 600 13.5px var(--sans); color: var(--text); }
+  .helper { font-size: 12px; line-height: 16px; color: var(--faint); margin: .5rem 0 0; }
+  .add-row { display: flex; gap: .55rem; align-items: center; }
+  .add-row input { flex: 1; min-width: 10rem; height: 35px; }
+  .add-row button, .scan-row button { height: 35px; }
   .scan-row { display: flex; align-items: center; justify-content: space-between; gap: .75rem; }
-  details.settings { margin-top: 1.4rem; }
-  @media (max-width: 560px) {
-    .type-row { flex-direction: column; align-items: stretch; }
-    .type-actions { flex-direction: column; }
-    .type-actions button { width: 100%; }
+  details.settings { margin-top: 1rem; }
+  @media (max-width: 620px) {
+    .add-row { flex-wrap: wrap; }
+    .add-row input { min-width: 100%; }
+    .add-row button.primary { flex: 1; }
     .scan-row { flex-direction: column; align-items: stretch; }
   }
 
@@ -108,7 +110,7 @@
   #msg { min-height: 1.2rem; margin: 0 0 .8rem; font-weight: 600; font-size: .9rem; }
   #msg.ok { color: var(--green); } #msg.bad { color: var(--red); } #msg.info { color: var(--muted); }
   .empty { color: var(--faint); padding: .7rem .35rem; font-size: .9rem; }
-  .divider { height: 1px; background: var(--border); margin: .9rem -1.1rem; }
+  .divider { height: 1px; background: var(--border); margin: 12px -16px; }
   details.settings { margin-top: .2rem; }
   details.settings > summary { cursor: pointer; color: var(--muted); font: 600 .8rem var(--mono); letter-spacing: .08em;
     text-transform: uppercase; list-style: none; padding: .3rem 0; }
@@ -147,34 +149,25 @@
     <div class="divider"></div>
 
     <section class="add-section">
-      <h2>Add an app</h2>
-      <label class="lbl" for="newRepo">GitHub repository</label>
-      <input type="text" id="newRepo" placeholder="github.com/owner/repo  or  owner/repo" class="full">
-      <div class="type-row">
-        <div>
-          <span class="lbl">Package type</span>
-          <div class="seg" id="newType" role="group" aria-label="Package type">
-            <button type="button" data-type="portable" class="active">Portable</button>
-            <button type="button" data-type="installer">Installer</button>
-          </div>
+      <h2 class="sec-h">Add an app</h2>
+      <div class="add-row">
+        <input type="text" id="newRepo" placeholder="github.com/owner/repo  or  owner/repo" aria-label="GitHub repository">
+        <div class="seg" id="newType" role="group" aria-label="Package type">
+          <button type="button" data-type="portable" class="active">Portable</button>
+          <button type="button" data-type="installer">Installer</button>
         </div>
-        <div class="type-actions">
-          <button id="cancelEdit" style="display:none">Cancel</button>
-          <button id="addRepo" class="primary">Add app</button>
-        </div>
+        <button id="cancelEdit" style="display:none">Cancel</button>
+        <button id="addRepo" class="primary">Add app</button>
       </div>
-      <p class="hint" id="addHint">Paste a GitHub releases URL; git-updater selects the appropriate Windows download automatically.</p>
+      <p class="helper" id="addHint">GitHub releases URL; the Windows download is selected automatically.</p>
     </section>
 
     <div class="divider"></div>
 
-    <section>
-      <h2>Find installed apps</h2>
-      <div class="scan-row">
-        <span class="hint" style="margin:0">Scan for programs that git-updater already recognizes.</span>
-        <button id="scanPc">Scan this PC</button>
-      </div>
-    </section>
+    <div class="scan-row">
+      <span class="helper" style="margin:0"><strong class="sec-h2">Find installed apps</strong> · Scan for recognized programs.</span>
+      <button id="scanPc">Scan this PC</button>
+    </div>
   </div>
 
   <details class="settings" id="settings">
