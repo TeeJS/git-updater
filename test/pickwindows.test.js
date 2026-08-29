@@ -41,6 +41,13 @@ test('installer: prefers the x64 .msi (silent-installable) over exe/arm', () => 
   assert.equal(core.pickWindowsAsset(assets, 'installer').name, '7z2602-x64.msi');
 });
 
+test('installer: matches the existing install flavor (exe-installed avoids the msi)', () => {
+  const assets = A('7z2602-x64.exe', '7z2602-x64.msi');
+  assert.equal(core.pickWindowsAsset(assets, 'installer', 'x64', 'exe').name, '7z2602-x64.exe');
+  assert.equal(core.pickWindowsAsset(assets, 'installer', 'x64', 'msi').name, '7z2602-x64.msi');
+  assert.equal(core.pickWindowsAsset(assets, 'installer', 'x64', null).name, '7z2602-x64.msi'); // fresh install -> msi
+});
+
 test('installer: falls back to .exe when there is no .msi', () => {
   const assets = A('ShareX-21.0.0-setup-x64.exe', 'ShareX-21.0.0-portable-x64.zip');
   assert.equal(core.pickWindowsAsset(assets, 'installer').name, 'ShareX-21.0.0-setup-x64.exe');

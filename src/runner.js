@@ -87,9 +87,12 @@ async function handleRepo(repo, id, st, opts) {
   if (opts.mode === 'check') return { ...base, status: 'updated' };
 
   // Manual `asset` pattern overrides; otherwise auto-pick the Windows asset from the type.
+  // For installers, match the flavor of the EXISTING install (msi vs exe) so the update
+  // upgrades in place instead of installing a duplicate side-by-side.
+  const flavor = repo.type === 'installer' ? detect.installedFlavor(repo.detect || repo.repo) : null;
   const asset = repo.asset
     ? core.matchAsset(rel.assets, repo.asset)
-    : core.pickWindowsAsset(rel.assets, repo.type);
+    : core.pickWindowsAsset(rel.assets, repo.type, null, flavor);
 
   if (opts.dryRun) {
     const verb = /\.(zip|7z)$/i.test(asset.name) ? 'extract' : 'place';
@@ -135,8 +138,28 @@ async function handleRepo(repo, id, st, opts) {
     if (repo.type === 'installer') {
       // Detect the installer's silent-install technology from its bytes. If it can't be
       // identified, FAIL rather than blindly running an unknown .exe with NSIS's /S switch.
+      // Open the downloaded installer's own window (it shows a normal UAC prompt).
+      // MSI: msiexec with UI (msiexec.exe itself needs no manifest elevation).
+      // EXE: opts.openFile (ShellExecute via Electron) so the setup's UAC manifest works.
+      const interactive = (keepName) => {
+        const keep = path.join(stageBase, keepName); // outlives the tmp cleanup below
+        fs.copyFileSync(file, keep);
+        log(`  -> opening interactive installer: ${keep}`);
+        if (/\.msi$/i.test(keep)) spawn('msiexec', ['/i', keep], { detached: true, stdio: 'ignore' }).unref();
+        else if (opts.openFile) opts.openFile(keep);
+        else return false;
+        return true;
+      };
+      const interactiveResult = {
+        ...base,
+        status: 'failed',
+        reason: 'installer window opened — approve the UAC prompt and finish it, then Check',
+      };
+
       const kind = (repo.install && repo.install.kind) || install.detectInstallerKind(file);
       if (!kind) {
+        // Unidentifiable installer: never guess silent switches — run its window instead.
+        if (interactive(asset.name)) return interactiveResult;
         throw new Error(
           `could not identify the installer type for ${asset.name} — add "install":{"kind":"nsis|inno|msi"} for ${id} in config.json`
         );
@@ -145,19 +168,8 @@ async function handleRepo(repo, id, st, opts) {
         install.installInstaller(file, { ...repo.install, kind });
       } catch (e) {
         // Silent MSI machine-installs can't show a UAC prompt, so unelevated they exit
-        // 1603. Fall back to the installer's own window: msiexec with UI triggers a
-        // normal UAC prompt the user can approve. (No PowerShell, no self-elevation.)
-        if (e.status === 1603 && kind === 'msi') {
-          const keep = path.join(stageBase, asset.name); // outlives the tmp cleanup below
-          fs.copyFileSync(file, keep);
-          log(`  1603 -> opening interactive installer: msiexec /i ${keep}`);
-          spawn('msiexec', ['/i', keep], { detached: true, stdio: 'ignore' }).unref();
-          return {
-            ...base,
-            status: 'failed',
-            reason: 'installer window opened — approve the UAC prompt and finish it, then Check',
-          };
-        }
+        // 1603. Fall back to the installer's own window. (No PowerShell, no self-elevation.)
+        if (e.status === 1603 && kind === 'msi' && interactive(asset.name)) return interactiveResult;
         throw e;
       }
     } else {

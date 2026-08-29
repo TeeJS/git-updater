@@ -114,8 +114,10 @@ const PORTABLE_EXT = /\.(zip|7z|exe)$/i;
 const INSTALLER_EXT = /\.(exe|msi)$/i;
 const SETUP_TOKEN = /(setup|install(er)?|_inst|-inst)/i;
 
-// arch: the machine's architecture (node's process.arch: 'x64' | 'arm64' | 'ia32').
-function scoreAsset(name, type, arch) {
+// arch: machine architecture ('x64' | 'arm64' | 'ia32'). flavor: how the app is
+// ALREADY installed ('msi' | 'exe' | null) — strongly prefer the same flavor so an
+// update upgrades in place instead of installing a duplicate side-by-side.
+function scoreAsset(name, type, arch, flavor) {
   if (NON_WINDOWS.test(name)) return -Infinity;
   if (!(type === 'installer' ? INSTALLER_EXT : PORTABLE_EXT).test(name)) return -Infinity;
   let s = 0;
@@ -148,23 +150,28 @@ function scoreAsset(name, type, arch) {
   } else {
     if (SETUP_TOKEN.test(name)) s += 2;
     if (/portable/i.test(name)) s -= 5; // a portable.exe is NOT the installer
-    // Prefer .msi when a repo ships both — `msiexec /qn` is universally silent-installable,
-    // whereas an arbitrary .exe installer's silent switch can't always be identified.
-    if (/\.msi$/i.test(name)) s += 2;
-    else if (/\.exe$/i.test(name)) s += 1;
+    if (flavor === 'exe') {
+      // Already EXE-installed: an MSI would install side-by-side, not upgrade. Avoid it.
+      if (/\.msi$/i.test(name)) s -= 6;
+      else if (/\.exe$/i.test(name)) s += 2;
+    } else {
+      // MSI-installed or fresh install: prefer .msi (silent via msiexec, upgrades in place).
+      if (/\.msi$/i.test(name)) s += 2;
+      else if (/\.exe$/i.test(name)) s += 1;
+    }
   }
   return s;
 }
 
 // Returns the best-matching asset object, or throws if the release has none for Windows.
 // arch defaults to the running machine's architecture.
-function pickWindowsAsset(assets, type, arch) {
+function pickWindowsAsset(assets, type, arch, flavor) {
   const list = assets || [];
   const a4 = arch || (typeof process !== 'undefined' && process.arch) || 'x64';
   let best = null;
   let bestScore = -Infinity;
   for (const a of list) {
-    const sc = scoreAsset(a.name, type, a4);
+    const sc = scoreAsset(a.name, type, a4, flavor);
     if (sc === -Infinity) continue;
     if (sc > bestScore || (sc === bestScore && best && a.name.length < best.name.length)) {
       best = a;

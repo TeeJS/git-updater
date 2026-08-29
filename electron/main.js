@@ -172,7 +172,8 @@ ipcMain.handle('update', async (e, body = {}) => {
     if (!body.dryRun) lock = state.acquireLock();
     // Stream per-app progress to the renderer as it happens.
     const onProgress = (id, phase, pct) => e.sender.send('update:progress', { id, phase, pct });
-    return await runner.run(config, { only: body.only, force: !!body.force, dryRun: !!body.dryRun, onProgress });
+    const openFile = (f) => shell.openPath(f); // ShellExecute: an installer's UAC manifest works
+    return await runner.run(config, { only: body.only, force: !!body.force, dryRun: !!body.dryRun, onProgress, openFile });
   } finally {
     state.releaseLock(lock);
     updating = false;

@@ -29,7 +29,7 @@ function queryHive(hive) {
       if (cur) out.push(cur);
       cur = {};
     } else if (cur) {
-      const m = line.match(/^\s+(DisplayName|DisplayVersion)\s+REG_\w+\s+(.*)$/);
+      const m = line.match(/^\s+(DisplayName|DisplayVersion|UninstallString)\s+REG_\w+\s+(.*)$/);
       if (m) cur[m[1]] = m[2].trim();
     }
   }
@@ -68,6 +68,23 @@ function registryVersion(needle) {
   });
   if (!hits.length) return null;
   return hits.map((h) => h.DisplayVersion).sort(cmpVersion).pop();
+}
+
+// How is the app currently installed — 'msi' (MsiExec uninstall entry) or 'exe'
+// (its own uninstaller)? null when not installed. Used to pick the SAME installer
+// flavor on update, so an MSI never installs alongside an EXE install (or vice versa).
+function installedFlavor(needle) {
+  const t = norm(needle);
+  if (t.length < 2) return null;
+  const hits = allInstalled().filter((e) => {
+    const dn = norm(e.DisplayName);
+    return dn.length >= 2 && (dn.includes(t) || t.includes(dn));
+  });
+  if (!hits.length) return null;
+  // Highest-version entry decides (that's the live install we'd be upgrading).
+  hits.sort((a, b) => cmpVersion(a.DisplayVersion, b.DisplayVersion));
+  const top = hits[hits.length - 1];
+  return /msiexec/i.test(top.UninstallString || '') ? 'msi' : 'exe';
 }
 
 // --- running-process detection (for a proactive "close the app" warning) ------
@@ -110,4 +127,4 @@ async function closeApp(needle, opts = {}) {
   return { closed: procs.length, stillRunning: isRunning(needle) };
 }
 
-module.exports = { registryVersion, isRunning, closeApp, clearCache };
+module.exports = { registryVersion, installedFlavor, isRunning, closeApp, clearCache };
