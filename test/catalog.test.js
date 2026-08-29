@@ -2,7 +2,20 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { matchInstalled } = require('../src/catalog');
+const { CATALOG, matchInstalled } = require('../src/catalog');
+
+test('catalog: no duplicate repos', () => {
+  const repos = CATALOG.map((e) => e.repo.toLowerCase());
+  assert.deepEqual([...new Set(repos)].length, repos.length);
+});
+
+test('catalog: generic names stay exact-anchored (no false positives)', () => {
+  const rows = matchInstalled(
+    [{ DisplayName: 'Bunch of Tools' }, { DisplayName: 'uvex Driver' }, { DisplayName: 'action runner' }, { DisplayName: 'pilot' }].map((e) => ({ ...e, DisplayVersion: '1' })),
+    new Set()
+  );
+  assert.deepEqual(rows, []);
+});
 
 const I = (...names) => names.map((DisplayName) => ({ DisplayName, DisplayVersion: '1.0' }));
 
