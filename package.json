@@ -1,6 +1,6 @@
 {
   "name": "git-updater",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "On-demand Windows GUI that updates apps from their GitHub releases (portable & installed). Electron front-end, no localhost server, no shell.",
   "bin": {
     "git-updater": "bin/watch.js"
@@ -37,7 +37,11 @@
       "node_modules/**/*"
     ],
     "publish": [
-      { "provider": "github", "owner": "TeeJS", "repo": "git-updater" }
+      {
+        "provider": "github",
+        "owner": "TeeJS",
+        "repo": "git-updater"
+      }
     ],
     "win": {
       "target": [
