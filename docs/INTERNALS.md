@@ -99,9 +99,5 @@ src/                 the engine (no UI, no shell):
 bin/watch.js         headless CLI over the same engine
 ```
 
-The **open-quake drop-in app** vendors `src/*` into its own folder and drives it from the
-panel — same engine, shared `%APPDATA%\git-updater` config/state, cross-process safe via the
-engine's state lock.
-
 > Not related to `itzg/github-release-watcher` (a Java release *viewer*). This project supersedes
 > the local `github-release-watcher` engine it grew out of.
