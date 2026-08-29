@@ -191,6 +191,7 @@ function statusView(s) {
     case 'downloading': return { text: `Downloading ${s.pct || 0}%`, cls: 'c-work' };
     case 'verifying': return { text: 'Verifying SHA-256', cls: 'c-work' };
     case 'installing': return { text: 'Installing…', cls: 'c-work' };
+    case 'waiting': return { text: 'Waiting for installer…', cls: 'c-work' };
     case 'current': return { text: 'Up to date', cls: 'c-ok' };
     case 'available': return s.present ? { text: 'Update available', cls: 'c-up' } : { text: 'Available to install', cls: 'c-up' };
     case 'installed': return { text: 'Installed', cls: 'c-ok' };
@@ -200,6 +201,7 @@ function statusView(s) {
   }
 }
 function primaryAction(s) {
+  if (s.ph === 'waiting') return 'Check';
   if (s.ph === 'failed') return 'Retry';
   if (!s.present && s.ph !== 'installed') return 'Install'; // not installed -> Install, never "Update"
   if (s.ph === 'available') return 'Update';
@@ -394,6 +396,27 @@ async function removeRepo(r) {
   await saveConfig(); renderRepos();
 }
 
+// After opening an interactive installer, watch the registry until the installed
+// version changes, then refresh that row automatically (10-minute timeout).
+async function watchInstall(key, fromVersion) {
+  const deadline = Date.now() + 10 * 60 * 1000;
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 5000));
+    if (st[key]?.ph !== 'waiting') return; // user did something else with this row
+    try {
+      const inst = await window.api.getInstalled();
+      const cur = inst[key]?.current;
+      if (cur && cur !== fromVersion) {
+        st[key] = { ...st[key], from: cur, present: true };
+        if (!busy) await checkApps([key]); // confirms Up to date / sets final state
+        else { st[key].ph = 'installed'; renderRepos(); }
+        return;
+      }
+    } catch {}
+  }
+  if (st[key]?.ph === 'waiting') { st[key].ph = 'failed'; st[key].reason = 'installer not finished — Retry when done'; renderRepos(); }
+}
+
 // Close the running app (graceful first, force on a second confirm), then retry the update.
 async function closeAndRetry(r, key) {
   if (busy) return;
@@ -443,14 +466,17 @@ async function runBatch(keys, force) {
       if (!r) { st[k] = { ...s, ph: 'failed', reason: 'no result' }; failed++; }
       else if (r.status === 'updated') { st[k] = { ...s, ph: wasInstall ? 'installed' : 'updated', from: r.to, to: r.to, present: true }; wasInstall ? installed++ : done++; }
       else if (r.status === 'current') { st[k] = { ...s, ph: 'current', to: r.to }; }
+      else if (/installer window opened/.test(r.reason || '')) { st[k] = { ...s, ph: 'waiting', to: r.to }; watchInstall(k, s.from); }
       else { st[k] = { ...s, ph: 'failed', reason: r.reason }; failed++; }
     } catch (e) { st[k] = { ...(st[k] || {}), ph: 'failed', reason: clean(e) }; failed++; }
     renderRepos();
   }
   busy = false; renderRepos();
+  const waiting = keys.filter((k) => st[k]?.ph === 'waiting').length;
   const parts = [];
   if (done) parts.push(`${done} updated`);
   if (installed) parts.push(`${installed} installed`);
+  if (waiting) parts.push(`${waiting} waiting for its installer window`);
   if (failed) parts.push(`${failed} failed`);
   msg(parts.length ? parts.join(', ') + '.' : 'Nothing to update.', failed ? 'bad' : 'ok');
 }
