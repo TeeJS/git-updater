@@ -325,8 +325,8 @@ async function load() {
   await refreshInstalled(); // slower registry/manifest detection
   config.repos.forEach((r) => { const s = st[keyOf(r)]; if (s && s.ph === 'loading') s.ph = 'idle'; });
   renderRepos();
-  // Startup check against GitHub — surfaces a deleted/renamed repo and available updates.
-  if (config.repos.length) checkApps(config.repos.map(keyOf));
+  // No GitHub calls at startup — fast launch. Repo validity (deleted/renamed) and
+  // available updates surface when the user runs Check.
 }
 
 $('saveRoot').onclick = () => saveConfig().then(() => { msg('Saved.', 'ok'); refreshInstalled().then(renderRepos); });
