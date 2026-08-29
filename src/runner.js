@@ -6,6 +6,7 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const { spawn } = require('child_process');
 const core = require('./core');
 const github = require('./github');
 const install = require('./install');
@@ -110,6 +111,16 @@ async function handleRepo(repo, id, st, opts) {
   // Stage under %LOCALAPPDATA%, NOT %TEMP% — EDR/ASR rules flag executables run from Temp.
   const stageBase = path.join(process.env.LOCALAPPDATA || os.homedir(), 'git-updater', 'staging');
   fs.mkdirSync(stageBase, { recursive: true });
+  // Best-effort cleanup of leftovers older than a day (kept interactive installers, crashed runs).
+  try {
+    const dayAgo = Date.now() - 24 * 60 * 60 * 1000;
+    for (const name of fs.readdirSync(stageBase)) {
+      const p = path.join(stageBase, name);
+      try {
+        if (fs.statSync(p).mtimeMs < dayAgo) fs.rmSync(p, { recursive: true, force: true });
+      } catch {}
+    }
+  } catch {}
   const tmp = fs.mkdtempSync(path.join(stageBase, 'dl-'));
   try {
     const file = path.join(tmp, asset.name);
@@ -129,7 +140,25 @@ async function handleRepo(repo, id, st, opts) {
           `could not identify the installer type for ${asset.name} — add "install":{"kind":"nsis|inno|msi"} for ${id} in config.json`
         );
       }
-      install.installInstaller(file, { ...repo.install, kind });
+      try {
+        install.installInstaller(file, { ...repo.install, kind });
+      } catch (e) {
+        // Silent MSI machine-installs can't show a UAC prompt, so unelevated they exit
+        // 1603. Fall back to the installer's own window: msiexec with UI triggers a
+        // normal UAC prompt the user can approve. (No PowerShell, no self-elevation.)
+        if (e.status === 1603 && kind === 'msi') {
+          const keep = path.join(stageBase, asset.name); // outlives the tmp cleanup below
+          fs.copyFileSync(file, keep);
+          log(`  1603 -> opening interactive installer: msiexec /i ${keep}`);
+          spawn('msiexec', ['/i', keep], { detached: true, stdio: 'ignore' }).unref();
+          return {
+            ...base,
+            status: 'failed',
+            reason: 'installer window opened — approve the UAC prompt and finish it, then Check',
+          };
+        }
+        throw e;
+      }
     } else {
       const installed = await install.installPortable(file, repo.install);
       const stale = install.pruneStale(repo.install.dir, prev.files || [], installed);

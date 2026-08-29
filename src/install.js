@@ -246,16 +246,18 @@ function installInstaller(filePath, install, opts = {}) {
     throw r.error;
   }
   if (r.status !== 0 && r.status !== 3010) {
-    // 3010 = reboot required (success). Give an actionable message; a nonzero exit is
-    // most often the app being open (files in use).
+    // 3010 = reboot required (success). 1603 from a silent machine-install is almost
+    // always missing admin rights (silent installs can't show a UAC prompt).
     const byCode = {
       1602: 'installer was cancelled',
-      1603: 'installer failed — close the app if it is running, then Retry (or it may need admin rights)',
+      1603: 'silent install needs administrator rights',
       1618: 'another installer is already running — wait for it to finish, then Retry',
       1619: 'installer package could not be opened',
       1620: 'installer package is invalid',
     };
-    throw new Error(byCode[r.status] || `installer failed (exit ${r.status}) — if the app is open, close it and Retry`);
+    const err = new Error(byCode[r.status] || `installer failed (exit ${r.status}) — if the app is open, close it and Retry`);
+    err.status = r.status;
+    throw err;
   }
   return { command, status: r.status };
 }
