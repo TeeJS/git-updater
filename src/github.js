@@ -22,7 +22,27 @@ function apiHeaders() {
   return h;
 }
 
+// The Electron GUI injects Electron's net.fetch here (see electron/main.js) so requests go
+// through Chromium's network stack, which trusts the OS/Windows certificate store — including
+// a corporate VPN/proxy's root CA that Node's own bundled CA list rejects with
+// UNABLE_TO_GET_ISSUER_CERT_LOCALLY. Left unset (headless CLI, tests) we fall back to the
+// global fetch; globalThis.fetch is read at call time so tests can still stub it.
+let _fetchImpl = null;
+function setFetch(fn) { _fetchImpl = typeof fn === 'function' ? fn : null; }
+function doFetch(url, init) { return (_fetchImpl || globalThis.fetch)(url, init); }
+
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// TLS trust failures never recover on retry, and almost always mean a corporate VPN/proxy is
+// doing SSL inspection with a root CA the app doesn't trust.
+const TLS_CERT_CODES = new Set([
+  'UNABLE_TO_GET_ISSUER_CERT_LOCALLY',
+  'UNABLE_TO_GET_ISSUER_CERT',
+  'SELF_SIGNED_CERT_IN_CHAIN',
+  'DEPTH_ZERO_SELF_SIGNED_CERT',
+  'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
+  'CERT_UNTRUSTED',
+]);
 
 // Node's global fetch reports EVERY network-level failure (DNS, TLS, a reset or refused
 // connection, a timeout, a blocking proxy) as a generic TypeError whose message is just
@@ -43,10 +63,15 @@ function describeNetworkError(err, url) {
   let host = url;
   try { host = new URL(url).host; } catch {}
   const cause = err && err.cause;
-  const detail = (cause && (cause.code || cause.message)) || (err && err.message) || String(err);
-  const e = new Error(`network error reaching ${host}: ${detail}`);
+  const code = (cause && cause.code) || (err && err.code) || null;
+  const detail = code || (cause && cause.message) || (err && err.message) || String(err);
+  let msg = `network error reaching ${host}: ${detail}`;
+  if (code && TLS_CERT_CODES.has(code)) {
+    msg += " — the network's TLS certificate isn't trusted (common on a corporate VPN/proxy; works off it)";
+  }
+  const e = new Error(msg);
   e.networkError = true;
-  e.code = (cause && cause.code) || (err && err.code);
+  e.code = code;
   return e;
 }
 
@@ -64,16 +89,18 @@ async function withNetRetry(fn, url) {
     try {
       return await fn();
     } catch (err) {
-      if (!isNetworkError(err)) throw err;
+      if (!isNetworkError(err)) throw err; // not a network problem: bubble up unchanged
       lastErr = err;
-      if (attempt < NET_TRIES) await sleep(NET_BASE_DELAY_MS * 2 ** (attempt - 1));
+      const code = err.code || (err.cause && err.cause.code) || '';
+      if (TLS_CERT_CODES.has(code) || attempt === NET_TRIES) break; // cert errors never recover
+      await sleep(NET_BASE_DELAY_MS * 2 ** (attempt - 1));
     }
   }
   throw describeNetworkError(lastErr, url);
 }
 
 async function ghJson(url) {
-  const res = await withNetRetry(() => fetch(url, { headers: apiHeaders() }), url);
+  const res = await withNetRetry(() => doFetch(url, { headers: apiHeaders() }), url);
   if (res.status === 403 && res.headers.get('x-ratelimit-remaining') === '0') {
     const reset = Number(res.headers.get('x-ratelimit-reset') || 0);
     const when = reset ? new Date(reset * 1000).toLocaleTimeString() : 'later';
@@ -130,7 +157,7 @@ async function downloadAsset(url, destPath, onProgress) {
   // or the body stream (pipeline rejects). Each attempt re-fetches and overwrites destPath,
   // so a partial file from a failed try is never left behind.
   return withNetRetry(async () => {
-    const res = await fetch(url, { headers: { 'User-Agent': UA } });
+    const res = await doFetch(url, { headers: { 'User-Agent': UA } });
     if (!res.ok) throw new Error(`download ${res.status} for ${url}`);
     const declared = Number(res.headers.get('content-length') || 0);
     if (declared && declared > MAX_BYTES) throw new Error(`asset too large: ${declared} bytes (cap ${MAX_BYTES})`);
@@ -173,7 +200,7 @@ async function fetchChecksumFromRelease(rel, assetName) {
   );
   for (const c of candidates) {
     try {
-      const res = await fetch(c.browser_download_url, { headers: { 'User-Agent': UA } });
+      const res = await doFetch(c.browser_download_url, { headers: { 'User-Agent': UA } });
       if (!res.ok) continue;
       const text = await res.text();
       // Lines look like "<hex>  <filename>" (or "<hex> *<filename>"), or a bare hex
@@ -207,4 +234,4 @@ function verifyDigest(filePath, digest) {
   return { verified: true };
 }
 
-module.exports = { getLatestRelease, listAssets, downloadAsset, verifyDigest, fetchChecksumFromRelease };
+module.exports = { getLatestRelease, listAssets, downloadAsset, verifyDigest, fetchChecksumFromRelease, setFetch };

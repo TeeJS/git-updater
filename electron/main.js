@@ -4,7 +4,7 @@
 // the renderer talks to the engine over IPC (no socket), the engine runs in-process
 // (no shell, no self-elevation), and closing the window exits everything (on-demand).
 
-const { app, BrowserWindow, ipcMain, dialog, shell, screen } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, screen, net } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const core = require('../src/core');
@@ -259,6 +259,11 @@ if (!app.requestSingleInstanceLock()) {
     }
   });
   app.whenReady().then(() => {
+    // Route the engine's HTTP through Chromium's network stack (Electron net.fetch): it trusts
+    // the OS/Windows certificate store, so a corporate VPN/proxy's SSL-inspection root CA — the
+    // one the browser already trusts — is honored here too. Node's own fetch ignores that store
+    // and fails with UNABLE_TO_GET_ISSUER_CERT_LOCALLY on such networks.
+    github.setFetch((url, init) => net.fetch(url, init));
     migrateConfig();
     createWindow();
   });

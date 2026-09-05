@@ -88,6 +88,45 @@ test('getLatestRelease: an HTTP 404 is not treated as a retryable network error'
   }
 });
 
+// A TLS trust failure is the corporate-VPN case: it must be explained (not shown as a bare
+// code), flagged, and — since it never recovers — NOT retried.
+test('getLatestRelease: a TLS certificate error is explained and not retried', async () => {
+  const orig = global.fetch;
+  let calls = 0;
+  global.fetch = async () => {
+    calls++;
+    throw Object.assign(new TypeError('fetch failed'), { cause: { code: 'UNABLE_TO_GET_ISSUER_CERT_LOCALLY' } });
+  };
+  try {
+    await assert.rejects(() => github.getLatestRelease('o', 'r'), (e) => {
+      assert.ok(e.networkError, 'flagged as networkError');
+      assert.match(e.message, /UNABLE_TO_GET_ISSUER_CERT_LOCALLY/);
+      assert.match(e.message, /certificate|VPN|proxy/i, 'explains the likely cause');
+      return true;
+    });
+    assert.equal(calls, 1, 'a cert error must not be retried');
+  } finally {
+    global.fetch = orig;
+  }
+});
+
+// The GUI injects Electron's net.fetch (which trusts the Windows cert store) via setFetch;
+// when set, it must be used in place of the global fetch. Restoring null falls back again.
+test('setFetch: an injected fetch is used instead of the global fetch', async () => {
+  let usedInjected = false;
+  github.setFetch(async () => {
+    usedInjected = true;
+    return { status: 200, ok: true, headers: { get: () => null }, json: async () => ({ tag_name: 'v2.0.0' }) };
+  });
+  try {
+    const rel = await github.getLatestRelease('o', 'r');
+    assert.equal(rel.tag_name, 'v2.0.0');
+    assert.ok(usedInjected, 'the injected fetch should be called');
+  } finally {
+    github.setFetch(null); // restore default so later tests use their global.fetch stubs
+  }
+});
+
 test('verifyDigest: skips with a note when no digest', () => {
   const r = github.verifyDigest('/any/path', undefined);
   assert.ok(r.skipped);
