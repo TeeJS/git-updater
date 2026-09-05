@@ -22,8 +22,58 @@ function apiHeaders() {
   return h;
 }
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Node's global fetch reports EVERY network-level failure (DNS, TLS, a reset or refused
+// connection, a timeout, a blocking proxy) as a generic TypeError whose message is just
+// "fetch failed" — the real reason sits in err.cause. A connection reset mid-download
+// instead surfaces a Node system-error code directly (err.code). Recognize both so we can
+// retry them and report something the user can act on.
+function isNetworkError(err) {
+  if (!err) return false;
+  if (err instanceof TypeError && err.cause) return true; // "fetch failed" / "terminated"
+  const code = err.code || (err.cause && err.cause.code);
+  return typeof code === 'string' && /^(E[A-Z]+|UND_ERR_)/.test(code);
+}
+
+// Turn a bare "fetch failed" into an actionable message that names the host that was
+// unreachable and the underlying cause, e.g.
+// "network error reaching objects.githubusercontent.com: ECONNRESET".
+function describeNetworkError(err, url) {
+  let host = url;
+  try { host = new URL(url).host; } catch {}
+  const cause = err && err.cause;
+  const detail = (cause && (cause.code || cause.message)) || (err && err.message) || String(err);
+  const e = new Error(`network error reaching ${host}: ${detail}`);
+  e.networkError = true;
+  e.code = (cause && cause.code) || (err && err.code);
+  return e;
+}
+
+// Transient network failures are common on release downloads and usually clear on a second
+// try — that's exactly why the Retry button works. Retry them automatically with a short
+// exponential backoff. HTTP error *statuses* (404, 403, …) and any other non-network error
+// are NOT retried: fn throws them and we rethrow unchanged so the caller decides what they
+// mean. Only real network failures are retried, and if they exhaust we throw a described one.
+const NET_TRIES = 3;
+const NET_BASE_DELAY_MS = 400; // 400ms, then 800ms
+
+async function withNetRetry(fn, url) {
+  let lastErr;
+  for (let attempt = 1; attempt <= NET_TRIES; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (!isNetworkError(err)) throw err;
+      lastErr = err;
+      if (attempt < NET_TRIES) await sleep(NET_BASE_DELAY_MS * 2 ** (attempt - 1));
+    }
+  }
+  throw describeNetworkError(lastErr, url);
+}
+
 async function ghJson(url) {
-  const res = await fetch(url, { headers: apiHeaders() });
+  const res = await withNetRetry(() => fetch(url, { headers: apiHeaders() }), url);
   if (res.status === 403 && res.headers.get('x-ratelimit-remaining') === '0') {
     const reset = Number(res.headers.get('x-ratelimit-reset') || 0);
     const when = reset ? new Date(reset * 1000).toLocaleTimeString() : 'later';
@@ -76,31 +126,36 @@ async function listAssets(owner, repo, opts = {}) {
 // fetch follows redirects by default; enforce the size cap while streaming.
 // onProgress(pct 0-100) is called as bytes arrive (throttled) when a size is known.
 async function downloadAsset(url, destPath, onProgress) {
-  const res = await fetch(url, { headers: { 'User-Agent': UA } });
-  if (!res.ok) throw new Error(`download ${res.status} for ${url}`);
-  const declared = Number(res.headers.get('content-length') || 0);
-  if (declared && declared > MAX_BYTES) throw new Error(`asset too large: ${declared} bytes (cap ${MAX_BYTES})`);
-  let seen = 0;
-  let lastPct = -1;
-  await pipeline(
-    Readable.fromWeb(res.body),
-    async function* (source) {
-      for await (const chunk of source) {
-        seen += chunk.length;
-        if (seen > MAX_BYTES) throw new Error(`asset exceeded size cap ${MAX_BYTES} bytes`);
-        if (onProgress && declared) {
-          const pct = Math.floor((seen / declared) * 100);
-          if (pct !== lastPct) {
-            lastPct = pct;
-            onProgress(pct);
+  // Retry the whole download: a reset can hit either the initial connection (fetch rejects)
+  // or the body stream (pipeline rejects). Each attempt re-fetches and overwrites destPath,
+  // so a partial file from a failed try is never left behind.
+  return withNetRetry(async () => {
+    const res = await fetch(url, { headers: { 'User-Agent': UA } });
+    if (!res.ok) throw new Error(`download ${res.status} for ${url}`);
+    const declared = Number(res.headers.get('content-length') || 0);
+    if (declared && declared > MAX_BYTES) throw new Error(`asset too large: ${declared} bytes (cap ${MAX_BYTES})`);
+    let seen = 0;
+    let lastPct = -1;
+    await pipeline(
+      Readable.fromWeb(res.body),
+      async function* (source) {
+        for await (const chunk of source) {
+          seen += chunk.length;
+          if (seen > MAX_BYTES) throw new Error(`asset exceeded size cap ${MAX_BYTES} bytes`);
+          if (onProgress && declared) {
+            const pct = Math.floor((seen / declared) * 100);
+            if (pct !== lastPct) {
+              lastPct = pct;
+              onProgress(pct);
+            }
           }
+          yield chunk;
         }
-        yield chunk;
-      }
-    },
-    fs.createWriteStream(destPath)
-  );
-  return destPath;
+      },
+      fs.createWriteStream(destPath)
+    );
+    return destPath;
+  }, url);
 }
 
 // Fallback when GitHub provides no asset.digest: many releases ship a checksums file
