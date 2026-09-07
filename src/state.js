@@ -76,4 +76,4 @@ function releaseLock(lock) {
   }
 }
 
-module.exports = { load, save, defaultStatePath, acquireLock, releaseLock };
+module.exports = { load, save, defaultStatePath, acquireLock, releaseLock, pidAlive };

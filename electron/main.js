@@ -13,11 +13,16 @@ const runner = require('../src/runner');
 const state = require('../src/state');
 const detect = require('../src/detect');
 const catalog = require('../src/catalog');
+const selfupdate = require('../src/selfupdate');
 const { log, LOG_FILE } = require('../src/log');
 
 log(`--- git-updater ${app.getVersion()} started ---`);
 process.on('uncaughtException', (e) => log(`UNCAUGHT: ${e && e.stack ? e.stack : e}`));
 process.on('unhandledRejection', (e) => log(`UNHANDLED: ${e && e.stack ? e.stack : e}`));
+
+// Self-update layout (see src/selfupdate.js): the exe at ROOT is the launcher, updated versions
+// live in ROOT\app-<version>\. Whichever copy this is, ROOT is where new versions land.
+const ROOT = selfupdate.layout(process.execPath).root;
 
 function dirHasFiles(dir) {
   try {
@@ -204,19 +209,21 @@ ipcMain.handle('asset:preview', async (_e, appKey) => {
 });
 // --- Self-update (portable, run-as-is) ----------------------------------------
 // Checked only when the user runs "Check all" — no network at startup, same as
-// tracked apps. Compares the latest release tag with the running version; the
-// banner links to the release download page.
+// tracked apps. Compares the latest release tag with the running version; on Update,
+// downloads+verifies+extracts the new build, then hands off to a detached helper (a
+// second copy of this same exe) to swap it in and relaunch once this process exits.
 ipcMain.handle('selfupdate:check', async () => {
   if (!app.isPackaged) return null; // dev run
   try {
-    const rel = await github.getLatestRelease('TeeJS', 'git-updater');
-    const tag = core.normTag(rel.tag_name || '');
-    return core.cmpVersion(tag, app.getVersion()) > 0 ? { version: tag } : null;
+    const found = await selfupdate.checkForUpdate(app.getVersion());
+    return found ? { version: found.version } : null;
   } catch (e) {
     log(`selfupdate check: ${e && e.message ? e.message : e}`); // e.g. no releases yet
     return null;
   }
 });
+ipcMain.handle('selfupdate:lastApply', () => selfupdate.consumeApplyMarker(app.getVersion()));
+ipcMain.handle('app:version', () => app.getVersion());
 
 ipcMain.handle('pick-folder', async () => {
   const r = await dialog.showOpenDialog(win, {
@@ -248,10 +255,45 @@ ipcMain.handle('update', async (e, body = {}) => {
   }
 });
 
-// --- lifecycle: single instance, on-demand ------------------------------------
-if (!app.requestSingleInstanceLock()) {
-  app.quit();
-} else {
+// Downloads+verifies+extracts the new build into ROOT\app-<version>\ (nothing running is
+// touched), then restarts through the launcher, which hands off to it once this process is gone.
+ipcMain.handle('selfupdate:apply', async (e) => {
+  if (updating) throw new Error('an update is already in progress');
+  if (!app.isPackaged) throw new Error('self-update is unavailable in a dev run');
+  updating = true;
+  try {
+    const onProgress = (phase, pct) => e.sender.send('update:progress', { id: 'self', phase, pct });
+    const { tag } = await selfupdate.prepareUpdate(ROOT, app.getVersion(), onProgress);
+    selfupdate.writeApplyMarker({ expectVersion: tag });
+    selfupdate.relaunchViaLauncher(ROOT, process.pid);
+    setTimeout(() => app.exit(0), 300); // let the IPC reply below flush before this process dies
+    return { relaunching: true, version: tag };
+  } finally {
+    updating = false; // only reached on a failure before the relaunch was started
+  }
+});
+
+// --- lifecycle: launcher hand-off, single instance, on-demand -------------------
+(async () => {
+  // Relaunch after a self-update: the updating process still holds the single-instance lock
+  // until it exits, so wait for it before handing off.
+  const waitPid = selfupdate.waitPidArg(process.argv);
+  if (waitPid) await selfupdate.waitForExit(waitPid);
+
+  // Launcher role: a newer app-<version> sibling exists -> run that instead of ourselves.
+  // Also lets a version folder that is itself outdated defer to the newest one.
+  const target = app.isPackaged ? selfupdate.handoffTarget(process.execPath, app.getVersion()) : null;
+  if (target) {
+    log(`launcher: handing off to ${target.dir}`);
+    selfupdate.launch(target.dir);
+    app.exit(0);
+    return;
+  }
+
+  if (!app.requestSingleInstanceLock()) {
+    app.quit();
+    return;
+  }
   app.on('second-instance', () => {
     if (win) {
       if (win.isMinimized()) win.restore();
@@ -265,10 +307,11 @@ if (!app.requestSingleInstanceLock()) {
     // and fails with UNABLE_TO_GET_ISSUER_CERT_LOCALLY on such networks.
     github.setFetch((url, init) => net.fetch(url, init));
     migrateConfig();
+    if (app.isPackaged) selfupdate.cleanupLeftovers(ROOT, app.getVersion());
     createWindow();
   });
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
   app.on('window-all-closed', () => app.quit()); // close the window -> everything exits
-}
+})();

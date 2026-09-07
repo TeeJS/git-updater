@@ -117,6 +117,65 @@ test('installPortable: recovers a crashed swap (parked old dir, missing dest)', 
   }
 });
 
+// --- swapDir: the reusable primitive self-update builds on --------------------
+
+test('swapDir: carryOver false does not leak old files into the new dest', () => {
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'gu-swap1-'));
+  try {
+    const dest = path.join(base, 'app');
+    fs.mkdirSync(dest, { recursive: true });
+    fs.writeFileSync(path.join(dest, 'settings.cfg'), 'user settings'); // NOT in the new build
+
+    const srcDir = fs.mkdtempSync(path.join(base, 'newbuild-'));
+    fs.writeFileSync(path.join(srcDir, 'app.exe'), 'v2');
+
+    const files = install.swapDir(dest, srcDir, { carryOver: false });
+    assert.deepEqual(files, ['app.exe']);
+    assert.equal(fs.readFileSync(path.join(dest, 'app.exe'), 'utf8'), 'v2');
+    assert.ok(!fs.existsSync(path.join(dest, 'settings.cfg')), 'old file must NOT carry over');
+    assert.ok(!fs.existsSync(dest + '.git-updater-old'), 'old dir removed by default');
+  } finally {
+    fs.rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test('swapDir: deleteOldDir false + custom oldSuffix leaves the parked dir behind, untouched', () => {
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'gu-swap2-'));
+  try {
+    const dest = path.join(base, 'app');
+    fs.mkdirSync(dest, { recursive: true });
+    fs.writeFileSync(path.join(dest, 'app.exe'), 'v1');
+
+    const srcDir = fs.mkdtempSync(path.join(base, 'newbuild-'));
+    fs.writeFileSync(path.join(srcDir, 'app.exe'), 'v2');
+
+    const oldSuffix = '.git-updater-old-12345';
+    install.swapDir(dest, srcDir, { carryOver: false, deleteOldDir: false, oldSuffix });
+
+    assert.equal(fs.readFileSync(path.join(dest, 'app.exe'), 'utf8'), 'v2', 'new version swapped in');
+    const parked = dest + oldSuffix;
+    assert.ok(fs.existsSync(parked), 'old dir left behind for later cleanup');
+    assert.equal(fs.readFileSync(path.join(parked, 'app.exe'), 'utf8'), 'v1', 'old dir untouched');
+  } finally {
+    fs.rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test('swapDir: no previous dest (fresh install) just moves srcDir into place', () => {
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'gu-swap3-'));
+  try {
+    const dest = path.join(base, 'app');
+    const srcDir = fs.mkdtempSync(path.join(base, 'newbuild-'));
+    fs.writeFileSync(path.join(srcDir, 'app.exe'), 'v1');
+
+    const files = install.swapDir(dest, srcDir, { carryOver: false, deleteOldDir: false });
+    assert.deepEqual(files, ['app.exe']);
+    assert.equal(fs.readFileSync(path.join(dest, 'app.exe'), 'utf8'), 'v1');
+  } finally {
+    fs.rmSync(base, { recursive: true, force: true });
+  }
+});
+
 // --- checksum-file fallback (#2) ----------------------------------------------
 
 test('verifyDigest: sha512 digests verify too', () => {

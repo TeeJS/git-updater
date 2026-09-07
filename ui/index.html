@@ -162,6 +162,11 @@
             font-size: .85rem; color: var(--accent); background: rgba(227,161,60,.1);
             border: 1px solid rgba(227,161,60,.35); border-radius: 8px; }
   #selfup.show { display: flex; }
+  #selfupText { flex: 1; }
+  #selfupDismiss { background: none; border: none; color: inherit; opacity: .6; cursor: pointer;
+                   font-size: 1rem; line-height: 1; padding: 0 .2rem; }
+  #selfupDismiss:hover { opacity: 1; }
+  #selfupDismiss:disabled { opacity: .25; cursor: default; }
 </style>
 </head>
 <body>
@@ -172,7 +177,7 @@
   </header>
   <p class="tagline">Keeps your apps current straight from their GitHub releases.</p>
   <div id="msg"></div>
-  <div id="selfup"><span id="selfupText"></span><button id="selfupBtn" class="primary"></button></div>
+  <div id="selfup"><span id="selfupText"></span><button id="selfupBtn" class="primary"></button><button id="selfupDismiss" title="Dismiss">&times;</button></div>
 
   <div class="panel">
     <div class="toolbar">
@@ -239,6 +244,7 @@
         <button id="openLog">Open log</button>
       </div>
       <p class="hint">Hand-edit for per-app overrides (asset pattern, install dir, installer kind/args, process name, release tag prefix).</p>
+      <p class="hint">git-updater <span id="appVersion"></span></p>
     </div>
   </details>
 </div>
@@ -407,6 +413,7 @@ async function refreshInstalled() {
   } catch {}
 }
 async function load() {
+  window.api.getVersion().then((v) => { $('appVersion').textContent = v; }).catch(() => {});
   config = await window.api.getConfig();
   if (!config.repos) config.repos = [];
   $('portableRoot').value = config.portableRoot || '';
@@ -417,6 +424,10 @@ async function load() {
   renderRepos();
   // No GitHub calls at startup — fast launch. Repo validity (deleted/renamed) and
   // available updates surface when the user runs Check.
+  const lastApply = await window.api.selfUpdateLastApply().catch(() => null);
+  if (lastApply && !lastApply.ok) {
+    msg(`Updated to ${lastApply.expectVersion} but is currently running ${lastApply.actualVersion} — check the log.`, 'bad');
+  }
 }
 
 $('saveRoot').onclick = () => saveConfig().then(() => { msg('Saved.', 'ok'); refreshInstalled().then(renderRepos); });
@@ -576,6 +587,10 @@ async function runBatch(keys, force) {
 }
 
 window.api.onProgress(({ id, phase, pct }) => {
+  if (id === 'self') {
+    $('selfupText').textContent = `git-updater — ${statusView({ ph: phase, pct }).text}`;
+    return;
+  }
   if (!st[id]) return;
   st[id].ph = phase; if (phase === 'downloading') st[id].pct = pct;
   renderRepos();
@@ -586,18 +601,41 @@ $('browseAll').onclick = () => window.api.openScan('all');
 window.api.onConfigChanged(() => load()); // scan window added apps -> refresh the list
 
 // git-updater's own update — piggybacks on Check all (no startup network calls).
-// Portable-only app: the banner links to the release download page.
+let selfupDismissed = false;
 async function selfCheck() {
+  if (selfupDismissed) return;
   try {
     const u = await window.api.selfUpdateCheck();
     if (!u) return;
     $('selfupText').textContent = `git-updater ${u.version} is available.`;
     const btn = $('selfupBtn');
-    btn.textContent = 'Open download page';
-    btn.onclick = () => window.api.openRelease('TeeJS', 'git-updater');
+    btn.textContent = 'Update';
+    btn.disabled = false;
+    btn.onclick = () => applySelfUpdate(u.version);
+    $('selfupDismiss').disabled = false;
     $('selfup').classList.add('show');
   } catch {} // never let the self-check disturb the app check
 }
+
+async function applySelfUpdate(version) {
+  const btn = $('selfupBtn');
+  btn.disabled = true;
+  $('selfupDismiss').disabled = true; // no dismissing mid-update
+  try {
+    $('selfupText').textContent = `Downloading git-updater ${version}…`;
+    const r = await window.api.selfUpdateApply();
+    if (r && r.relaunching) $('selfupText').textContent = `Restarting into ${r.version}…`;
+  } catch (e) {
+    $('selfupText').textContent = clean(e);
+    btn.disabled = false;
+    $('selfupDismiss').disabled = false;
+  }
+}
+
+$('selfupDismiss').onclick = () => {
+  selfupDismissed = true;
+  $('selfup').classList.remove('show');
+};
 
 $('checkAll').onclick = () => { selfCheck(); checkApps(config.repos.map(keyOf)); };
 $('updateAll').onclick = () => runBatch(config.repos.map(keyOf));

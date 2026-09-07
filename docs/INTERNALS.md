@@ -80,8 +80,31 @@ node bin/watch.js list-assets owner/repo    # inspect a release's assets
 local `Connect-AzAccount` session). Machines without the `.signing/` setup build unsigned with a
 warning. Publish with `gh release create vX.Y.Z dist/*.zip`.
 
-**Self-update**: *Check all* also checks git-updater's own releases and shows a banner linking
-to the download page when a newer version exists. Nothing runs at startup.
+**Self-update** (`src/selfupdate.js`) follows the Squirrel.Windows layout: nothing a process is
+running from is ever renamed or deleted. The exe at the install root is the **launcher**; updated
+versions live in `<root>\app-<version>\`. A flat unzip-and-run install simply *becomes* the
+launcher on its first update — its files are never touched again.
+
+- *Check all* also checks git-updater's own releases (`GITUPDATER_SELFUPDATE_OWNER`/`_REPO`
+  override the repo) and shows a banner with **Update** (and a dismiss × for the session).
+- **Update** runs entirely in the running process: download to `%LOCALAPPDATA%\git-updater\
+  self-update\<tag>\`, verify (digest or checksums file), extract into a stage dir under the
+  root, rename that fresh folder to `app-<tag>` — the same "fresh install" rename every tracked
+  portable app already does — then write `last-apply.json` and start the launcher with
+  `--wait-pid <own pid>` and exit. A failure at any step leaves the running version untouched.
+- On every start (`electron/main.js`, before the single-instance lock): if `--wait-pid` is
+  present, wait for that process to exit (it holds the lock). Then, if a newer `app-*` folder
+  exists that isn't the one we're running from, spawn its exe and exit — that's the launcher
+  hand-off (Electron boots twice; ~1s). Otherwise run normally.
+- On a normal start, `cleanupLeftovers()` removes `app-*` folders older than the running version
+  (nothing runs from them any more), stale stage dirs, and day-old downloads. The next `load()`
+  consumes `last-apply.json` and warns if the version that came up isn't the one expected.
+
+Why not swap in place: a running Electron process can't have its own directory renamed (dozens
+of open DLL/resource handles), and renames done from inside Electron hit EPERM even from a
+sibling copy — a known, unresolved class of electron-updater issues. New-folder-plus-launcher
+sidesteps it entirely. Cost: the launcher copy stays on disk (~270 MB) next to the current
+version. `bin/watch.js` (headless CLI) does not self-update — apply is GUI-only.
 
 ## Architecture
 
@@ -95,6 +118,7 @@ src/                 the engine (no UI, no shell):
   github.js          release fetch + download + digest/checksums-file verify (sha256/sha512)
   install.js         transactional portable dir-swap, .7z via 7z-wasm, silent installer
   runner.js          orchestration + progress events; state keyed per (repo + type)
+  selfupdate.js       git-updater updating itself: download/verify/extract, detached-helper swap
   state.js           atomic state + cross-process update lock  (%APPDATA%\git-updater)
   detect.js          installed versions/flavor (uninstall registry), running-app check (async)
   catalog.js         known-apps catalog for "Scan this PC"
