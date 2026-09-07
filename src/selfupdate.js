@@ -34,6 +34,19 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// Inside Electron, Node's fs is patched to treat any path containing ".asar" as an archive —
+// so writing, chmod-ing, or deleting the new build's resources\app.asar fails (ENOENT/ENOTDIR).
+// process.noAsar turns that patch off; a no-op under plain Node.
+async function withoutAsar(fn) {
+  const prev = process.noAsar;
+  process.noAsar = true;
+  try {
+    return await fn();
+  } finally {
+    process.noAsar = prev;
+  }
+}
+
 // --- layout -------------------------------------------------------------------
 
 // Where the install root is, given the running exe: either the launcher itself
@@ -134,16 +147,19 @@ async function prepareUpdate(root, currentVersion, onProgress = () => {}) {
 
   onProgress('installing');
   const target = path.join(root, `app-${tag}`);
-  fs.rmSync(target, { recursive: true, force: true }); // a previous partial attempt
-  const stage = fs.mkdtempSync(path.join(root, STAGE_PREFIX));
-  try {
-    const { srcDir } = await install.extractArchive(file, stage);
-    if (!fs.existsSync(path.join(srcDir, EXE))) throw new Error(`downloaded build has no ${EXE}`);
-    fs.renameSync(srcDir, target);
-  } finally {
-    fs.rmSync(stage, { recursive: true, force: true });
-  }
+  await withoutAsar(async () => {
+    fs.rmSync(target, { recursive: true, force: true }); // a previous partial attempt
+    const stage = fs.mkdtempSync(path.join(root, STAGE_PREFIX));
+    try {
+      const { srcDir } = await install.extractArchive(file, stage);
+      if (!fs.existsSync(path.join(srcDir, EXE))) throw new Error(`downloaded build has no ${EXE}`);
+      fs.renameSync(srcDir, target);
+    } finally {
+      fs.rmSync(stage, { recursive: true, force: true });
+    }
+  });
   fs.rmSync(downloadDir, { recursive: true, force: true });
+  log(`self-update: ${tag} extracted to ${target}`);
   return { tag, dir: target };
 }
 
@@ -184,16 +200,11 @@ function consumeApplyMarker(actualVersion) {
 
 // Best-effort, never throws. Removes app-* folders OLDER than the running version (nothing
 // runs from them any more — a still-exiting one just fails with EBUSY and is retried next
-// start), stale stage dirs, and day-old downloads.
-function cleanupLeftovers(root, currentVersion) {
-  for (const v of listVersions(root)) {
-    if (core.cmpVersion(v.version, currentVersion) >= 0) continue;
-    try {
-      fs.rmSync(v.dir, { recursive: true, force: true });
-    } catch {}
-  }
+// start), any stage dir (only ever live during an update in THIS process), and day-old
+// downloads.
+async function cleanupLeftovers(root, currentVersion) {
   const dayAgo = Date.now() - DAY_MS;
-  const sweep = (dir, matches) => {
+  const sweep = (dir, matches, minAgeMs) => {
     let entries;
     try {
       entries = fs.readdirSync(dir);
@@ -204,12 +215,20 @@ function cleanupLeftovers(root, currentVersion) {
       if (!matches(name)) continue;
       const p = path.join(dir, name);
       try {
-        if (fs.statSync(p).mtimeMs < dayAgo) fs.rmSync(p, { recursive: true, force: true });
+        if (!minAgeMs || fs.statSync(p).mtimeMs < dayAgo) fs.rmSync(p, { recursive: true, force: true });
       } catch {}
     }
   };
-  sweep(root, (name) => name.startsWith(STAGE_PREFIX));
-  sweep(SELF_ROOT, (name) => name !== path.basename(APPLY_MARKER));
+  await withoutAsar(async () => {
+    for (const v of listVersions(root)) {
+      if (core.cmpVersion(v.version, currentVersion) >= 0) continue;
+      try {
+        fs.rmSync(v.dir, { recursive: true, force: true });
+      } catch {}
+    }
+    sweep(root, (name) => name.startsWith(STAGE_PREFIX), 0);
+  });
+  sweep(SELF_ROOT, (name) => name !== path.basename(APPLY_MARKER), DAY_MS);
 }
 
 module.exports = {

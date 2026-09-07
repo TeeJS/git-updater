@@ -88,7 +88,7 @@ test('writeApplyMarker/consumeApplyMarker: round-trips, is consumed once, detect
   assert.equal(selfupdate.consumeApplyMarker('1.9.9').ok, false);
 });
 
-test('cleanupLeftovers: removes older app-* folders and stale stage/download dirs, keeps current+newer', () => {
+test('cleanupLeftovers: removes older app-* folders and stale stage/download dirs, keeps current+newer', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'gu-cleanup-'));
   try {
     const older = versionDir(root, '0.1.5');
@@ -105,16 +105,19 @@ test('cleanupLeftovers: removes older app-* folders and stale stage/download dir
     touch(staleStage, staleAt);
     touch(freshStage, Date.now());
     const staleDownload = path.join(process.env.LOCALAPPDATA, 'git-updater', 'self-update', 'v0.1.5');
+    const freshDownload = path.join(process.env.LOCALAPPDATA, 'git-updater', 'self-update', 'v0.1.7');
     touch(staleDownload, staleAt);
+    touch(freshDownload, Date.now());
 
-    selfupdate.cleanupLeftovers(root, '0.1.6');
+    await selfupdate.cleanupLeftovers(root, '0.1.6');
 
     assert.ok(!fs.existsSync(older), 'older version folder removed');
     assert.ok(fs.existsSync(current), 'running version kept');
     assert.ok(fs.existsSync(newer), 'newer version kept');
-    assert.ok(!fs.existsSync(staleStage), 'stale stage dir removed');
-    assert.ok(fs.existsSync(freshStage), 'fresh stage dir left alone');
+    assert.ok(!fs.existsSync(staleStage), 'stage dirs removed regardless of age (only live during an update in-process)');
+    assert.ok(!fs.existsSync(freshStage), 'stage dirs removed regardless of age (only live during an update in-process)');
     assert.ok(!fs.existsSync(staleDownload), 'stale download removed');
+    assert.ok(fs.existsSync(freshDownload), 'fresh download kept');
     assert.ok(fs.existsSync(path.join(root, EXE)) === false, 'sanity: no launcher exe in this fixture');
   } finally {
     fs.rmSync(root, { recursive: true, force: true });

@@ -266,8 +266,12 @@ ipcMain.handle('selfupdate:apply', async (e) => {
     const { tag } = await selfupdate.prepareUpdate(ROOT, app.getVersion(), onProgress);
     selfupdate.writeApplyMarker({ expectVersion: tag });
     selfupdate.relaunchViaLauncher(ROOT, process.pid);
+    log(`self-update: restarting into ${tag}`);
     setTimeout(() => app.exit(0), 300); // let the IPC reply below flush before this process dies
     return { relaunching: true, version: tag };
+  } catch (e) {
+    log(`self-update FAILED: ${e && e.stack ? e.stack : e}`);
+    throw e;
   } finally {
     updating = false; // only reached on a failure before the relaunch was started
   }
@@ -307,7 +311,7 @@ ipcMain.handle('selfupdate:apply', async (e) => {
     // and fails with UNABLE_TO_GET_ISSUER_CERT_LOCALLY on such networks.
     github.setFetch((url, init) => net.fetch(url, init));
     migrateConfig();
-    if (app.isPackaged) selfupdate.cleanupLeftovers(ROOT, app.getVersion());
+    if (app.isPackaged) selfupdate.cleanupLeftovers(ROOT, app.getVersion()).catch(() => {});
     createWindow();
   });
   app.on('activate', () => {
