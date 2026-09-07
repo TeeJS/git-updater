@@ -103,6 +103,20 @@ test('validateConfig: rejects bad type / missing fields / bad kind', () => {
       }),
     /install\.kind/
   );
+  assert.throws(
+    () =>
+      core.validateConfig({
+        repos: [{ owner: 'o', repo: 'r', type: 'installer', asset: '*', tagPrefix: '' }],
+      }),
+    /tagPrefix/
+  );
+});
+
+test('validateConfig: accepts a tagPrefix override', () => {
+  const cfg = {
+    repos: [{ owner: 'bitwarden', repo: 'clients', type: 'installer', asset: '*.exe', tagPrefix: 'desktop-v' }],
+  };
+  assert.equal(core.validateConfig(cfg), cfg);
 });
 
 test('buildSummary: counts and lines', () => {

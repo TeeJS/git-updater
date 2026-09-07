@@ -50,7 +50,7 @@ async function handleRepo(repo, id, st, opts) {
   const key = appKey(repo);
   const emit = (phase, pct) => opts.onProgress && opts.onProgress(key, phase, pct);
   emit('checking');
-  const rel = await github.getLatestRelease(repo.owner, repo.repo, { prerelease: repo.prerelease });
+  const rel = await github.getLatestRelease(repo.owner, repo.repo, { prerelease: repo.prerelease, tagPrefix: repo.tagPrefix });
   const latest = rel.tag_name;
   const prev = st[key] || {};
 

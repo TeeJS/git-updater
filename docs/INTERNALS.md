@@ -32,6 +32,9 @@ Optional per-app overrides (rarely needed):
   can't identify an unusual installer (`kind` is `msi` | `nsis` | `inno`).
 - `"prerelease": true` follows beta releases; `"detect"` / `"process"` override the registry
   match / process name when they differ from the repo name.
+- `"tagPrefix": "desktop-v"` pins release lookup to one train, for repos that publish several
+  products' releases in one place (e.g. bitwarden/clients also ships `web-v*`/`browser-v*`/
+  `cli-v*` — without this, "latest release" can resolve to the wrong product entirely).
 
 You can track the same repo as **both** portable and installed — each is a separate entry with
 its own update history.

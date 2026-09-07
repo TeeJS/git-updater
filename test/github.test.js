@@ -127,6 +127,89 @@ test('setFetch: an injected fetch is used instead of the global fetch', async ()
   }
 });
 
+// bitwarden/clients-style repo: several release trains interleaved, newest overall is NOT
+// the one we want. tagPrefix must skip past it to the first matching tag.
+test('getLatestRelease: tagPrefix picks the first matching release, skipping other trains', async () => {
+  const orig = global.fetch;
+  const calls = [];
+  global.fetch = async (url) => {
+    calls.push(url);
+    return {
+      status: 200,
+      ok: true,
+      headers: { get: () => null },
+      json: async () => [
+        { tag_name: 'web-v2026.8.1', draft: false, prerelease: false },
+        { tag_name: 'cli-v2026.8.0', draft: false, prerelease: false },
+        { tag_name: 'desktop-v2026.8.0', draft: false, prerelease: false },
+        { tag_name: 'browser-v2026.8.0', draft: false, prerelease: false },
+      ],
+    };
+  };
+  try {
+    const rel = await github.getLatestRelease('bitwarden', 'clients', { tagPrefix: 'desktop-v' });
+    assert.equal(rel.tag_name, 'desktop-v2026.8.0');
+    assert.ok(!calls.some((u) => /releases\/latest/.test(u)), 'must use the list endpoint, not /releases/latest');
+  } finally {
+    global.fetch = orig;
+  }
+});
+
+test('getLatestRelease: tagPrefix skips drafts and prereleases by default', async () => {
+  const orig = global.fetch;
+  global.fetch = async () => ({
+    status: 200,
+    ok: true,
+    headers: { get: () => null },
+    json: async () => [
+      { tag_name: 'desktop-v2026.9.0', draft: true, prerelease: false },
+      { tag_name: 'desktop-v2026.8.1', draft: false, prerelease: true },
+      { tag_name: 'desktop-v2026.8.0', draft: false, prerelease: false },
+    ],
+  });
+  try {
+    const rel = await github.getLatestRelease('bitwarden', 'clients', { tagPrefix: 'desktop-v' });
+    assert.equal(rel.tag_name, 'desktop-v2026.8.0');
+  } finally {
+    global.fetch = orig;
+  }
+});
+
+test('getLatestRelease: tagPrefix + prerelease includes prereleases', async () => {
+  const orig = global.fetch;
+  global.fetch = async () => ({
+    status: 200,
+    ok: true,
+    headers: { get: () => null },
+    json: async () => [
+      { tag_name: 'desktop-v2026.8.1-beta1', draft: false, prerelease: true },
+      { tag_name: 'desktop-v2026.8.0', draft: false, prerelease: false },
+    ],
+  });
+  try {
+    const rel = await github.getLatestRelease('bitwarden', 'clients', { tagPrefix: 'desktop-v', prerelease: true });
+    assert.equal(rel.tag_name, 'desktop-v2026.8.1-beta1');
+  } finally {
+    global.fetch = orig;
+  }
+});
+
+test('getLatestRelease: tagPrefix with no match gives a clear error, not a generic 404', async () => {
+  const orig = global.fetch;
+  global.fetch = async (url) => {
+    if (/\/releases\?/.test(url)) return { status: 200, ok: true, headers: { get: () => null }, json: async () => [] };
+    return { status: 200, ok: true, headers: { get: () => null }, json: async () => ({}) }; // repo-exists probe: repo IS there
+  };
+  try {
+    await assert.rejects(() => github.getLatestRelease('bitwarden', 'clients', { tagPrefix: 'nope-v' }), (e) => {
+      assert.match(e.message, /no releases found with tag prefix "nope-v"/);
+      return true;
+    });
+  } finally {
+    global.fetch = orig;
+  }
+});
+
 test('verifyDigest: skips with a note when no digest', () => {
   const r = github.verifyDigest('/any/path', undefined);
   assert.ok(r.skipped);

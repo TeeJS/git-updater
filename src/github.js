@@ -126,10 +126,31 @@ async function repoMissing(owner, repo) {
   }
 }
 
+// Some repos (bitwarden/clients, and other monorepos) publish several independent release
+// trains under one repo — desktop-vX, web-vX, browser-vX... — interleaved by publish date.
+// /releases/latest just returns whichever train published most recently, which is often the
+// WRONG product. tagPrefix pins detection to releases whose tag starts with a given prefix.
+const TAG_PREFIX_MAX_PAGES = 5; // 500 releases; well past any repo's realistic per-train gap
+
+async function findByTagPrefix(owner, repo, prefix, includePrerelease) {
+  for (let page = 1; page <= TAG_PREFIX_MAX_PAGES; page++) {
+    const list = await ghJson(`${API}/repos/${owner}/${repo}/releases?per_page=100&page=${page}`);
+    if (!list || list.length === 0) break;
+    const hit = list.find((r) => !r.draft && (includePrerelease || !r.prerelease) && String(r.tag_name || '').startsWith(prefix));
+    if (hit) return hit;
+    if (list.length < 100) break; // last page reached
+  }
+  throw Object.assign(new Error('x'), { status: 404 });
+}
+
 // /releases/latest excludes prereleases + drafts; opts.prerelease uses /releases[0] (first non-draft).
-// On 404, distinguish a missing repo (deleted/renamed) from a repo with no releases.
+// opts.tagPrefix restricts either mode to one release train within a multi-product repo.
+// On 404, distinguish a missing repo (deleted/renamed) from a repo with no matching releases.
 async function getLatestRelease(owner, repo, opts = {}) {
   try {
+    if (opts.tagPrefix) {
+      return await findByTagPrefix(owner, repo, opts.tagPrefix, opts.prerelease);
+    }
     if (opts.prerelease) {
       const list = await ghJson(`${API}/repos/${owner}/${repo}/releases?per_page=10`);
       const rel = (list || []).find((r) => !r.draft);
@@ -139,7 +160,8 @@ async function getLatestRelease(owner, repo, opts = {}) {
     return await ghJson(`${API}/repos/${owner}/${repo}/releases/latest`);
   } catch (e) {
     if (e.status === 404) {
-      throw new Error((await repoMissing(owner, repo)) ? 'repository not found (deleted, renamed, or private)' : 'no releases found for this repository');
+      if (await repoMissing(owner, repo)) throw new Error('repository not found (deleted, renamed, or private)');
+      throw new Error(opts.tagPrefix ? `no releases found with tag prefix "${opts.tagPrefix}"` : 'no releases found for this repository');
     }
     throw e;
   }

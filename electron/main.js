@@ -198,7 +198,7 @@ ipcMain.handle('release:open', (_e, { owner, repo }) =>
 ipcMain.handle('asset:preview', async (_e, appKey) => {
   const repo = readConfig().repos.find((r) => `${r.owner}/${r.repo}#${r.type}` === appKey);
   if (!repo) throw new Error('app not found');
-  const rel = await github.getLatestRelease(repo.owner, repo.repo, { prerelease: repo.prerelease });
+  const rel = await github.getLatestRelease(repo.owner, repo.repo, { prerelease: repo.prerelease, tagPrefix: repo.tagPrefix });
   const asset = repo.asset ? core.matchAsset(rel.assets, repo.asset) : core.pickWindowsAsset(rel.assets, repo.type);
   return { tag: rel.tag_name, asset: asset.name };
 });

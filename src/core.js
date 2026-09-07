@@ -162,6 +162,10 @@ function scoreAsset(name, type, arch, flavor) {
   if (type === 'portable') {
     if (/portable/i.test(name)) s += 3;
     if (SETUP_TOKEN.test(name)) s -= 5; // a setup.exe is NOT the portable build
+    // electron-builder's "*.nsis.7z" is the installer's own update payload (raw app files,
+    // no proper packaging) — an arch match + archive bonus can otherwise outscore the
+    // vendor's actual dedicated portable build when that build has no arch token in its name.
+    if (/nsis/i.test(name)) s -= 5;
     if (/\.zip$/i.test(name)) s += 2; // archives extract cleanly; a bare .exe is placed as-is
     else if (/\.7z$/i.test(name)) s += 1;
   } else {
@@ -260,6 +264,11 @@ function validateConfig(json) {
     if (!r.owner || !r.repo) throw new Error(`${at}: "owner" and "repo" are required`);
     if (r.type !== 'portable' && r.type !== 'installer') {
       throw new Error(`${at}: "type" must be "portable" or "installer"`);
+    }
+    // tagPrefix pins release lookup to one train in a multi-product repo (e.g. "desktop-v"
+    // for bitwarden/clients, which also publishes web-v*/browser-v*/cli-v* under one repo).
+    if (r.tagPrefix != null && (typeof r.tagPrefix !== 'string' || !r.tagPrefix)) {
+      throw new Error(`${at}: "tagPrefix" must be a non-empty string`);
     }
     // asset is optional: omitted -> engine auto-picks the Windows asset from `type`.
     if (r.type === 'portable') {

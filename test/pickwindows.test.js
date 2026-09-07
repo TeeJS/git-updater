@@ -31,6 +31,21 @@ test('portable: picks the portable .exe over the setup .exe', () => {
   assert.equal(core.pickWindowsAsset(assets, 'portable').name, 'open-quake-0.7.1-portable.exe');
 });
 
+// electron-builder ships the NSIS installer's internal update payload (*.nsis.7z) as its own
+// release asset alongside the vendor's actual dedicated portable build. The payload has an
+// arch token + archive bonus that would otherwise outscore a portable build with no arch
+// token in its name (e.g. bitwarden/clients: "Bitwarden-Portable-2026.8.0.exe" vs
+// "bitwarden-2026.8.0-x64.nsis.7z").
+test('portable: picks the vendor Portable build over an NSIS update payload', () => {
+  const assets = A(
+    'bitwarden-2026.8.0-x64.nsis.7z',
+    'bitwarden-2026.8.0-arm64.nsis.7z',
+    'Bitwarden-Installer-2026.8.0.exe',
+    'Bitwarden-Portable-2026.8.0.exe'
+  );
+  assert.equal(core.pickWindowsAsset(assets, 'portable').name, 'Bitwarden-Portable-2026.8.0.exe');
+});
+
 test('installer: picks the setup .exe over the portable .exe', () => {
   const assets = A('open-quake-0.7.1-portable.exe', 'open-quake-0.7.1-setup.exe');
   assert.equal(core.pickWindowsAsset(assets, 'installer').name, 'open-quake-0.7.1-setup.exe');
