@@ -83,6 +83,18 @@ test('brave-style version schemes align (registry 152.1.94.117 vs tag 1.94.117)'
   // aligned compare: up to date now, update detected for the next Brave release
   assert.equal(core.cmpVersion('1.94.117', '1.94.117'), 0);
   assert.ok(core.cmpVersion('1.95.20', '1.94.117') > 0);
+  // next Brave release: neither slice matches exactly; trailing shares "1" with the tag
+  assert.equal(core.alignInstalledVersion('152.1.94.117', '1.95.20'), '1.94.117');
+});
+
+// Tesseract pads the OTHER end: registry "5.5.3.20260724" (build date suffix) vs tag "5.5.3".
+// Taking the trailing parts gave "5.3.20260724" -> "older" than 5.5.3 -> a perpetual update.
+test('tesseract-style build-date suffix aligns to the leading parts', () => {
+  assert.equal(core.alignInstalledVersion('5.5.3.20260724', '5.5.3'), '5.5.3');
+  assert.equal(core.cmpVersion('5.5.3', '5.5.3'), 0); // up to date
+  // next Tesseract release still registers as an update
+  assert.equal(core.alignInstalledVersion('5.5.3.20260724', '5.5.4'), '5.5.3');
+  assert.ok(core.cmpVersion('5.5.4', '5.5.3') > 0);
 });
 
 test('godot-style release: portable picks the win64 exe.zip; installer suggests Portable', () => {

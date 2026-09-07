@@ -56,17 +56,24 @@ function naturalCmp(a, b) {
   return 0;
 }
 
-// Some apps prefix the registry DisplayVersion with another product's version —
-// Brave: "152.1.94.117" = Chromium 152 + Brave 1.94.117, while release tags are plain
-// "1.94.117". When the installed version has MORE numeric parts than the tag scheme,
-// return its trailing parts in the tag's scheme; else null.
+// Some apps pad the registry DisplayVersion with extra parts that the release tag lacks —
+// a PREFIX (Brave: "152.1.94.117" = Chromium 152 + Brave 1.94.117, tag "1.94.117") or a
+// SUFFIX (Tesseract: "5.5.3.20260724" = 5.5.3 + build date, tag "5.5.3"). When the
+// installed version has MORE numeric parts than the tag scheme, return the leading or
+// trailing parts in the tag's scheme — whichever matches the tag best (exact match, then
+// longest shared prefix; tie -> trailing); else null.
 function alignInstalledVersion(installed, latest) {
   const i = splitVer(installed);
   const l = splitVer(latest);
-  if (l.nums.length >= 2 && i.nums.length > l.nums.length) {
-    return i.nums.slice(-l.nums.length).join('.');
-  }
-  return null;
+  if (l.nums.length < 2 || i.nums.length <= l.nums.length) return null;
+  const leading = i.nums.slice(0, l.nums.length);
+  const trailing = i.nums.slice(-l.nums.length);
+  const shared = (nums) => {
+    let n = 0;
+    while (n < nums.length && nums[n] === l.nums[n]) n++;
+    return n;
+  };
+  return (shared(leading) > shared(trailing) ? leading : trailing).join('.');
 }
 
 // >0 if a is newer than b. Handles "1.2" == "1.2.0" and prerelease < release.
