@@ -517,3 +517,33 @@ test('extractArchive: a zip holding one .app installs the bundle, not its Conten
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('swapDir: carry-over never writes inside a bundle, even with no previous manifest', () => {
+  const base = tmp();
+  try {
+    const dest = path.join(base, 'App');
+    const next = path.join(base, 'next');
+
+    // The installed version: a bundle plus a genuine sibling settings file.
+    mkbundle(dest, 'Foo.app');
+    fs.writeFileSync(path.join(dest, 'settings.ini'), 'keep me');
+    // Something that only exists in the OLD bundle — a leftover framework, or a file the
+    // app wrote into itself at runtime.
+    fs.writeFileSync(path.join(dest, 'Foo.app', 'Contents', 'stale.dylib'), 'old');
+
+    // The new version, staged. Note prevManifest is omitted entirely, which is the
+    // corrupt-state case: without the guard every old bundle file is carried forward.
+    mkbundle(next, 'Foo.app');
+    const files = install.walk(next);
+    install.swapDir(dest, next, { files, carryOver: true });
+
+    assert.equal(fs.readFileSync(path.join(dest, 'settings.ini'), 'utf8'), 'keep me', 'sibling user file still carried over');
+    assert.equal(
+      fs.existsSync(path.join(dest, 'Foo.app', 'Contents', 'stale.dylib')),
+      false,
+      'a foreign file inside the bundle would break its signature'
+    );
+  } finally {
+    fs.rmSync(base, { recursive: true, force: true });
+  }
+});

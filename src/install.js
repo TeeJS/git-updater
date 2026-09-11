@@ -241,6 +241,17 @@ function swapDir(dest, srcDir, opts = {}) {
     for (const rel of walk(oldDir)) {
       const n = norm(rel);
       if (shipped.has(n) || prevShipped.has(n)) continue;
+      // Never write INSIDE a bundle. On macOS the app folder IS the .app, and a single
+      // foreign file breaks its code-signature seal — Gatekeeper then refuses to launch
+      // it, after an update that reported success, with nothing saying why. There is
+      // nothing legitimate to carry over in there either: a mac app keeps its user data
+      // in ~/Library, not inside its own bundle.
+      //
+      // A normal second update never reaches this, because everything the old bundle
+      // shipped is in prevManifest. It fires when that manifest is empty or short — a
+      // corrupt state.json is documented to start fresh — and then every file of the old
+      // bundle would be injected into the new one.
+      if (n.split('/').some((seg) => BUNDLE_DIR.test(seg))) continue;
       const to = path.join(dest, rel);
       try {
         fs.mkdirSync(path.dirname(to), { recursive: true });
