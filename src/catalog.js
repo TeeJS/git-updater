@@ -1,7 +1,14 @@
 'use strict';
 
-// Known apps: Windows uninstall-registry DisplayName pattern -> GitHub repo.
-// Used by "Scan this PC" to suggest installed apps that git-updater can manage.
+// Known apps: installed-name pattern -> GitHub repo. Used by "Scan this PC" to suggest
+// apps the machine already has that git-updater can manage. The name matched against is
+// whatever the platform's inventory calls the app — the uninstall-registry DisplayName on
+// Windows, the .app bundle name on macOS, the package name on Linux (see src/detect.js).
+//
+// `platforms` limits an entry to the OSes its upstream actually ships for; omitted means
+// all of them. It is only worth setting for apps that exist on ONE platform, where a match
+// elsewhere could only ever be a false positive.
+//
 // Patterns follow ninite-helper's Update-NiniteApps.ps1 catalog style.
 // ponytail: flat list, grep-and-extend; a schema/registry is overkill.
 
@@ -12,17 +19,17 @@ const CATALOG = [
   { name: 'Audacity', repo: 'audacity/audacity', match: /^Audacity/i },
   { name: 'HandBrake', repo: 'HandBrake/HandBrake', match: /^HandBrake/i },
   // Imaging
-  { name: 'Paint.NET', repo: 'paintdotnet/release', match: /paint\.net/i },
-  { name: 'Greenshot', repo: 'greenshot/greenshot', match: /Greenshot/i },
-  { name: 'ShareX', repo: 'ShareX/ShareX', match: /ShareX/i },
+  { name: 'Paint.NET', repo: 'paintdotnet/release', match: /paint\.net/i, platforms: ['win32'] },
+  { name: 'Greenshot', repo: 'greenshot/greenshot', match: /Greenshot/i, platforms: ['win32'] },
+  { name: 'ShareX', repo: 'ShareX/ShareX', match: /ShareX/i, platforms: ['win32'] },
   // File sharing
   { name: 'qBittorrent', repo: 'qbittorrent/qBittorrent', match: /qBittorrent/i },
   // Accessibility
-  { name: 'NVDA', repo: 'nvaccess/nvda', match: /^NVDA\b|NonVisual Desktop/i },
+  { name: 'NVDA', repo: 'nvaccess/nvda', match: /^NVDA\b|NonVisual Desktop/i, platforms: ['win32'] },
   // Developer tools
-  { name: 'Git', repo: 'git-for-windows/git', match: /^Git version|^Git\b.*\(64-bit\)/i },
-  { name: 'Notepad++', repo: 'notepad-plus-plus/notepad-plus-plus', match: /Notepad\+\+/i },
-  { name: 'WinMerge', repo: 'WinMerge/winmerge', match: /WinMerge/i },
+  { name: 'Git', repo: 'git-for-windows/git', match: /^Git version|^Git\b.*\(64-bit\)/i, platforms: ['win32'] },
+  { name: 'Notepad++', repo: 'notepad-plus-plus/notepad-plus-plus', match: /Notepad\+\+/i, platforms: ['win32'] },
+  { name: 'WinMerge', repo: 'WinMerge/winmerge', match: /WinMerge/i, platforms: ['win32'] },
   // Java (Eclipse Temurin / AdoptOpenJDK) — one repo per major version, JRE and JDK alike
   // \D* anchors to the FIRST number after the product name, so "21.0.5+11" can't
   // false-match the 11 entry via its build suffix.
@@ -32,8 +39,8 @@ const CATALOG = [
   { name: 'Temurin 21', repo: 'adoptium/temurin21-binaries', match: /(Temurin|AdoptOpenJDK)\D*21(?!\d)/i },
   { name: 'Temurin 25', repo: 'adoptium/temurin25-binaries', match: /(Temurin|AdoptOpenJDK)\D*25(?!\d)/i },
   // Utilities
-  { name: 'WinDirStat', repo: 'windirstat/windirstat', match: /WinDirStat/i },
-  { name: 'Open-Shell', repo: 'Open-Shell/Open-Shell-Menu', match: /Open-Shell|Classic Shell/i },
+  { name: 'WinDirStat', repo: 'windirstat/windirstat', match: /WinDirStat/i, platforms: ['win32'] },
+  { name: 'Open-Shell', repo: 'Open-Shell/Open-Shell-Menu', match: /Open-Shell|Classic Shell/i, platforms: ['win32'] },
   // Compression
   { name: '7-Zip', repo: 'ip7z/7zip', match: /^7-Zip/i },
   { name: 'PeaZip', repo: 'peazip/PeaZip', match: /PeaZip/i },
@@ -67,8 +74,8 @@ const CATALOG = [
   { name: 'Caddy', repo: 'caddyserver/caddy', match: /^Caddy\b/i },
   { name: 'Netdata', repo: 'netdata/netdata', match: /Netdata/i },
   // Desktop apps & utilities
-  { name: 'PowerToys', repo: 'microsoft/PowerToys', match: /PowerToys/i },
-  { name: 'Windows Terminal', repo: 'microsoft/terminal', match: /Windows Terminal/i },
+  { name: 'PowerToys', repo: 'microsoft/PowerToys', match: /PowerToys/i, platforms: ['win32'] },
+  { name: 'Windows Terminal', repo: 'microsoft/terminal', match: /Windows Terminal/i, platforms: ['win32'] },
   { name: 'scrcpy', repo: 'Genymobile/scrcpy', match: /scrcpy/i },
   { name: 'Stirling PDF', repo: 'Stirling-Tools/Stirling-PDF', match: /Stirling.?PDF/i },
   { name: 'Ventoy', repo: 'ventoy/Ventoy', match: /Ventoy/i },
@@ -130,7 +137,7 @@ const CATALOG = [
   { name: 'lazydocker', repo: 'jesseduffield/lazydocker', match: /lazydocker/i },
   { name: 'Dive', repo: 'wagoodman/dive', match: /^dive$/i },
   { name: 'Ruff', repo: 'astral-sh/ruff', match: /^Ruff\b/i },
-  { name: 'NVM for Windows', repo: 'coreybutler/nvm-windows', match: /NVM for Windows/i },
+  { name: 'NVM for Windows', repo: 'coreybutler/nvm-windows', match: /NVM for Windows/i, platforms: ['win32'] },
   { name: 'Kotlin', repo: 'JetBrains/kotlin', match: /^Kotlin\b/i },
   // Servers & infrastructure
   { name: 'Prometheus', repo: 'prometheus/prometheus', match: /^Prometheus\b/i },
@@ -149,11 +156,18 @@ const CATALOG = [
   { name: 'FlClash', repo: 'chen08209/FlClash', match: /FlClash/i },
 ];
 
+// Does this catalog entry apply to the given OS? No `platforms` field means "all".
+function onPlatform(entry, platform) {
+  return !entry.platforms || entry.platforms.includes(platform || process.platform);
+}
+
 // installed: [{DisplayName, DisplayVersion}]; trackedRepos: Set of "owner/repo" (lowercase).
+// platform defaults to the running OS; entries for other OSes are skipped entirely.
 // Returns [{name, repo, displayName, version, tracked}] — one row per catalog hit.
-function matchInstalled(installed, trackedRepos) {
+function matchInstalled(installed, trackedRepos, platform) {
   const out = [];
   for (const entry of CATALOG) {
+    if (!onPlatform(entry, platform)) continue;
     const hit = (installed || []).find((e) => entry.match.test(e.DisplayName));
     if (!hit) continue;
     out.push({
@@ -167,4 +181,4 @@ function matchInstalled(installed, trackedRepos) {
   return out;
 }
 
-module.exports = { CATALOG, matchInstalled };
+module.exports = { CATALOG, matchInstalled, onPlatform };

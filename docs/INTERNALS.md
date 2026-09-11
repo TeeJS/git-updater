@@ -4,10 +4,25 @@ The details that used to crowd the README. User-facing overview: [../README.md](
 
 ## Config shape (`config.json`)
 
-Lives at `%APPDATA%\git-updater\config.json` (override the path with `GITUPDATER_CONFIG`).
-Each app is just a repo plus **portable or installer** — git-updater picks the right Windows file
-from the latest release automatically (portable → the Windows `.zip`/`.7z`; installer → the
-`.exe`/`.msi`, preferring x64).
+Lives in git-updater's own config folder (`src/paths.js`):
+
+| | config + state + logs | downloads + staging |
+|---|---|---|
+| Windows | `%APPDATA%\git-updater\` | `%LOCALAPPDATA%\git-updater\` |
+| macOS | `~/Library/Application Support/git-updater/` | same |
+| Linux | `$XDG_CONFIG_HOME` or `~/.config/git-updater/` | `$XDG_DATA_HOME` or `~/.local/share/git-updater/` |
+
+Override the config file with `GITUPDATER_CONFIG`, or either directory outright with
+`GITUPDATER_CONFIG_DIR` / `GITUPDATER_DATA_DIR`.
+
+Each app is just a repo plus **portable or installer** — git-updater picks the right file for
+the running platform automatically:
+
+| | portable | installer |
+|---|---|---|
+| Windows | `.zip` / `.7z` / a portable `.exe` | `.exe` / `.msi` |
+| macOS | `.dmg` / `.zip` (a `.app` bundle) | `.pkg` |
+| Linux | `.AppImage` / `.tar.gz` / `.tar.xz` / `.zip` | `.deb` / `.rpm` |
 
 ```jsonc
 {
@@ -19,17 +34,22 @@ from the latest release automatically (portable → the Windows `.zip`/`.7z`; in
 }
 ```
 
-The chosen file matches the machine's architecture (x64 / arm64 / x86) and, for installers, the
-**flavor of the existing install** (an MSI-installed app gets the `.msi`, an EXE-installed app the
-`.exe` — never a side-by-side duplicate). Silent-install technology (NSIS / Inno / MSI) is
+The chosen file matches the machine's architecture (x64 / arm64 / x86; on macOS a `universal`
+build is the fallback when there is no native one) and, for installers, the **flavor of the
+existing install** — an MSI-installed app gets the `.msi`, a deb-installed app the `.deb`, never
+a side-by-side duplicate. Installer technology (NSIS / Inno / MSI / pkg / deb / rpm) is
 **detected from the downloaded file's bytes**; an unidentifiable installer is never guessed at —
-its own installer window is opened instead (with a normal UAC prompt).
+its own installer window is opened instead, with the platform's normal authorization prompt.
+
+The per-platform tables — extension sets, reject regexes, architecture tokens and scoring
+bonuses — are all in `src/platform/assets.js`, which is pure data so `core.js` keeps its
+"no IO" guarantee.
 
 Optional per-app overrides (rarely needed):
 - `"asset": "*-win-x64.zip"` (glob or `/regex/`) pins a specific file instead of auto-pick.
 - Portable: `"install": { "dir": "D:/Custom" }` to override the folder.
 - Installer: `"install": { "kind": "inno", "args": ["/VERYSILENT"] }` — required when detection
-  can't identify an unusual installer (`kind` is `msi` | `nsis` | `inno`).
+  can't identify an unusual installer (`kind` is `msi` | `nsis` | `inno` | `pkg` | `deb` | `rpm`).
 - `"prerelease": true` follows beta releases; `"detect"` / `"process"` override the registry
   match / process name when they differ from the repo name.
 - `"tagPrefix": "desktop-v"` pins release lookup to one train, for repos that publish several
@@ -47,15 +67,30 @@ warning. Portable updates are **transactional**: the new version is staged next 
 and swapped in by directory rename — on any failure (including a crash) the complete previous
 version is restored, and your settings files inside the folder are carried across updates.
 
+**Unix permissions are part of correctness, not a detail.** A build extracted without its
+executable bit does not fail during the update — it reports success and then refuses to launch.
+So `.tar.gz` / `.tar.xz` / `.tar.bz2` go through `src/tar.js` (a small reader that keeps mode
+bits and symlinks) rather than 7-Zip, which drops them; zip entries get their recorded mode
+re-applied after extraction, because adm-zip does not; and a bare `.AppImage` is chmod'd 755 on
+the way in. On macOS, `.dmg` and `.zip` are handed to Apple's own `hdiutil` and `ditto`, since a
+`.app` bundle's symlinks, modes and code signature do not survive a generic unzipper.
+
 ## Elevation & EDR posture
 
-git-updater uses **no PowerShell and no self-elevation** (both are EDR triggers). Portable
-installs under a user-writable `portableRoot` need no admin and just work. An installer that
-needs administrator rights falls back to **its own installer window** with a normal UAC prompt
-(the row shows "Waiting for installer…" and updates itself when it finishes). Running
-git-updater as administrator instead makes those installs fully silent.
+git-updater uses **no shell and no self-elevation** — no PowerShell, no `sh`, no generated
+scripts (all EDR triggers). Every subprocess it does start is a signed first-party system tool
+invoked with an argv array: `reg` / `tasklist` / `taskkill` / `msiexec` on Windows,
+`system_profiler` / `defaults` / `ditto` / `hdiutil` / `installer` on macOS, `dpkg-query` /
+`rpm` / `flatpak` / `snap` / `ps` on Linux. Process termination off Windows is a plain POSIX
+signal, so it is not even a subprocess.
 
-Downloads are staged under `%LOCALAPPDATA%\git-updater\staging`, never executed from `%TEMP%`.
+Portable installs under a user-writable `portableRoot` need no admin and just work. A package
+that needs root — an elevated Windows installer, a macOS `.pkg`, a Linux `.deb`/`.rpm` — falls
+back to **its own installer window** with the platform's normal authorization prompt (the row
+shows "Waiting for installer…" and updates itself when it finishes). Running git-updater
+elevated instead makes those installs fully silent.
+
+Downloads are staged in git-updater's own data dir, never executed from the system temp dir.
 No localhost server; the UI talks to the engine over Electron IPC only.
 
 ## Auth (optional)
@@ -75,10 +110,21 @@ node bin/watch.js list-assets owner/repo    # inspect a release's assets
 
 ## Release & signing
 
-`npm run dist` produces the portable zips and Authenticode-signs `git-updater.exe` via the
-`sign.js` hook (Azure Trusted Signing: SignTool + Trusted Signing dlib, silent auth from the
-local `Connect-AzAccount` session). Machines without the `.signing/` setup build unsigned with a
-warning. Publish with `gh release create vX.Y.Z dist/*.zip`.
+`npm run dist` (or `dist:win`) produces the portable zips and Authenticode-signs
+`git-updater.exe` via the `sign.js` hook (Azure Trusted Signing: SignTool + Trusted Signing
+dlib, silent auth from the local `Connect-AzAccount` session). Machines without the `.signing/`
+setup build unsigned with a warning.
+
+`npm run dist:mac` produces `.dmg` and `.zip` for x64 and arm64, Developer ID signed with the
+hardened runtime and `build/entitlements.mac.plist`, then notarized via notarytool. Set
+`APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD` and `APPLE_TEAM_ID` in the environment.
+(electron-builder 25 takes `hardenedRuntime`/`entitlements` flat on `mac`; v27 moved them under
+`mac.sign` — adjust if the dependency is bumped.)
+
+`npm run dist:linux` produces `.AppImage` and `.tar.gz` for x64 and arm64. No signing.
+
+Each target must be built on its own OS — a signed, notarized macOS app cannot be
+cross-built from Windows. Publish with `gh release create vX.Y.Z dist/*`.
 
 **Self-update** (`src/selfupdate.js`) follows the Squirrel.Windows layout: nothing a process is
 running from is ever renamed or deleted. The exe at the install root is the **launcher**; updated
@@ -92,6 +138,12 @@ launcher on its first update — its files are never touched again.
   root, rename that fresh folder to `app-<tag>` — the same "fresh install" rename every tracked
   portable app already does — then write `last-apply.json` and start the launcher with
   `--wait-pid <own pid>` and exit. A failure at any step leaves the running version untouched.
+- **macOS is the exception.** An `.app` is a directory carrying a code signature that
+  Gatekeeper re-checks on launch, and a bundle swapped in by another process loses the
+  signature continuity it expects — so `selfupdate.canApply()` is false there. The banner
+  still reports new versions on every platform; on macOS its button opens the release page
+  instead of applying. The URL is built in the main process from the engine's own constants,
+  so the renderer never passes a URL across the IPC bridge.
 - On every start (`electron/main.js`, before the single-instance lock): if `--wait-pid` is
   present, wait for that process to exit (it holds the lock). Then, if a newer `app-*` folder
   exists that isn't the one we're running from, spawn its exe and exit — that's the launcher
@@ -114,21 +166,35 @@ electron/preload.js  narrow contextBridge: the renderer only sees window.api.*
 ui/index.html        the renderer (no network; talks over IPC)
 ui/scan.html         the Scan this PC window
 src/                 the engine (no UI, no shell):
-  core.js            IO-free: version compare, Windows-asset pick, installer switches, validation
+  core.js            IO-free: version compare, asset pick, installer switches, validation
   github.js          release fetch + download + digest/checksums-file verify (sha256/sha512)
-  install.js         transactional portable dir-swap, .7z via 7z-wasm, silent installer
+  install.js         transactional portable dir-swap, archive extraction, silent installer
+  tar.js             tar reader that preserves Unix modes and symlinks (7-Zip drops both)
   runner.js          orchestration + progress events; state keyed per (repo + type)
-  selfupdate.js       git-updater updating itself: download/verify/extract, detached-helper swap
-  state.js           atomic state + cross-process update lock  (%APPDATA%\git-updater)
-  detect.js          installed versions/flavor (uninstall registry), running-app check (async)
-  catalog.js         known-apps catalog for "Scan this PC"
-  log.js             file log -> %APPDATA%\git-updater\logs (Settings -> Open log)
+  selfupdate.js      git-updater updating itself: download/verify/extract, launcher hand-off
+  state.js           atomic state + cross-process update lock
+  paths.js           per-platform config/data directories
+  detect.js          installed versions/flavor + running-app check (async) — matching only
+  catalog.js         known-apps catalog for "Scan this PC", filtered per platform
+  log.js             file log -> <config dir>/logs (Settings -> Open log)
+  platform/          EVERYTHING OS-specific lives here, behind one interface:
+    index.js         dispatch on process.platform; a no-op impl for anything unsupported
+    assets.js        pure per-platform asset tables (required by core.js, so no IO allowed)
+    win.js           uninstall registry (reg), tasklist, taskkill
+    mac.js           system_profiler / Info.plist, ps, signals, ditto + hdiutil extraction
+    linux.js         dpkg / rpm / flatpak / snap, ps, signals
+    exec.js          shared async no-shell subprocess helper
 bin/watch.js         headless CLI over the same engine
 ```
 
+Adding a platform means adding one file under `src/platform/` and one table in `assets.js`.
+Every parser in those modules is a pure string-in/records-out function, so the whole matrix is
+unit-tested from any host — only the subprocess that produces the string needs the real OS.
+
 The **open-quake drop-in app** vendors `src/*` into its own folder and drives it from the
-panel — same engine, shared `%APPDATA%\git-updater` config/state, cross-process safe via the
-engine's state lock.
+panel — same engine, shared config/state, cross-process safe via the engine's state lock.
+`detect.registryVersion` is kept as an alias of `detect.installedVersion` so the vendored copy
+keeps working across the rename.
 
 > Not related to `itzg/github-release-watcher` (a Java release *viewer*). This project supersedes
 > the local `github-release-watcher` engine it grew out of.

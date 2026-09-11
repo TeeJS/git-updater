@@ -4,20 +4,31 @@
 
 const fs = require('fs');
 const path = require('path');
-const os = require('os');
 const { spawnSync } = require('child_process');
 const AdmZip = require('adm-zip');
 const { installerCmd } = require('./core');
+const platform = require('./platform');
+const tar = require('./tar');
 const { log } = require('./log');
 
 const isWin = process.platform === 'win32';
 
 // --- portable swap ----------------------------------------------------------
 
+// lstat, not stat: a macOS .app bundle contains symlinks that point back up the tree
+// (Contents/Frameworks/*/Versions/Current -> A). Following them would list the same
+// files repeatedly and, for a self-referential link, never terminate. A symlink is a
+// leaf here — it is carried across by name, exactly as the archive shipped it.
 function walk(root, base = root, out = []) {
   for (const name of fs.readdirSync(root)) {
     const full = path.join(root, name);
-    if (fs.statSync(full).isDirectory()) walk(full, base, out);
+    let st;
+    try {
+      st = fs.lstatSync(full);
+    } catch {
+      continue; // vanished mid-walk, or a link we cannot stat
+    }
+    if (st.isDirectory()) walk(full, base, out);
     else out.push(path.relative(base, full));
   }
   return out;
@@ -37,9 +48,11 @@ function stripDirs(root, n) {
 
 const OLD_SUFFIX = '.git-updater-old'; // previous version parked here during the swap
 
-// Extract a .7z into destDir using 7z-wasm (pure WASM, no external binary).
+// Extract an archive into destDir using 7z-wasm (pure WASM, no external binary).
 // Mounts destDir into the wasm FS, copies the archive in, extracts, cleans up.
-async function extract7z(archivePath, destDir) {
+// opts.archiveName keeps the real extension so 7-Zip picks the right codec — needed
+// when this is unwrapping a .tar.xz / .tar.bz2 rather than extracting a .7z.
+async function extract7z(archivePath, destDir, opts = {}) {
   const SevenZip = require('7z-wasm');
   // In the packaged exe the .wasm is a SEA asset; in dev emscripten finds it itself.
   let wasmBinary;
@@ -52,7 +65,7 @@ async function extract7z(archivePath, destDir) {
   const mnt = '/out';
   sevenZip.FS.mkdir(mnt);
   sevenZip.FS.mount(sevenZip.NODEFS, { root: destDir }, mnt);
-  const archName = 'input.7z';
+  const archName = opts.archiveName || 'input.7z';
   fs.copyFileSync(archivePath, path.join(destDir, archName));
   sevenZip.FS.chdir(mnt);
 
@@ -66,11 +79,58 @@ async function extract7z(archivePath, destDir) {
   }
   fs.rmSync(path.join(destDir, archName), { force: true });
 
-  // A corrupt/invalid .7z makes 7-Zip print "Is not archive" and exit nonzero, but the
-  // extraction "succeeds" with zero files — verify BOTH the exit code and real output.
+  // A corrupt/invalid archive makes 7-Zip print "Is not archive" and exit nonzero, but
+  // the extraction "succeeds" with zero files — verify BOTH the exit code and real output.
   const produced = walk(destDir).length;
   if (rc !== 0 || produced === 0) {
-    throw new Error(`.7z extraction failed (exit ${rc}, ${produced} files) — the download may be corrupt or not a 7-Zip archive`);
+    throw new Error(
+      `${opts.label || '.7z'} extraction failed (exit ${rc}, ${produced} files) — the download may be corrupt or not a ${opts.label || '7-Zip'} archive`
+    );
+  }
+}
+
+// .tar.xz / .tar.bz2: 7-Zip unwraps the outer compressor to a plain .tar, which the
+// tar reader then extracts WITH its Unix mode bits (7-Zip would drop them).
+async function extractCompressedTar(archivePath, destDir, label) {
+  const unwrap = fs.mkdtempSync(path.join(destDir, '.unwrap-'));
+  try {
+    await extract7z(archivePath, unwrap, { archiveName: path.basename(archivePath), label });
+    const inner = fs.readdirSync(unwrap).map((n) => path.join(unwrap, n));
+    const tarFile = inner.find((p) => /\.tar$/i.test(p)) || inner[0];
+    if (!tarFile) throw new Error(`${label} archive contained no tar`);
+    tar.extractTar(tarFile, destDir);
+  } finally {
+    fs.rmSync(unwrap, { recursive: true, force: true });
+  }
+}
+
+// A zip records Unix permissions in each entry's external-attribute field, but adm-zip
+// does not apply them on extract — so every binary lands non-executable and the app
+// fails at FIRST LAUNCH, long after the update reported success. Re-apply them here.
+// A zip built on Windows carries no such attributes; those entries are left alone.
+function restoreZipModes(zipPath, destDir) {
+  if (process.platform === 'win32') return; // Windows has no mode bits to restore
+  let entries;
+  try {
+    entries = new AdmZip(zipPath).getEntries();
+  } catch {
+    return;
+  }
+  const root = path.resolve(destDir);
+  for (const e of entries) {
+    if (e.isDirectory) continue;
+    const mode = (e.header.attr >>> 16) & 0o7777;
+    if (!mode) continue;
+    // The attribute field is attacker-controlled, so the path is re-checked here even
+    // though adm-zip's own extraction is zip-slip-safe. Both checks are needed: the
+    // lexical one stops "../", and realContained stops a chmod that would follow a
+    // symlinked path component out of destDir onto someone else's file.
+    const full = path.resolve(destDir, e.entryName);
+    if (!full.startsWith(root + path.sep)) continue;
+    if (!tar.realContained(destDir, full)) continue;
+    try {
+      fs.chmodSync(full, mode);
+    } catch {}
   }
 }
 
@@ -78,9 +138,34 @@ async function extract7z(archivePath, destDir) {
 // version-named wrapper folder(s) the archive wraps everything in. Returns the file list
 // (relative paths) and the directory those files actually live in (post-flatten).
 async function extractArchive(archivePath, stageDir, stripOpt) {
-  if (/\.7z$/i.test(archivePath)) await extract7z(archivePath, stageDir);
-  else if (/\.zip$/i.test(archivePath)) new AdmZip(archivePath).extractAllTo(stageDir, /* overwrite */ true); // adm-zip >=0.5.10 is zip-slip-safe
-  else fs.copyFileSync(archivePath, path.join(stageDir, path.basename(archivePath))); // bare portable file (e.g. a single .exe)
+  // macOS handles .dmg and .zip itself (ditto / hdiutil), because a .app bundle's
+  // symlinks, modes and code signature do not survive a generic unzipper.
+  const handled = await platform.extract(archivePath, stageDir);
+  if (!handled) {
+    if (/\.7z$/i.test(archivePath)) {
+      await extract7z(archivePath, stageDir);
+    } else if (/\.zip$/i.test(archivePath)) {
+      new AdmZip(archivePath).extractAllTo(stageDir, /* overwrite */ true); // adm-zip >=0.5.10 is zip-slip-safe
+      restoreZipModes(archivePath, stageDir);
+    } else if (/\.(tar\.gz|tgz|tar)$/i.test(archivePath)) {
+      tar.extractTar(archivePath, stageDir);
+    } else if (/\.tar\.xz$/i.test(archivePath)) {
+      await extractCompressedTar(archivePath, stageDir, '.tar.xz');
+    } else if (/\.tar\.bz2$/i.test(archivePath)) {
+      await extractCompressedTar(archivePath, stageDir, '.tar.bz2');
+    } else {
+      // Bare portable file: a single .exe on Windows, an .AppImage on Linux. The
+      // AppImage arrives as plain bytes with no permission bits anywhere, so it has to
+      // be made executable here or it simply will not run.
+      const placed = path.join(stageDir, path.basename(archivePath));
+      fs.copyFileSync(archivePath, placed);
+      if (!isWin) {
+        try {
+          fs.chmodSync(placed, 0o755);
+        } catch {}
+      }
+    }
+  }
   // Auto-flatten version-named wrapper folders (deskflow-1.26.0-.../). Explicit strip wins.
   const srcDir = stripOpt != null ? stripDirs(stageDir, stripOpt) : stripDirs(stageDir, Infinity);
   const files = walk(srcDir);
@@ -167,8 +252,9 @@ async function installPortable(archivePath, install, prevManifest) {
   }
 }
 
-// Detect an installer's silent-install technology from its bytes (far safer than
-// assuming every .exe is NSIS). Falls back to null when unrecognized.
+// Detect an installer's technology from its bytes (far safer than assuming every
+// .exe is NSIS). Falls back to null when unrecognized, which the caller turns into
+// "open the installer's own window" rather than guessing silent switches.
 function detectInstallerKind(filePath) {
   if (/\.msi$/i.test(filePath)) return 'msi';
   let buf;
@@ -177,7 +263,12 @@ function detectInstallerKind(filePath) {
   } catch {
     return null;
   }
+  const magic = (s) => buf.subarray(0, s.length).toString('latin1') === s;
   if (buf.length > 8 && buf[0] === 0xd0 && buf[1] === 0xcf && buf[2] === 0x11 && buf[3] === 0xe0) return 'msi'; // OLE compound = MSI
+  if (magic('xar!')) return 'pkg'; // macOS flat package is a xar archive
+  if (magic('!<arch>')) return 'deb'; // .deb is an ar archive
+  if (buf.length > 4 && buf[0] === 0xed && buf[1] === 0xab && buf[2] === 0xee && buf[3] === 0xdb) return 'rpm';
+  // These two scan the whole file, so they come last.
   if (buf.indexOf(Buffer.from('Inno Setup')) !== -1) return 'inno';
   if (buf.indexOf(Buffer.from('Nullsoft')) !== -1) return 'nsis';
   return null;
@@ -185,11 +276,19 @@ function detectInstallerKind(filePath) {
 
 // --- installer --------------------------------------------------------------
 
+// Windows installer exit codes. 3010 (reboot required) counts as success.
+const WIN_INSTALLER_CODES = {
+  1602: 'installer was cancelled',
+  1603: 'silent install needs administrator rights',
+  1618: 'another installer is already running — wait for it to finish, then Retry',
+  1619: 'installer package could not be opened',
+  1620: 'installer package is invalid',
+};
+
 function installInstaller(filePath, install, opts = {}) {
   const { exe, args } = installerCmd(install.kind, filePath, install.args);
   const command = [exe, ...args].join(' ');
   if (opts.dryRun) return { command, dryRun: true };
-  if (!isWin) throw new Error('installer type is Windows-only');
   log(`  installer (${install.kind}): ${command}`);
   // Launch the installer directly (no PowerShell). A requireAdministrator installer that
   // can't elevate from a non-elevated parent fails here; surface a clear message instead.
@@ -206,18 +305,28 @@ function installInstaller(filePath, install, opts = {}) {
     }
     throw r.error;
   }
-  if (r.status !== 0 && r.status !== 3010) {
+  if (r.status !== 0 && !(isWin && r.status === 3010)) {
     // 3010 = reboot required (success). 1603 from a silent machine-install is almost
     // always missing admin rights (silent installs can't show a UAC prompt).
-    const byCode = {
-      1602: 'installer was cancelled',
-      1603: 'silent install needs administrator rights',
-      1618: 'another installer is already running — wait for it to finish, then Retry',
-      1619: 'installer package could not be opened',
-      1620: 'installer package is invalid',
-    };
-    const err = new Error(byCode[r.status] || `installer failed (exit ${r.status}) — if the app is open, close it and Retry`);
+    if (isWin) {
+      const err = new Error(
+        WIN_INSTALLER_CODES[r.status] || `installer failed (exit ${r.status}) — if the app is open, close it and Retry`
+      );
+      err.status = r.status;
+      throw err;
+    }
+    // macOS installer(8) and Linux dpkg/rpm all write to system locations, so an
+    // unelevated run fails with a plain nonzero exit and no distinguishing code. That
+    // is the normal case here — git-updater never self-elevates — so flag it for the
+    // caller, which reopens the package in the desktop's own installer where the user
+    // gets a standard authorization prompt.
+    const err = new Error(
+      install.kind === 'pkg'
+        ? 'installing a .pkg needs administrator rights'
+        : 'installing a system package needs root'
+    );
     err.status = r.status;
+    err.elevation = true;
     throw err;
   }
   return { command, status: r.status };

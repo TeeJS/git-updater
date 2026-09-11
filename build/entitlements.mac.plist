@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- Chromium's V8 needs writable-executable memory; the hardened runtime forbids it
+       unless these three are declared. Every Electron app that notarizes needs them. -->
+  <key>com.apple.security.cs.allow-jit</key>
+  <true/>
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+  <true/>
+  <key>com.apple.security.cs.allow-dyld-environment-variables</key>
+  <true/>
+
+  <!-- git-updater downloads release archives and writes them into the user's chosen
+       portable folder, so it must be able to reach files the user picks. -->
+  <key>com.apple.security.files.user-selected.read-write</key>
+  <true/>
+
+  <!-- Notably NOT present: com.apple.security.app-sandbox. git-updater installs and
+       launches other applications, which the sandbox forbids outright. This is a
+       Developer ID build for direct distribution, not a Mac App Store build. -->
+</dict>
+</plist>

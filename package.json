@@ -1,7 +1,7 @@
 {
   "name": "git-updater",
   "version": "0.1.7",
-  "description": "On-demand Windows GUI that updates apps from their GitHub releases (portable & installed). Electron front-end, no localhost server, no shell.",
+  "description": "On-demand desktop GUI that updates apps from their GitHub releases (portable & installed). Windows, macOS and Linux. Electron front-end, no localhost server, no shell.",
   "bin": {
     "git-updater": "bin/watch.js"
   },
@@ -12,7 +12,10 @@
   "scripts": {
     "start": "electron .",
     "test": "node --test",
-    "dist": "electron-builder --win"
+    "dist": "electron-builder --win",
+    "dist:win": "electron-builder --win",
+    "dist:mac": "electron-builder --mac",
+    "dist:linux": "electron-builder --linux"
   },
   "license": "MIT",
   "dependencies": {
@@ -38,6 +41,51 @@
       "target": [
         {
           "target": "zip",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ]
+    },
+    "mac": {
+      "artifactName": "git-updater-${version}-mac-${arch}.${ext}",
+      "category": "public.app-category.utilities",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "notarize": true
+    },
+    "linux": {
+      "artifactName": "git-updater-${version}-linux-${arch}.${ext}",
+      "category": "Utility",
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "tar.gz",
           "arch": [
             "x64",
             "arm64"

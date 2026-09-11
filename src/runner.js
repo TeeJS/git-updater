@@ -5,9 +5,9 @@
 
 const fs = require('fs');
 const path = require('path');
-const os = require('os');
 const { spawn } = require('child_process');
 const core = require('./core');
+const paths = require('./paths');
 const github = require('./github');
 const install = require('./install');
 const state = require('./state');
@@ -16,6 +16,8 @@ const { log } = require('./log');
 
 // Display id ("owner/repo") vs storage/identity key (adds the type, so the same repo
 // tracked as both portable AND installed keeps separate state instead of colliding).
+const isWin = process.platform === 'win32';
+
 const displayId = (repo) => `${repo.owner}/${repo.repo}`;
 const appKey = (repo) => `${repo.owner}/${repo.repo}#${repo.type}`;
 
@@ -59,7 +61,7 @@ async function handleRepo(repo, id, st, opts) {
   let installed = null;
   if (repo.type === 'installer') {
     try {
-      installed = await detect.registryVersion(repo.detect || repo.repo);
+      installed = await detect.installedVersion(repo.detect || repo.repo);
     } catch {}
     // Scheme mismatch (e.g. Brave: registry 152.1.94.117 vs tag 1.94.117): the install
     // looks "newer" than any release, so updates would never be detected. Align the
@@ -93,16 +95,17 @@ async function handleRepo(repo, id, st, opts) {
 
   if (opts.mode === 'check') return { ...base, status: 'updated' };
 
-  // Manual `asset` pattern overrides; otherwise auto-pick the Windows asset from the type.
-  // For installers, match the flavor of the EXISTING install (msi vs exe) so the update
-  // upgrades in place instead of installing a duplicate side-by-side.
+  // Manual `asset` pattern overrides; otherwise auto-pick this platform's asset from
+  // the type. For installers, match the flavor of the EXISTING install (msi vs exe on
+  // Windows, deb vs rpm on Linux) so the update upgrades in place instead of installing
+  // a duplicate side-by-side.
   const flavor = repo.type === 'installer' ? await detect.installedFlavor(repo.detect || repo.repo) : null;
   const asset = repo.asset
     ? core.matchAsset(rel.assets, repo.asset)
-    : core.pickWindowsAsset(rel.assets, repo.type, null, flavor);
+    : core.pickAsset(rel.assets, repo.type, null, flavor);
 
   if (opts.dryRun) {
-    const verb = /\.(zip|7z)$/i.test(asset.name) ? 'extract' : 'place';
+    const verb = /\.(zip|7z|tar\.gz|tgz|tar\.xz|tar\.bz2|tar|dmg)$/i.test(asset.name) ? 'extract' : 'place';
     const plan =
       repo.type === 'installer'
         ? `install ${asset.name} silently`
@@ -119,8 +122,10 @@ async function handleRepo(repo, id, st, opts) {
 
   log(`update ${key}: installed=${installed || '(none)'} -> latest=${core.normTag(latest)}, asset=${asset.name}`);
 
-  // Stage under %LOCALAPPDATA%, NOT %TEMP% — EDR/ASR rules flag executables run from Temp.
-  const stageBase = path.join(process.env.LOCALAPPDATA || os.homedir(), 'git-updater', 'staging');
+  // Stage under git-updater's own data dir, NOT the system temp dir — EDR/ASR rules on
+  // Windows flag executables run from %TEMP%, and macOS Gatekeeper treats a quarantined
+  // bundle there differently. src/paths.js picks the right location per platform.
+  const stageBase = path.join(paths.dataDir(), 'staging');
   fs.mkdirSync(stageBase, { recursive: true });
   // Best-effort cleanup of leftovers older than a day (kept interactive installers, crashed runs).
   try {
@@ -158,14 +163,17 @@ async function handleRepo(repo, id, st, opts) {
     if (repo.type === 'installer') {
       // Detect the installer's silent-install technology from its bytes. If it can't be
       // identified, FAIL rather than blindly running an unknown .exe with NSIS's /S switch.
-      // Open the downloaded installer's own window (it shows a normal UAC prompt).
-      // MSI: msiexec with UI (msiexec.exe itself needs no manifest elevation).
-      // EXE: opts.openFile (ShellExecute via Electron) so the setup's UAC manifest works.
+      // Open the downloaded package in its OWN installer window, where the user gets the
+      // platform's normal authorization prompt. git-updater never self-elevates.
+      //   Windows MSI: msiexec with UI (msiexec.exe itself needs no manifest elevation).
+      //   Windows EXE: opts.openFile (ShellExecute via Electron) so the setup's UAC manifest works.
+      //   macOS .pkg:  opts.openFile hands it to Installer.app, which prompts for admin.
+      //   Linux .deb/.rpm: opts.openFile hands it to the desktop's package installer.
       const interactive = (keepName) => {
         const keep = path.join(stageBase, keepName); // outlives the tmp cleanup below
         fs.copyFileSync(file, keep);
         log(`  -> opening interactive installer: ${keep}`);
-        if (/\.msi$/i.test(keep)) spawn('msiexec', ['/i', keep], { detached: true, stdio: 'ignore' }).unref();
+        if (isWin && /\.msi$/i.test(keep)) spawn('msiexec', ['/i', keep], { detached: true, stdio: 'ignore' }).unref();
         else if (opts.openFile) opts.openFile(keep);
         else return false;
         return true;
@@ -173,7 +181,9 @@ async function handleRepo(repo, id, st, opts) {
       const interactiveResult = {
         ...base,
         status: 'failed',
-        reason: 'installer window opened — approve the UAC prompt and finish it, then Check',
+        reason: isWin
+          ? 'installer window opened — approve the UAC prompt and finish it, then Check'
+          : 'installer window opened — authorize and finish it, then Check',
       };
 
       const kind = (repo.install && repo.install.kind) || install.detectInstallerKind(file);

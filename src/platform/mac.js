@@ -1,0 +1,200 @@
+'use strict';
+
+// macOS: there is no uninstall registry. The equivalent inventory is the set of .app
+// bundles on disk plus each bundle's CFBundleShortVersionString.
+//
+// Primary source is `system_profiler SPApplicationsDataType -json` — one call that
+// returns every app with its name, version and path. Like the three `reg query` calls
+// on Windows it takes seconds, which is why the caller caches it for the whole run.
+// Fallback is a directory scan reading each bundle's Info.plist directly, for machines
+// where Spotlight indexing is off or system_profiler is unavailable.
+
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
+const { run } = require('./exec');
+
+// Where apps actually live. ~/Applications is the per-user equivalent and is where a
+// non-admin install of a downloaded .app ends up.
+const APP_DIRS = () => [
+  '/Applications',
+  '/Applications/Utilities',
+  path.join(os.homedir(), 'Applications'),
+];
+
+// --- system_profiler ---------------------------------------------------------
+
+// Parse `system_profiler SPApplicationsDataType -json` into [{ name, version, flavor, path }].
+// Apple's own bundled apps are excluded: they update through Software Update, never
+// from a GitHub release, so offering them would only produce false matches.
+// Pure: JSON text in, records out. Exported for tests.
+function parseSystemProfiler(stdout) {
+  let data;
+  try {
+    data = JSON.parse(stdout);
+  } catch {
+    return [];
+  }
+  const rows = (data && data.SPApplicationsDataType) || [];
+  const out = [];
+  for (const r of rows) {
+    if (!r || !r._name) continue;
+    if (r.obtained_from === 'apple' || r.obtained_from === 'apple_sw') continue;
+    const version = r.version || '';
+    if (!version) continue;
+    out.push({ name: r._name, version, flavor: 'app', path: r.path || '' });
+  }
+  return out;
+}
+
+// --- Info.plist --------------------------------------------------------------
+
+// Pull CFBundleShortVersionString out of an XML property list. Falls back to
+// CFBundleVersion, which is what some apps put the user-facing version in.
+// Pure: plist text in, version string or null out. Exported for tests.
+function parseInfoPlistXml(text) {
+  const pick = (key) => {
+    const re = new RegExp(`<key>${key}</key>\\s*<string>([^<]*)</string>`, 'i');
+    const m = re.exec(text);
+    return m && m[1].trim() ? m[1].trim() : null;
+  };
+  return pick('CFBundleShortVersionString') || pick('CFBundleVersion');
+}
+
+// A bundle's version. XML plists are read directly; binary ones (`bplist00`, which is
+// what Xcode emits for release builds) go through `defaults read`, an Apple-signed
+// system tool that understands both formats.
+async function bundleVersion(appPath) {
+  const plist = path.join(appPath, 'Contents', 'Info.plist');
+  let buf;
+  try {
+    buf = fs.readFileSync(plist);
+  } catch {
+    return null;
+  }
+  if (buf.subarray(0, 8).toString('latin1') !== 'bplist00') {
+    return parseInfoPlistXml(buf.toString('utf8'));
+  }
+  // `defaults read` takes the path WITHOUT the .plist extension.
+  const base = plist.replace(/\.plist$/, '');
+  const v = (await run('defaults', ['read', base, 'CFBundleShortVersionString'])).trim();
+  if (v) return v;
+  return (await run('defaults', ['read', base, 'CFBundleVersion'])).trim() || null;
+}
+
+// Directory-scan fallback: every .app bundle in the standard locations, with the
+// version read from its own Info.plist.
+async function scanAppBundles() {
+  const found = [];
+  for (const dir of APP_DIRS()) {
+    let names;
+    try {
+      names = fs.readdirSync(dir);
+    } catch {
+      continue;
+    }
+    for (const name of names) {
+      if (!name.endsWith('.app')) continue;
+      found.push({ name: name.slice(0, -4), appPath: path.join(dir, name) });
+    }
+  }
+  const versions = await Promise.all(found.map((f) => bundleVersion(f.appPath)));
+  return found
+    .map((f, i) => ({ name: f.name, version: versions[i] || '', flavor: 'app', path: f.appPath }))
+    .filter((r) => r.version);
+}
+
+async function installedApps() {
+  // system_profiler walks the whole disk, so give it more room than the default.
+  const out = await run('system_profiler', ['SPApplicationsDataType', '-json'], { timeout: 120_000 });
+  const rows = parseSystemProfiler(out);
+  return rows.length ? rows : scanAppBundles();
+}
+
+// --- processes ---------------------------------------------------------------
+
+// Parse `ps -Ao pid=,comm=` into [{ name, pid }]. comm is the full executable path
+// (e.g. /Applications/Foo.app/Contents/MacOS/Foo), so the name is its basename —
+// which is what matches the repo name the user tracks. Pure; exported for tests.
+function parsePs(stdout) {
+  const out = [];
+  for (const line of stdout.split(/\r?\n/)) {
+    const m = line.match(/^\s*(\d+)\s+(.+?)\s*$/);
+    if (!m) continue;
+    out.push({ name: path.posix.basename(m[2]), pid: m[1] });
+  }
+  return out;
+}
+
+async function runningProcesses() {
+  return parsePs(await run('ps', ['-Ao', 'pid=,comm=']));
+}
+
+// POSIX signals, so no subprocess at all: SIGTERM lets the app save and quit,
+// SIGKILL is the "force" path the UI double-confirms.
+function killProcess(pid, force) {
+  try {
+    process.kill(Number(pid), force ? 'SIGKILL' : 'SIGTERM');
+  } catch {}
+}
+
+// --- extraction --------------------------------------------------------------
+// A .app bundle carries symlinks (Contents/Frameworks), Unix mode bits and a code
+// signature. A generic JavaScript unzipper destroys all three and the result fails
+// Gatekeeper, so macOS archives go through Apple's own tools instead: ditto for zips,
+// hdiutil + ditto for disk images. Both are signed system utilities and take an argv
+// array — no shell, consistent with the rest of the engine.
+
+// Mount a .dmg, copy its payload out, unmount. The /Applications symlink that disk
+// images conventionally carry is skipped: it is a drag-and-drop affordance, not payload.
+async function extractDmg(dmgPath, destDir) {
+  const mnt = fs.mkdtempSync(path.join(os.tmpdir(), 'git-updater-dmg-'));
+  await run('hdiutil', ['attach', dmgPath, '-nobrowse', '-noautoopen', '-readonly', '-mountpoint', mnt], {
+    acceptAnyExit: true,
+  });
+  try {
+    let names;
+    try {
+      names = fs.readdirSync(mnt);
+    } catch {
+      throw new Error('could not mount the disk image — it may require accepting a licence agreement');
+    }
+    let copied = 0;
+    for (const name of names) {
+      if (name.startsWith('.') || name === 'Applications') continue;
+      await run('ditto', [path.join(mnt, name), path.join(destDir, name)]);
+      copied++;
+    }
+    if (!copied) throw new Error('the disk image contained nothing to install');
+  } finally {
+    await run('hdiutil', ['detach', mnt, '-force'], { acceptAnyExit: true });
+    fs.rmSync(mnt, { recursive: true, force: true });
+  }
+}
+
+// Returns true when it handled the archive, false to let the generic path take it.
+async function extract(archivePath, destDir) {
+  if (/\.dmg$/i.test(archivePath)) {
+    await extractDmg(archivePath, destDir);
+    return true;
+  }
+  if (/\.zip$/i.test(archivePath)) {
+    // -x extract, -k treat the source as a PKZip archive.
+    await run('ditto', ['-x', '-k', archivePath, destDir]);
+    return true;
+  }
+  return false;
+}
+
+module.exports = {
+  installedApps,
+  runningProcesses,
+  killProcess,
+  extract,
+  // exported for tests
+  parseSystemProfiler,
+  parseInfoPlistXml,
+  parsePs,
+  scanAppBundles,
+  bundleVersion,
+};

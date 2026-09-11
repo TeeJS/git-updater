@@ -214,7 +214,7 @@
           <input type="checkbox" id="preRel"> include beta (pre-release) versions
         </label>
       </div>
-      <p class="helper" id="addHint">GitHub releases URL; the Windows download is selected automatically.</p>
+      <p class="helper" id="addHint">GitHub releases URL; the right download for this computer is selected automatically.</p>
     </section>
 
     <div class="divider"></div>
@@ -237,7 +237,7 @@
         <button id="browse">Browse…</button>
         <button id="saveRoot">Save</button>
       </div>
-      <p class="hint">Portable apps unzip into <code>&lt;folder&gt;\&lt;repo&gt;</code>.</p>
+      <p class="hint">Portable apps unzip into <code>&lt;folder&gt;/&lt;repo&gt;</code>.</p>
       <div class="row" style="margin-top:.6rem">
         <span style="color:var(--muted);font-size:.9rem;min-width:8rem">Advanced</span>
         <button id="editJson">Edit config.json</button>
@@ -436,7 +436,7 @@ $('browse').onclick = async () => {
   catch (e) { msg(clean(e), 'bad'); }
 };
 let editingKey = null;
-const ADD_HINT = 'Paste a GitHub releases URL; git-updater selects the appropriate Windows download automatically.';
+const ADD_HINT = 'Paste a GitHub releases URL; git-updater selects the right download for this computer automatically.';
 function setTypeToggle(type) { $('newType').querySelectorAll('button').forEach((b) => b.classList.toggle('active', b.dataset.type === type)); }
 
 function startEdit(r) {
@@ -609,9 +609,15 @@ async function selfCheck() {
     if (!u) return;
     $('selfupText').textContent = `git-updater ${u.version} is available.`;
     const btn = $('selfupBtn');
-    btn.textContent = 'Update';
+    // canApply is false on macOS, where a running .app bundle cannot be replaced in
+    // place. The new version is still reported; the button just sends the user to the
+    // release page to download it instead of applying it here.
+    const applies = u.canApply !== false;
+    btn.textContent = applies ? 'Update' : 'Download';
     btn.disabled = false;
-    btn.onclick = () => applySelfUpdate(u.version);
+    btn.onclick = applies
+      ? () => applySelfUpdate(u.version)
+      : () => window.api.selfUpdateOpenRelease();
     $('selfupDismiss').disabled = false;
     $('selfup').classList.add('show');
   } catch {} // never let the self-check disturb the app check

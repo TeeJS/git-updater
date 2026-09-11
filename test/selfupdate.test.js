@@ -4,10 +4,10 @@ const path = require('path');
 const os = require('os');
 const fs = require('fs');
 
-// selfupdate.js computes its storage root from %LOCALAPPDATA% at require-time — point it at
-// an isolated temp dir BEFORE requiring so these tests never touch the real one.
+// selfupdate.js computes its storage root at require-time — point it at an isolated
+// temp dir BEFORE requiring so these tests never touch the real one, on any host.
 const FAKE_LOCALAPPDATA = fs.mkdtempSync(path.join(os.tmpdir(), 'gu-selfupdate-env-'));
-process.env.LOCALAPPDATA = FAKE_LOCALAPPDATA;
+process.env.GITUPDATER_DATA_DIR = path.join(FAKE_LOCALAPPDATA, 'git-updater');
 
 const { test } = require('node:test');
 const assert = require('node:assert');
@@ -104,8 +104,8 @@ test('cleanupLeftovers: removes older app-* folders and stale stage/download dir
     const freshStage = path.join(root, '.git-updater-selfupdate-stage-def');
     touch(staleStage, staleAt);
     touch(freshStage, Date.now());
-    const staleDownload = path.join(process.env.LOCALAPPDATA, 'git-updater', 'self-update', 'v0.1.5');
-    const freshDownload = path.join(process.env.LOCALAPPDATA, 'git-updater', 'self-update', 'v0.1.7');
+    const staleDownload = path.join(process.env.GITUPDATER_DATA_DIR, 'self-update', 'v0.1.5');
+    const freshDownload = path.join(process.env.GITUPDATER_DATA_DIR, 'self-update', 'v0.1.7');
     touch(staleDownload, staleAt);
     touch(freshDownload, Date.now());
 
