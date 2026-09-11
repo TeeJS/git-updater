@@ -119,20 +119,20 @@ exports.default = async function verifyMacBuild(context) {
   const outDir = context && context.outDir;
   if (!outDir) throw new Error('macOS build: no outDir in the hook context, so nothing could be verified');
 
+  const apps = findApps(outDir);
+  if (!apps.length) {
+    throw new Error(
+      `macOS build: no .app found under ${outDir}, so notarization could not be verified. ` +
+        'This is a guard failure, not a build failure — the layout changed.'
+    );
+  }
+
   if (process.platform !== 'darwin') {
     // codesign does not exist here, so the artifact cannot be checked. Saying so is the
     // only honest option: silently passing would claim a guarantee we did not make.
     throw new Error(
       `macOS build produced on ${process.platform}, where its notarization cannot be verified. ` +
         'Build it on macOS, or set GITUPDATER_ALLOW_UNNOTARIZED=1 to accept an unverified artifact.'
-    );
-  }
-
-  const apps = findApps(outDir);
-  if (!apps.length) {
-    throw new Error(
-      `macOS build: no .app found under ${outDir}, so notarization could not be verified. ` +
-        'This is a guard failure, not a build failure — the layout changed.'
     );
   }
 

@@ -95,7 +95,8 @@ test('build guard: a macOS build with no .app found is an error, not a quiet pas
     // build whose app I cannot find" are different answers and must not look the same.
     await assert.rejects(
       () => guard.default(ctx({ outDir: d, platformToTargets: new Map([['mac', {}]]) })),
-      /no \.app found|cannot be verified/
+      /no \.app found/ // the SPECIFIC diagnosis: an alternation here matched the
+      // platform error instead and the test passed with the guard removed entirely
     );
   } finally {
     fs.rmSync(d, { recursive: true, force: true });
@@ -105,7 +106,7 @@ test('build guard: a macOS build with no .app found is an error, not a quiet pas
 test('build guard: a macOS build with no outDir is an error too', async () => {
   await assert.rejects(
     () => guard.default(ctx({ outDir: undefined, platformToTargets: new Map([['mac', {}]]) })),
-    /no outDir|cannot be verified/
+    /no outDir/
   );
 });
 
