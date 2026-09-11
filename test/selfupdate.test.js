@@ -13,7 +13,10 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const selfupdate = require('../src/selfupdate');
 
-const EXE = 'git-updater.exe';
+// The launcher filename is platform-dependent (src/selfupdate.js), and listVersions
+// only counts a folder as a version when it contains THAT name — so the fixtures must
+// use the same one, or every assertion here silently finds nothing off Windows.
+const EXE = process.platform === 'win32' ? 'git-updater.exe' : 'git-updater';
 function versionDir(root, v) {
   const dir = path.join(root, `app-${v}`);
   fs.mkdirSync(dir, { recursive: true });
@@ -22,14 +25,13 @@ function versionDir(root, v) {
 }
 
 test('layout: launcher at root vs a versioned copy', () => {
-  assert.deepEqual(selfupdate.layout('D:\\apps\\git-updater\\git-updater.exe'), {
-    root: 'D:\\apps\\git-updater',
-    versionDir: null,
-  });
-  assert.deepEqual(selfupdate.layout('D:\\apps\\git-updater\\app-0.1.6\\git-updater.exe'), {
-    root: 'D:\\apps\\git-updater',
-    versionDir: 'D:\\apps\\git-updater\\app-0.1.6',
-  });
+  // Built with path.join rather than literals: path parsing is platform-specific, so a
+  // hardcoded "D:\apps\..." is one long filename to Linux and the test fails for a
+  // reason that has nothing to do with the code under test.
+  const root = path.join(path.sep === '\\' ? 'D:\\apps' : '/opt', 'git-updater');
+  const versionDir = path.join(root, 'app-0.1.6');
+  assert.deepEqual(selfupdate.layout(path.join(root, EXE)), { root, versionDir: null });
+  assert.deepEqual(selfupdate.layout(path.join(versionDir, EXE)), { root, versionDir });
 });
 
 test('listVersions / newestNewerThan: app-* folders with the exe, newest first, only newer wins', () => {
