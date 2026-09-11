@@ -281,8 +281,38 @@ async function installPortable(archivePath, install, prevManifest) {
   // Stage next to the destination so the renames below are same-volume (atomic-ish).
   const stage = fs.mkdtempSync(path.join(parent, `.${base}.git-updater-stage-`));
   try {
+    const hadOld = fs.existsSync(dest);
     const { files, srcDir } = await extractArchive(archivePath, stage, install.strip);
-    return swapDir(dest, srcDir, { files, carryOver: true, prevManifest });
+
+    // A macOS application bundle is cryptographically sealed, so anything this install
+    // adds inside it makes the app refuse to launch — after an update that reported
+    // success, with nothing saying why. The carry-over guard in swapDir fixes the cause
+    // we found; this catches the same class of damage from a cause we have not.
+    //
+    // DIFFERENTIAL, never absolute. Plenty of projects ship an unsigned or ad-hoc .app
+    // and those fail verification too; refusing them would quietly drop support for
+    // software the user can install by hand today. Only a valid-BEFORE, invalid-AFTER
+    // transition means we broke it. Anything else installs exactly as it always did.
+    const before = hadOld ? await platform.verifyPayload(srcDir) : null;
+    const check = !!(before && before.valid);
+
+    // When checking, the old version stays parked rather than being deleted, so a
+    // failure can restore a working app instead of leaving a corpse and an error.
+    const out = swapDir(dest, srcDir, { files, carryOver: true, prevManifest, deleteOldDir: !check });
+    if (!check) return out;
+
+    const after = await platform.verifyPayload(dest);
+    if (after && !after.valid) {
+      fs.rmSync(dest, { recursive: true, force: true });
+      fs.renameSync(oldDir, dest); // the previous version, whole
+      const err = new Error(
+        `the updated app failed signature verification (${after.reason}) — the previous version has been restored`
+      );
+      err.signature = true;
+      throw err;
+    }
+    fs.rmSync(oldDir, { recursive: true, force: true }); // commit
+    return out;
   } finally {
     fs.rmSync(stage, { recursive: true, force: true });
   }

@@ -38,6 +38,14 @@ async function extract(archivePath, destDir) {
   return p.extract ? p.extract(archivePath, destDir) : false;
 }
 
+// Optional integrity check on an extracted or installed payload. Only macOS defines it,
+// where an application bundle is cryptographically sealed and a single stray file inside
+// it makes the app refuse to launch. null means "nothing here to check".
+async function verifyPayload(dir) {
+  const p = impl();
+  return p.verifyPayload ? p.verifyPayload(dir) : null;
+}
+
 function impl(platform) {
   const key = platform || process.platform;
   const make = IMPLS[key];
@@ -50,6 +58,7 @@ module.exports = {
   impl,
   assetTable,
   extract,
+  verifyPayload,
   installedApps: (...a) => current.installedApps(...a),
   runningProcesses: (...a) => current.runningProcesses(...a),
   killProcess: (...a) => current.killProcess(...a),

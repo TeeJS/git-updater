@@ -6,6 +6,11 @@ const core = require('../src/core');
 
 const A = (...names) => names.map((name) => ({ name }));
 
+// Every call pins the architecture. Without it the pick inherits process.arch, so these
+// x64 expectations pass only on an x64 host and fail on any arm64 machine — which is a
+// property of the test runner, not of the code under test. Architecture PREFERENCE has
+// its own cases in hardening.test.js, where the arch is the thing being asserted.
+
 test('portable: picks the Windows x64 zip, not arm/linux/mac', () => {
   const assets = A(
     'ShareX-21.0.0-portable-x64.zip',
@@ -13,22 +18,22 @@ test('portable: picks the Windows x64 zip, not arm/linux/mac', () => {
     'ShareX-21.0.0-setup-x64.exe',
     'ShareX-21.0.0-linux.tar.gz'
   );
-  assert.equal(core.pickWindowsAsset(assets, 'portable').name, 'ShareX-21.0.0-portable-x64.zip');
+  assert.equal(core.pickWindowsAsset(assets, 'portable', 'x64').name, 'ShareX-21.0.0-portable-x64.zip');
 });
 
 test('portable: deskflow-style windows zip', () => {
   const assets = A('deskflow-1.26.0-windows-x64.zip', 'deskflow-1.26.0-linux-x64.deb', 'deskflow-1.26.0.dmg');
-  assert.equal(core.pickWindowsAsset(assets, 'portable').name, 'deskflow-1.26.0-windows-x64.zip');
+  assert.equal(core.pickWindowsAsset(assets, 'portable', 'x64').name, 'deskflow-1.26.0-windows-x64.zip');
 });
 
 test('portable: accepts a .7z when that is the Windows build', () => {
   const assets = A('app-2.0-win-x64.7z', 'app-2.0-linux.tar.gz');
-  assert.equal(core.pickWindowsAsset(assets, 'portable').name, 'app-2.0-win-x64.7z');
+  assert.equal(core.pickWindowsAsset(assets, 'portable', 'x64').name, 'app-2.0-win-x64.7z');
 });
 
 test('portable: picks the portable .exe over the setup .exe', () => {
   const assets = A('open-quake-0.7.1-portable.exe', 'open-quake-0.7.1-setup.exe');
-  assert.equal(core.pickWindowsAsset(assets, 'portable').name, 'open-quake-0.7.1-portable.exe');
+  assert.equal(core.pickWindowsAsset(assets, 'portable', 'x64').name, 'open-quake-0.7.1-portable.exe');
 });
 
 // electron-builder ships the NSIS installer's internal update payload (*.nsis.7z) as its own
@@ -43,17 +48,17 @@ test('portable: picks the vendor Portable build over an NSIS update payload', ()
     'Bitwarden-Installer-2026.8.0.exe',
     'Bitwarden-Portable-2026.8.0.exe'
   );
-  assert.equal(core.pickWindowsAsset(assets, 'portable').name, 'Bitwarden-Portable-2026.8.0.exe');
+  assert.equal(core.pickWindowsAsset(assets, 'portable', 'x64').name, 'Bitwarden-Portable-2026.8.0.exe');
 });
 
 test('installer: picks the setup .exe over the portable .exe', () => {
   const assets = A('open-quake-0.7.1-portable.exe', 'open-quake-0.7.1-setup.exe');
-  assert.equal(core.pickWindowsAsset(assets, 'installer').name, 'open-quake-0.7.1-setup.exe');
+  assert.equal(core.pickWindowsAsset(assets, 'installer', 'x64').name, 'open-quake-0.7.1-setup.exe');
 });
 
 test('installer: prefers the x64 .msi (silent-installable) over exe/arm', () => {
   const assets = A('7z2602-x64.exe', '7z2602-arm64.exe', '7z2602-x64.msi', '7z2602.exe');
-  assert.equal(core.pickWindowsAsset(assets, 'installer').name, '7z2602-x64.msi');
+  assert.equal(core.pickWindowsAsset(assets, 'installer', 'x64').name, '7z2602-x64.msi');
 });
 
 test('installer: matches the existing install flavor (exe-installed avoids the msi)', () => {
@@ -65,7 +70,7 @@ test('installer: matches the existing install flavor (exe-installed avoids the m
 
 test('installer: falls back to .exe when there is no .msi', () => {
   const assets = A('ShareX-21.0.0-setup-x64.exe', 'ShareX-21.0.0-portable-x64.zip');
-  assert.equal(core.pickWindowsAsset(assets, 'installer').name, 'ShareX-21.0.0-setup-x64.exe');
+  assert.equal(core.pickWindowsAsset(assets, 'installer', 'x64').name, 'ShareX-21.0.0-setup-x64.exe');
 });
 
 test('normTag strips word prefixes so such tags compare correctly', () => {
@@ -105,13 +110,13 @@ test('godot-style release: portable picks the win64 exe.zip; installer suggests 
     'Godot_v4.7.2-stable_osx.universal.zip',
     'Godot_v4.7.2-stable_web_editor.zip'
   );
-  assert.equal(core.pickWindowsAsset(assets, 'portable').name, 'Godot_v4.7.2-stable_win64.exe.zip');
-  assert.throws(() => core.pickWindowsAsset(assets, 'installer'), /change its type to Portable/);
+  assert.equal(core.pickWindowsAsset(assets, 'portable', 'x64').name, 'Godot_v4.7.2-stable_win64.exe.zip');
+  assert.throws(() => core.pickWindowsAsset(assets, 'installer', 'x64'), /change its type to Portable/);
 });
 
 test('throws when no Windows asset of the requested type exists', () => {
   const assets = A('tool-linux.tar.gz', 'tool-macos.dmg');
-  assert.throws(() => core.pickWindowsAsset(assets, 'portable'), /no Windows portable asset/);
+  assert.throws(() => core.pickWindowsAsset(assets, 'portable', 'x64'), /no Windows portable asset/);
 });
 
 test('guessKind: msi vs exe', () => {

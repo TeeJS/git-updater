@@ -9,9 +9,11 @@
 
 const { spawn } = require('child_process');
 
-// Run a command and report how it went: { code, out, timedOut }.
+// Run a command and report how it went: { code, out, err, timedOut }.
 //   code     the exit status, or null when the process never ran or was killed
 //   out      stdout, '' on any failure
+//   err      stderr — where tools like codesign put the REASON, which is the difference
+//            between telling a user "a sealed resource is missing or invalid" and "exit 1"
 //   timedOut true when the watchdog killed it
 //
 // Use this whenever SUCCESS MATTERS. run() below cannot express it: a tool that
@@ -21,11 +23,12 @@ function runStatus(cmd, args, opts = {}) {
   return new Promise((resolve) => {
     let child;
     try {
-      child = spawn(cmd, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
+      child = spawn(cmd, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
     } catch {
-      return resolve({ code: null, out: '', timedOut: false });
+      return resolve({ code: null, out: '', err: '', timedOut: false });
     }
     let out = '';
+    let err = '';
     let done = false;
     const finish = (v) => {
       if (done) return;
@@ -38,16 +41,18 @@ function runStatus(cmd, args, opts = {}) {
       try {
         child.kill();
       } catch {}
-      finish({ code: null, out: '', timedOut: true });
+      finish({ code: null, out: '', err, timedOut: true });
     }, opts.timeout || 60_000);
     child.stdout.on('data', (d) => (out += d));
+    // stderr must be drained even when unused: a full pipe blocks the child.
+    child.stderr.on('data', (d) => (err += d));
     child.on('error', () => {
       clearTimeout(timer);
-      finish({ code: null, out: '', timedOut: false });
+      finish({ code: null, out: '', err, timedOut: false });
     });
     child.on('close', (code) => {
       clearTimeout(timer);
-      finish({ code, out, timedOut: false });
+      finish({ code, out, err, timedOut: false });
     });
   });
 }

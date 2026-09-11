@@ -208,3 +208,113 @@ test('exec: a command that does not exist resolves rather than throwing', async 
   assert.equal(r.out, '');
   assert.equal(await exec.run('definitely-not-a-real-command-xyz', []), '');
 });
+
+// --- differential signature check ---------------------------------------------
+// A macOS bundle is sealed: one foreign file makes it objectively invalid, confirmed on
+// real hardware through this exact code path. The check is differential rather than
+// absolute, because an unsigned or ad-hoc bundle also fails verification and refusing
+// those would drop support for software a user can install by hand today.
+
+const platform = require('../src/platform');
+const install = require('../src/install');
+
+// Replace verifyPayload for one test. `verdicts` is consulted in order, one per call.
+async function withVerify(verdicts, fn) {
+  const real = platform.verifyPayload;
+  const calls = [];
+  let i = 0;
+  platform.verifyPayload = async (dir) => {
+    calls.push(dir);
+    return verdicts[Math.min(i++, verdicts.length - 1)];
+  };
+  try {
+    return await fn(calls);
+  } finally {
+    platform.verifyPayload = real;
+  }
+}
+
+const zipOf = (dir, build) => {
+  const src = path.join(dir, 'payload');
+  fs.mkdirSync(src, { recursive: true });
+  build(src);
+  const AdmZip = require('adm-zip');
+  const z = new AdmZip();
+  z.addLocalFolder(src);
+  const p = path.join(dir, 'app-1.0-mac.zip');
+  z.writeZip(p);
+  return p;
+};
+
+test('install: a bundle valid before and broken after is rolled back, not shipped', async () => {
+  const base = tmp();
+  try {
+    const dest = path.join(base, 'App');
+    fs.mkdirSync(dest, { recursive: true });
+    fs.writeFileSync(path.join(dest, 'marker'), 'v1'); // the working install
+    const zip = zipOf(base, (d) => fs.writeFileSync(path.join(d, 'marker'), 'v2'));
+
+    await withVerify([{ valid: true }, { valid: false, reason: 'a sealed resource is missing or invalid' }], async () => {
+      await assert.rejects(
+        () => install.installPortable(zip, { dir: dest }),
+        /failed signature verification.*sealed resource.*previous version has been restored/s
+      );
+    });
+
+    // The user is left with a working app, not a broken one plus an error.
+    assert.equal(fs.readFileSync(path.join(dest, 'marker'), 'utf8'), 'v1');
+    assert.equal(fs.existsSync(dest + '.git-updater-old'), false, 'parked copy cleaned up');
+  } finally {
+    fs.rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test('install: a bundle valid before and after commits normally', async () => {
+  const base = tmp();
+  try {
+    const dest = path.join(base, 'App');
+    fs.mkdirSync(dest, { recursive: true });
+    fs.writeFileSync(path.join(dest, 'marker'), 'v1');
+    const zip = zipOf(base, (d) => fs.writeFileSync(path.join(d, 'marker'), 'v2'));
+    await withVerify([{ valid: true }, { valid: true }], async () => {
+      await install.installPortable(zip, { dir: dest });
+    });
+    assert.equal(fs.readFileSync(path.join(dest, 'marker'), 'utf8'), 'v2');
+    assert.equal(fs.existsSync(dest + '.git-updater-old'), false);
+  } finally {
+    fs.rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test('install: an app that was never validly signed is installed, not refused', async () => {
+  const base = tmp();
+  try {
+    const dest = path.join(base, 'App');
+    fs.mkdirSync(dest, { recursive: true });
+    fs.writeFileSync(path.join(dest, 'marker'), 'v1');
+    const zip = zipOf(base, (d) => fs.writeFileSync(path.join(d, 'marker'), 'v2'));
+    // Invalid BEFORE: unsigned or ad-hoc. The check must not fire at all.
+    await withVerify([{ valid: false, reason: 'code object is not signed at all' }], async (calls) => {
+      await install.installPortable(zip, { dir: dest });
+      assert.equal(calls.length, 1, 'no second verification once the baseline is invalid');
+    });
+    assert.equal(fs.readFileSync(path.join(dest, 'marker'), 'utf8'), 'v2');
+  } finally {
+    fs.rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test('install: a first install is never verified — there is no baseline to compare to', async () => {
+  const base = tmp();
+  try {
+    const dest = path.join(base, 'App');
+    const zip = zipOf(base, (d) => fs.writeFileSync(path.join(d, 'marker'), 'v1'));
+    await withVerify([{ valid: false, reason: 'should never be consulted' }], async (calls) => {
+      await install.installPortable(zip, { dir: dest });
+      assert.equal(calls.length, 0);
+    });
+    assert.equal(fs.readFileSync(path.join(dest, 'marker'), 'utf8'), 'v1');
+  } finally {
+    fs.rmSync(base, { recursive: true, force: true });
+  }
+});
