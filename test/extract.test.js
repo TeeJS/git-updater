@@ -88,16 +88,24 @@ test('tar: extracts files and directories with their contents', () => {
   }
 });
 
-test('tar: the executable bit survives extraction', { skip: isWin && 'POSIX modes only' }, () => {
+test('tar: the executable bit is read off the header, and applied where the OS has one', () => {
   const dir = tmp();
   try {
-    tar.extractTarBuffer(
+    const written = tar.extractTarBuffer(
       makeTar([
         { name: 'run.sh', body: '#!/bin/sh\n', mode: 0o755 },
         { name: 'data.txt', body: 'x', mode: 0o644 },
       ]),
       dir
     );
+    // Header parsing is platform-independent, so it is asserted on EVERY host; only
+    // applying the bits is POSIX-only. Gating the whole test on the OS is exactly what
+    // let the other fixtures in this suite go unnoticed while verifying nothing.
+    assert.deepEqual(
+      written.map((e) => [e.path, e.mode.toString(8)]).sort(),
+      [['data.txt', '644'], ['run.sh', '755']]
+    );
+    if (isWin) return; // no mode bits on the filesystem to check against
     assert.equal(fs.statSync(path.join(dir, 'run.sh')).mode & 0o777, 0o755);
     assert.equal(fs.statSync(path.join(dir, 'data.txt')).mode & 0o777, 0o644);
   } finally {
@@ -143,7 +151,7 @@ test('tar: GNU long names are applied to the entry that follows', () => {
   }
 });
 
-test('tar: symlinks are recreated, not flattened into copies', { skip: isWin && 'needs symlink privilege' }, () => {
+test('tar: symlinks are recreated, not flattened into copies', { skip: isWin && !canSymlink && 'needs symlink privilege' }, () => {
   const dir = tmp();
   try {
     tar.extractTarBuffer(
@@ -219,7 +227,7 @@ test('extractArchive: a bare AppImage is placed AND made executable', async () =
   }
 });
 
-test('extractArchive: zip entries keep the executable bit recorded in the archive', { skip: isWin && 'POSIX modes only' }, async () => {
+test('extractArchive: zip entries keep the executable bit recorded in the archive', async () => {
   const dir = tmp();
   try {
     // addFile's 4th argument does NOT reach the external-attributes field, so a fixture
@@ -239,6 +247,16 @@ test('extractArchive: zip entries keep the executable bit recorded in the archiv
     const stage = path.join(dir, 'stage');
     fs.mkdirSync(stage);
     const { srcDir } = await install.extractArchive(zipPath, stage);
+
+    // Resolution is platform-independent and is asserted on EVERY host; only applying the
+    // bits is POSIX-only. restoreZipModes reports what it resolved precisely so this test
+    // cannot go quiet on Windows the way it did before.
+    const resolved = install.restoreZipModes(zipPath, srcDir);
+    assert.deepEqual(
+      resolved.map((r) => [r.path.replace(/\\/g, '/'), r.mode.toString(8)]).sort(),
+      [['bin/run', '755'], ['data.txt', '644']]
+    );
+    if (isWin) return; // no mode bits on the filesystem to check against
     assert.equal(fs.statSync(path.join(srcDir, 'bin/run')).mode & 0o111, 0o111);
     assert.equal(fs.statSync(path.join(srcDir, 'data.txt')).mode & 0o111, 0);
   } finally {

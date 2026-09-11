@@ -108,15 +108,20 @@ async function extractCompressedTar(archivePath, destDir, label) {
 // does not apply them on extract — so every binary lands non-executable and the app
 // fails at FIRST LAUNCH, long after the update reported success. Re-apply them here.
 // A zip built on Windows carries no such attributes; those entries are left alone.
+//
+// Returns the [{ path, mode }] it resolved on EVERY platform. Only the chmod call is
+// skipped on Windows. Reporting the decision is what lets the resolution logic be
+// asserted from any host: a test that can only run on one OS verifies nothing on the
+// other, which is how both dead fixtures in this suite went unnoticed.
 function restoreZipModes(zipPath, destDir) {
-  if (process.platform === 'win32') return; // Windows has no mode bits to restore
   let entries;
   try {
     entries = new AdmZip(zipPath).getEntries();
   } catch {
-    return;
+    return [];
   }
   const root = path.resolve(destDir);
+  const resolved = [];
   for (const e of entries) {
     if (e.isDirectory) continue;
     const mode = (e.header.attr >>> 16) & 0o7777;
@@ -128,10 +133,13 @@ function restoreZipModes(zipPath, destDir) {
     const full = path.resolve(destDir, e.entryName);
     if (!full.startsWith(root + path.sep)) continue;
     if (!tar.realContained(destDir, full)) continue;
+    resolved.push({ path: path.relative(destDir, full), mode });
+    if (isWin) continue; // nothing to apply, but the entry is still reported
     try {
       fs.chmodSync(full, mode);
     } catch {}
   }
+  return resolved;
 }
 
 // Extract an archive (or place a bare portable file) into stageDir, auto-flattening any
@@ -339,6 +347,7 @@ module.exports = {
   extractArchive,
   swapDir,
   // exported for tests
+  restoreZipModes,
   stripDirs,
   walk,
 };

@@ -134,9 +134,23 @@ Neither of these errors or warns. They produce a build that looks fine and is no
   is correct. Do not "fix" it to `false`.
 - **`win.sign` moved in electron-builder 26.** The top-level key no longer exists in that
   schema; app-builder-lib reads `win.signtoolOptions.sign`. The old key is not an error and
-  produces no warning — it is ignored, so the build ships UNSIGNED. `package.json` still uses
-  the flat `win.sign` because the pinned version is 25.1.8. **Nest it in the same change that
-  bumps electron-builder.**
+  produces no warning — it is ignored, so the build would ship UNSIGNED. Already migrated, in
+  the same commit that bumped the dependency. `sign.js` itself is unchanged: the hook is still
+  `function | string | null` and still receives a configuration whose `path` is the file to
+  sign. **If the pin ever moves back below 26, this has to move back with it.**
+
+### Azure Trusted Signing is now native, and sign.js could retire
+
+electron-builder 26 added `win.azureSignOptions` (required keys: `certificateProfileName`,
+`codeSigningAccountName`, `endpoint`, `publisherName`), which is the service `sign.js` drives by
+hand today. The schema says it and `signtoolOptions` **cannot both be set** — if both appear,
+signing silently defaults to Azure Trusted Signing. So the project sets only `signtoolOptions`
+and keeps the hook.
+
+Replacing 76 lines of SignTool and dlib plumbing with four config keys is attractive, but it
+changes how release binaries get signed, and the failure mode is a build that looks successful
+and is not trusted. It is deliberately NOT bundled with the dependency bump. Do it on its own,
+and verify with `signtool verify /pa /v` on a real artifact before publishing.
 
 `mac.hardenedRuntime`, `entitlements`, `entitlementsInherit` and `notarize` are all still
 top-level properties of `mac` in 26, so no equivalent migration is needed there. `mac.sign`
