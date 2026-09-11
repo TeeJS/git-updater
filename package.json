@@ -20,11 +20,11 @@
   "license": "MIT",
   "dependencies": {
     "7z-wasm": "^1.2.0",
-    "adm-zip": "^0.6.0"
+    "adm-zip": "^0.6.1"
   },
   "devDependencies": {
-    "electron": "^33.4.11",
-    "electron-builder": "^25.1.8"
+    "electron": "^44.3.0",
+    "electron-builder": "^26.15.3"
   },
   "build": {
     "appId": "com.teejs.gitupdater",
@@ -37,7 +37,9 @@
       "node_modules/**/*"
     ],
     "win": {
-      "sign": "./sign.js",
+      "signtoolOptions": {
+        "sign": "./sign.js"
+      },
       "target": [
         {
           "target": "zip",
