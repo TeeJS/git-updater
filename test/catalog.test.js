@@ -9,10 +9,14 @@ test('catalog: no duplicate repos', () => {
   assert.deepEqual([...new Set(repos)].length, repos.length);
 });
 
+// Every fixture below is a Windows uninstall-registry DisplayName, so each call pins 'win32'.
+// Without it the platform defaults to the host and the Windows-only catalog entries are
+// filtered out before matching, which makes these assertions vacuous anywhere else.
 test('catalog: generic names stay exact-anchored (no false positives)', () => {
   const rows = matchInstalled(
     [{ DisplayName: 'Bunch of Tools' }, { DisplayName: 'uvex Driver' }, { DisplayName: 'action runner' }, { DisplayName: 'pilot' }].map((e) => ({ ...e, DisplayVersion: '1' })),
-    new Set()
+    new Set(),
+    'win32'
   );
   assert.deepEqual(rows, []);
 });
@@ -22,18 +26,19 @@ const I = (...names) => names.map((DisplayName) => ({ DisplayName, DisplayVersio
 test('matchInstalled: finds known apps by registry DisplayName', () => {
   const rows = matchInstalled(
     I('7-Zip 26.02 (x64 edition)', 'Notepad++ (64-bit x64)', 'Git version 2.47.0', 'Some Random App'),
-    new Set()
+    new Set(),
+    'win32'
   );
   assert.deepEqual(rows.map((r) => r.repo).sort(), ['git-for-windows/git', 'ip7z/7zip', 'notepad-plus-plus/notepad-plus-plus']);
 });
 
 test('matchInstalled: marks already-tracked repos', () => {
-  const rows = matchInstalled(I('7-Zip 26.02 (x64 edition)'), new Set(['ip7z/7zip']));
+  const rows = matchInstalled(I('7-Zip 26.02 (x64 edition)'), new Set(['ip7z/7zip']), 'win32');
   assert.equal(rows[0].tracked, true);
 });
 
 test('matchInstalled: Temurin maps per major version', () => {
-  const rows = matchInstalled(I('Eclipse Temurin JRE with Hotspot 21.0.5+11 (x64)'), new Set());
+  const rows = matchInstalled(I('Eclipse Temurin JRE with Hotspot 21.0.5+11 (x64)'), new Set(), 'win32');
   assert.deepEqual(rows.map((r) => r.repo), ['adoptium/temurin21-binaries']);
 });
 

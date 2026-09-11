@@ -222,11 +222,20 @@ test('extractArchive: a bare AppImage is placed AND made executable', async () =
 test('extractArchive: zip entries keep the executable bit recorded in the archive', { skip: isWin && 'POSIX modes only' }, async () => {
   const dir = tmp();
   try {
+    // addFile's 4th argument does NOT reach the external-attributes field, so a fixture
+    // built that way records mode 0 and this test passes vacuously. Set the field itself.
     const zip = new AdmZip();
-    zip.addFile('bin/run', Buffer.from('#!/bin/sh\n'), '', 0o755 << 16);
-    zip.addFile('data.txt', Buffer.from('x'), '', 0o644 << 16);
+    zip.addFile('bin/run', Buffer.from('#!/bin/sh\n'));
+    zip.addFile('data.txt', Buffer.from('x'));
+    // The 0o100000 regular-file type bits are what a real archiver writes, so include them
+    // rather than the bare permission bits: same masked result, faithful raw field.
+    zip.getEntry('bin/run').header.attr = (0o100755 << 16) >>> 0;
+    zip.getEntry('data.txt').header.attr = (0o100644 << 16) >>> 0;
     const zipPath = path.join(dir, 'app-linux.zip');
     zip.writeZip(zipPath);
+    // Guard the fixture: if a future adm-zip drops the bits again, fail here rather than
+    // silently asserting nothing further down.
+    assert.equal((new AdmZip(zipPath).getEntry('bin/run').header.attr >>> 16) & 0o7777, 0o755);
     const stage = path.join(dir, 'stage');
     fs.mkdirSync(stage);
     const { srcDir } = await install.extractArchive(zipPath, stage);
