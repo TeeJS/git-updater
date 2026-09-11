@@ -112,3 +112,25 @@ test('catalog: Windows and macOS still use the display-name regex', () => {
   assert.deepEqual(matchInstalled(I('7-Zip 26.02 (x64 edition)'), new Set(), 'win32').map((r) => r.repo), ['ip7z/7zip']);
   assert.deepEqual(matchInstalled(I('OBS Studio'), new Set(), 'darwin').map((r) => r.repo), ['obsproject/obs-studio']);
 });
+
+test('catalog: p7zip-full is not treated as 7-Zip', () => {
+  // A separate POSIX fork frozen at 16.02, and a transitional stub in current Debian.
+  // Matching it to ip7z/7zip (26.x) would report an update against a version line that
+  // is not the installed project's, and the row could never clear.
+  assert.deepEqual(matchInstalled(I('p7zip-full'), new Set(), 'linux'), []);
+  assert.deepEqual(matchInstalled(I('7zip'), new Set(), 'linux').map((r) => r.repo), ['ip7z/7zip']);
+});
+
+test('catalog: no linux identifier is claimed by two different repos', () => {
+  // Exact matching means a shared identifier silently offers the user two different
+  // projects for one installed package.
+  const owner = new Map();
+  for (const e of CATALOG) {
+    for (const id of e.linux || []) {
+      const key = id.toLowerCase();
+      const prev = owner.get(key);
+      assert.ok(!prev || prev === e.repo, `"${id}" claimed by both ${prev} and ${e.repo}`);
+      owner.set(key, e.repo);
+    }
+  }
+});

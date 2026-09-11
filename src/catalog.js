@@ -49,7 +49,11 @@ const CATALOG = [
   { name: 'WinDirStat', repo: 'windirstat/windirstat', match: /WinDirStat/i, platforms: ['win32'] },
   { name: 'Open-Shell', repo: 'Open-Shell/Open-Shell-Menu', match: /Open-Shell|Classic Shell/i, platforms: ['win32'] },
   // Compression
-  { name: '7-Zip', repo: 'ip7z/7zip', match: /^7-Zip/i, linux: ['7zip', 'p7zip-full'] },
+  // NOT p7zip-full: a separate POSIX fork, frozen at 16.02, and in current Debian a
+  // transitional stub at "16.02+transitional.1". Matching it to Igor Pavlov's 7-Zip
+  // (26.x) reports a 10-major-version update against a version line that is not the
+  // installed project's, and the row can never clear. "7zip" IS the official one.
+  { name: '7-Zip', repo: 'ip7z/7zip', match: /^7-Zip/i, linux: ['7zip'] },
   { name: 'PeaZip', repo: 'peazip/PeaZip', match: /PeaZip/i, linux: ['peazip', 'PeaZip'] },
   // AI tools
   { name: 'OpenCode', repo: 'anomalyco/opencode', match: /^OpenCode\b/i },
