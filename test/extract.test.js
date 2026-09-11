@@ -361,3 +361,74 @@ test('containmentChecker: memoizing one directory does not let a sibling escape'
     fs.rmSync(base, { recursive: true, force: true });
   }
 });
+
+// --- link targets -------------------------------------------------------------
+// A .app bundle and every framework inside it is held together by relative symlinks,
+// most of them upward. Validating a target against the LINK'S OWN directory rather
+// than the extraction root rejects anything containing "..", which drops those links
+// and produces a bundle that extracts clean and then fails at first launch.
+
+test('tar: link targets may point upward inside the root, but never out of it', { skip: isWin && !canSymlink && 'needs symlink privilege' }, () => {
+  const dir = tmp();
+  try {
+    tar.extractTarBuffer(
+      makeTar([
+        { name: 'Contents/Frameworks/', type: '5', mode: 0o755 },
+        { name: 'Contents/Frameworks/libfoo.dylib', body: 'REAL', mode: 0o755 },
+        { name: 'Contents/MacOS/', type: '5', mode: 0o755 },
+        { name: 'Contents/Frameworks/Current', type: '2', linkname: 'libfoo.dylib' },
+        { name: 'Contents/MacOS/libfoo.dylib', type: '2', linkname: '../Frameworks/libfoo.dylib' },
+        { name: 'Contents/MacOS/deep', type: '2', linkname: '../Frameworks' },
+        { name: 'Contents/MacOS/escape', type: '2', linkname: '../../../../../../etc/passwd' },
+        { name: 'Contents/MacOS/absolute', type: '2', linkname: '/etc/passwd' },
+      ]),
+      dir
+    );
+    const has = (p) => fs.existsSync(path.join(dir, p)) || (() => { try { return !!fs.lstatSync(path.join(dir, p)); } catch { return false; } })();
+    assert.ok(has('Contents/Frameworks/Current'), 'same-directory target kept');
+    assert.ok(has('Contents/MacOS/libfoo.dylib'), 'upward target inside the root kept');
+    assert.ok(has('Contents/MacOS/deep'), 'upward target to a directory kept');
+    assert.equal(has('Contents/MacOS/escape'), false, 'target leaving the root dropped');
+    assert.equal(has('Contents/MacOS/absolute'), false, 'absolute target dropped');
+    // The link is written verbatim so the bundle keeps its own relative form. Windows
+    // stores the separators as backslashes, so compare on the normalized form.
+    assert.equal(
+      fs.readlinkSync(path.join(dir, 'Contents/MacOS/libfoo.dylib')).replace(/\\/g, '/'),
+      '../Frameworks/libfoo.dylib'
+    );
+    assert.equal(fs.readFileSync(path.join(dir, 'Contents/MacOS/libfoo.dylib'), 'utf8'), 'REAL');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('tar: a hardlink target is resolved against the archive root, not the entry directory', () => {
+  const dir = tmp();
+  try {
+    tar.extractTarBuffer(
+      makeTar([
+        { name: 'lib/', type: '5', mode: 0o755 },
+        { name: 'lib/real.so', body: 'PAYLOAD', mode: 0o755 },
+        { name: 'bin/', type: '5', mode: 0o755 },
+        { name: 'bin/linked.so', type: '1', linkname: 'lib/real.so' },
+      ]),
+      dir
+    );
+    assert.equal(fs.readFileSync(path.join(dir, 'bin/linked.so'), 'utf8'), 'PAYLOAD');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('safeLinkTarget: upward inside the root resolves, escaping and absolute do not', () => {
+  const root = path.resolve('/tmp/stage');
+  const linkDir = path.join(root, 'Contents', 'MacOS');
+  assert.equal(
+    tar.safeLinkTarget(root, linkDir, '../Frameworks/libfoo.dylib'),
+    path.join(root, 'Contents', 'Frameworks', 'libfoo.dylib')
+  );
+  assert.equal(tar.safeLinkTarget(root, linkDir, 'sibling.dylib'), path.join(linkDir, 'sibling.dylib'));
+  assert.equal(tar.safeLinkTarget(root, linkDir, '../../../../etc/passwd'), null);
+  assert.equal(tar.safeLinkTarget(root, linkDir, '/etc/passwd'), null);
+  assert.equal(tar.safeLinkTarget(root, linkDir, ''), null);
+});

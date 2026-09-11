@@ -93,6 +93,30 @@ function safeJoin(destDir, name) {
   return full;
 }
 
+// Where a link's target is allowed to point. The target is resolved relative to `baseDir`
+// and then validated against destDir — NOT against baseDir.
+//
+// Validating against the link's own directory, which is what this originally did, rejects
+// any target containing ".." even when it resolves well inside the extraction root. That
+// silently drops the upward links every .app bundle and framework is built from:
+//
+//   Contents/MacOS/libfoo.dylib -> ../Frameworks/libfoo.dylib
+//
+// which is ordinary and has to survive. The result was a macOS build that extracted
+// clean, reported a successful update, and then failed at first launch — precisely the
+// failure this module exists to prevent.
+//
+// baseDir differs by link type: a symlink's target is relative to the symlink's own
+// directory, while a tar hardlink's is relative to the archive root.
+function safeLinkTarget(destDir, baseDir, linkname) {
+  const cleaned = String(linkname || '').replace(/\\/g, '/');
+  if (!cleaned || cleaned.startsWith('/') || /^[a-zA-Z]:/.test(cleaned)) return null;
+  const resolved = path.resolve(baseDir, cleaned);
+  const root = path.resolve(destDir);
+  if (resolved !== root && !resolved.startsWith(root + path.sep)) return null;
+  return resolved;
+}
+
 // pax extended headers are "<len> <key>=<value>\n" records; we only care about "path".
 function paxPath(buf) {
   const text = buf.toString('utf8');
@@ -160,8 +184,11 @@ function extractTarBuffer(buf, destDir) {
     if (type === '2' || type === '1') {
       // Symlink / hard link. A .app bundle's Contents/Frameworks is full of these, and
       // dropping them silently corrupts the bundle — so a bad target is skipped, never
-      // rewritten. The link target must also stay inside destDir.
-      const target = safeJoin(path.dirname(full), linkname);
+      // rewritten. The target must stay inside destDir but is free to point upward
+      // within it. A symlink's target is relative to its own directory; a tar hardlink's
+      // is relative to the archive root.
+      const base = type === '2' ? path.dirname(full) : destDir;
+      const target = safeLinkTarget(destDir, base, linkname);
       if (!target || !contained(full)) continue;
       fs.mkdirSync(path.dirname(full), { recursive: true });
       try {
@@ -205,4 +232,4 @@ function extractTar(archivePath, destDir) {
   return extractTarBuffer(buf, destDir);
 }
 
-module.exports = { extractTar, extractTarBuffer, safeJoin, realContained, containmentChecker };
+module.exports = { extractTar, extractTarBuffer, safeJoin, safeLinkTarget, realContained, containmentChecker };
