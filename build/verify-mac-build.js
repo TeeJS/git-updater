@@ -68,37 +68,93 @@ function explain(state) {
   return 'no notarization credentials in the environment — set one of: ' + CREDENTIAL_SETS.map((s) => s.join(' + ')).join('  |  ');
 }
 
+// Was this a macOS build at all? The hook is TOLD, so there is no need to infer it from
+// what happens to be on disk. Measured: electron-builder hands afterAllArtifactBuild
+// { outDir, artifactPaths, platformToTargets, configuration } — no appOutDir — and
+// platformToTargets is keyed by platform name.
+//
+// This distinction is the whole point. "Not a macOS build, correctly do nothing" and
+// "this IS a macOS build and the app could not be found, so something is wrong" must not
+// collapse into the same silent return. They did, and the guard then protected nothing
+// while still reporting success — the exact failure it exists to prevent, reproduced
+// inside it.
+function builtForMac(context) {
+  const keys = context && context.platformToTargets ? [...context.platformToTargets.keys()] : [];
+  if (keys.some((k) => String((k && k.name) || k).toLowerCase() === 'mac')) return true;
+  const artifacts = (context && context.artifactPaths) || [];
+  return artifacts.some((a) => /\.dmg$/i.test(String(a)));
+}
+
+// Every .app under outDir, one and two levels down. Scanning rather than assuming means
+// neither the product name nor the architecture directory is hard-coded: a productName
+// change or an added target used to turn the guard into a no-op.
+function findApps(outDir) {
+  const out = [];
+  const list = (d) => {
+    try {
+      return fs.readdirSync(d, { withFileTypes: true });
+    } catch {
+      return [];
+    }
+  };
+  for (const e of list(outDir)) {
+    const p = path.join(outDir, e.name);
+    if (/\.app$/i.test(e.name)) {
+      out.push(p);
+      continue;
+    }
+    if (!e.isDirectory()) continue;
+    for (const inner of list(p)) {
+      if (/\.app$/i.test(inner.name)) out.push(path.join(p, inner.name));
+    }
+  }
+  return out;
+}
+
 // electron-builder hook. Runs once every artifact exists, which is after its own
 // notarization step, so the ticket is there by now if it is coming.
 exports.default = async function verifyMacBuild(context) {
-  // This hook is global, so it runs for Windows and Linux builds too. The absence of a
-  // .app is what makes it a no-op there — cheaper and more honest than trying to read
-  // the platform out of a context shape that differs between hook types.
-  const appOutDir = context.appOutDir || (context.outDir && path.join(context.outDir, 'mac-arm64'));
-  if (!appOutDir) return;
-  const appPath = path.join(appOutDir, 'git-updater.app');
-  if (!fs.existsSync(appPath)) return;
-  if (process.platform !== 'darwin') return; // codesign only exists here
+  if (!builtForMac(context)) return; // genuinely not our business
 
-  const allow = process.env.GITUPDATER_ALLOW_UNNOTARIZED === '1';
+  const outDir = context && context.outDir;
+  if (!outDir) throw new Error('macOS build: no outDir in the hook context, so nothing could be verified');
+
+  if (process.platform !== 'darwin') {
+    // codesign does not exist here, so the artifact cannot be checked. Saying so is the
+    // only honest option: silently passing would claim a guarantee we did not make.
+    throw new Error(
+      `macOS build produced on ${process.platform}, where its notarization cannot be verified. ` +
+        'Build it on macOS, or set GITUPDATER_ALLOW_UNNOTARIZED=1 to accept an unverified artifact.'
+    );
+  }
+
+  const apps = findApps(outDir);
+  if (!apps.length) {
+    throw new Error(
+      `macOS build: no .app found under ${outDir}, so notarization could not be verified. ` +
+        'This is a guard failure, not a build failure — the layout changed.'
+    );
+  }
+
   const creds = credentialState();
-
-  if (isNotarized(appPath)) {
-    console.log('  • notarization verified against the artifact, not the build log');
+  const bad = apps.filter((a) => !isNotarized(a));
+  if (!bad.length) {
+    console.log(`  • notarization verified against ${apps.length} artifact(s), not the build log`);
     return;
   }
 
   const why = creds.ok
     ? 'credentials were present, so notarization was attempted and did not take'
     : explain(creds);
+  const nl = String.fromCharCode(10);
   const message =
-    `macOS build is NOT notarized: ${why}.\n` +
-    `  ${appPath}\n` +
-    '  Gatekeeper refuses an unnotarized app on Apple Silicon exactly as it refuses an unsigned one,\n' +
-    '  so this artifact would not launch for anyone who downloaded it.\n' +
+    `macOS build is NOT notarized: ${why}.` + nl +
+    bad.map((a) => `  ${a}`).join(nl) + nl +
+    '  Gatekeeper refuses an unnotarized app on Apple Silicon exactly as it refuses an unsigned one,' + nl +
+    '  so this artifact would not launch for anyone who downloaded it.' + nl +
     '  Set GITUPDATER_ALLOW_UNNOTARIZED=1 for a local build you are not shipping.';
 
-  if (allow) {
+  if (process.env.GITUPDATER_ALLOW_UNNOTARIZED === '1') {
     console.warn(`  ! ${message}`);
     return;
   }
@@ -107,3 +163,5 @@ exports.default = async function verifyMacBuild(context) {
 
 module.exports.credentialState = credentialState;
 module.exports.isNotarized = isNotarized;
+module.exports.builtForMac = builtForMac;
+module.exports.findApps = findApps;
