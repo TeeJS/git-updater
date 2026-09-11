@@ -15,21 +15,16 @@ const os = require('os');
 const exec = require('./exec');
 const { run } = exec;
 
-// Where apps actually live. ~/Applications is the per-user equivalent and is where a
-// non-admin install of a downloaded .app ends up.
-const APP_DIRS = () => [
-  '/Applications',
-  '/Applications/Utilities',
-  path.join(os.homedir(), 'Applications'),
-];
+const { isInstalledAppPath, APP_DIRS } = require('./appfilter');
 
 // --- system_profiler ---------------------------------------------------------
 
 // Parse `system_profiler SPApplicationsDataType -json` into [{ name, version, flavor, path }].
 // Apple's own bundled apps are excluded: they update through Software Update, never
 // from a GitHub release, so offering them would only produce false matches.
-// Pure: JSON text in, records out. Exported for tests.
-function parseSystemProfiler(stdout) {
+// Pure: JSON text in, records out. `dirs` overrides the app directories, for tests.
+// Exported for tests.
+function parseSystemProfiler(stdout, dirs) {
   let data;
   try {
     data = JSON.parse(stdout);
@@ -43,7 +38,11 @@ function parseSystemProfiler(stdout) {
     if (r.obtained_from === 'apple' || r.obtained_from === 'apple_sw') continue;
     const version = r.version || '';
     if (!version) continue;
-    out.push({ name: r._name, version, flavor: 'app', path: r.path || '' });
+    // Spotlight reports every bundle on disk, not the installed set. Without this the
+    // inventory carries build outputs and caches, and because installedVersion() takes
+    // the HIGHEST match, one of those silently pins an app as already up to date.
+    if (!isInstalledAppPath(r.path, dirs)) continue;
+    out.push({ name: r._name, version, flavor: 'app', path: r.path });
   }
   return out;
 }
@@ -87,16 +86,30 @@ async function bundleVersion(appPath) {
 // version read from its own Info.plist.
 async function scanAppBundles() {
   const found = [];
-  for (const dir of APP_DIRS()) {
-    let names;
+  const list = (d) => {
     try {
-      names = fs.readdirSync(dir);
+      return fs.readdirSync(d);
     } catch {
-      continue;
+      return [];
     }
-    for (const name of names) {
-      if (!name.endsWith('.app')) continue;
-      found.push({ name: name.slice(0, -4), appPath: path.join(dir, name) });
+  };
+  for (const dir of APP_DIRS()) {
+    for (const name of list(dir)) {
+      const appPath = path.join(dir, name);
+      if (isInstalledAppPath(appPath)) {
+        found.push({ name: name.replace(/\.app$/i, ''), appPath });
+        continue;
+      }
+      // One level of vendor subfolder, matching what the predicate accepts — otherwise
+      // this scan would miss /Applications/Utilities and every grouped installer like
+      // Setapp, while the primary path happily reports them. The two inventories have to
+      // agree, or the fallback is a different answer rather than the same one.
+      for (const inner of list(appPath)) {
+        const nested = path.join(appPath, inner);
+        // Same predicate as the primary path, so both see exactly one set of things.
+        if (!isInstalledAppPath(nested)) continue;
+        found.push({ name: inner.replace(/\.app$/i, ''), appPath: nested });
+      }
     }
   }
   const versions = await Promise.all(found.map((f) => bundleVersion(f.appPath)));

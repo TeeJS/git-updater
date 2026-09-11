@@ -432,3 +432,88 @@ test('safeLinkTarget: upward inside the root resolves, escaping and absolute do 
   assert.equal(tar.safeLinkTarget(root, linkDir, '/etc/passwd'), null);
   assert.equal(tar.safeLinkTarget(root, linkDir, ''), null);
 });
+
+// --- bundle preservation -------------------------------------------------------
+// A macOS application is a DIRECTORY, so the wrapper-folder flattening walks into it
+// unless stopped: stage/Foo.app becomes stage/Foo.app/Contents, and what gets installed
+// is a Contents folder with no bundle around it. Not a damaged app — no app at all.
+
+const mkbundle = (root, name) => {
+  const app = path.join(root, name);
+  fs.mkdirSync(path.join(app, 'Contents', 'MacOS'), { recursive: true });
+  fs.mkdirSync(path.join(app, 'Contents', 'Resources'), { recursive: true });
+  fs.writeFileSync(path.join(app, 'Contents', 'Info.plist'), '<plist/>');
+  fs.writeFileSync(path.join(app, 'Contents', 'MacOS', 'Foo'), 'bin');
+  return app;
+};
+
+test('stripDirs: never descends into an .app bundle', () => {
+  const dir = tmp();
+  try {
+    mkbundle(dir, 'Foo.app');
+    // The stage holds exactly one directory, which is the payload. Flattening must stop
+    // here, so the bundle itself is what gets installed.
+    assert.equal(install.stripDirs(dir, Infinity), dir);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('stripDirs: still flattens a wrapper folder, and stops at the bundle inside it', () => {
+  const dir = tmp();
+  try {
+    const wrapper = path.join(dir, 'Foo-1.2.3-mac');
+    fs.mkdirSync(wrapper);
+    mkbundle(wrapper, 'Foo.app');
+    // One real wrapper level is removed; the bundle beneath it is not.
+    assert.equal(install.stripDirs(dir, Infinity), wrapper);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('stripDirs: the guard covers frameworks and the other bundle kinds too', () => {
+  for (const name of ['Foo.framework', 'Foo.bundle', 'Foo.plugin', 'Foo.appex', 'Foo.kext', 'Foo.xpc']) {
+    const dir = tmp();
+    try {
+      fs.mkdirSync(path.join(dir, name, 'Versions'), { recursive: true });
+      assert.equal(install.stripDirs(dir, Infinity), dir, name);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  }
+});
+
+test('stripDirs: ordinary nested wrappers are still collapsed', () => {
+  const dir = tmp();
+  try {
+    fs.mkdirSync(path.join(dir, 'a', 'b', 'c'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'a', 'b', 'c', 'x.txt'), 'x');
+    fs.writeFileSync(path.join(dir, 'a', 'b', 'c', 'y.txt'), 'y');
+    assert.equal(install.stripDirs(dir, Infinity), path.join(dir, 'a', 'b', 'c'));
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('extractArchive: a zip holding one .app installs the bundle, not its Contents', async () => {
+  const dir = tmp();
+  try {
+    const src = path.join(dir, 'src');
+    fs.mkdirSync(src);
+    mkbundle(src, 'Foo.app');
+    const zip = new AdmZip();
+    zip.addLocalFolder(src);
+    const zipPath = path.join(dir, 'Foo-1.2.3-mac.zip');
+    zip.writeZip(zipPath);
+
+    const stage = path.join(dir, 'stage');
+    fs.mkdirSync(stage);
+    const { files, srcDir } = await install.extractArchive(zipPath, stage);
+    const rel = files.map((f) => f.replace(/\\/g, '/')).sort();
+    assert.ok(rel.every((f) => f.startsWith('Foo.app/')), `bundle was flattened away: ${rel.join(', ')}`);
+    assert.ok(fs.existsSync(path.join(srcDir, 'Foo.app', 'Contents', 'Info.plist')));
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

@@ -34,14 +34,30 @@ function walk(root, base = root, out = []) {
   return out;
 }
 
-// If the zip wraps everything in N leading single-dir levels, descend past them.
+// Directories that ARE a unit of software rather than a wrapper around one. On macOS an
+// application is a directory, so the flattening below would walk straight into it:
+// stage/Foo.app -> stage/Foo.app/Contents, and what gets installed is a Contents folder
+// with no bundle around it. Not a damaged app — no app at all. Every single-app disk
+// image and every zip holding one .app takes that path, so this guard is unconditional
+// rather than gated on the platform: a zip containing a bundle is a zip containing a
+// bundle whichever OS unpacks it, and descending into one is never what was meant.
+const BUNDLE_DIR = /\.(app|framework|bundle|plugin|appex|kext|xpc|prefPane|qlgenerator)$/i;
+
+// If the archive wraps everything in N leading single-dir levels, descend past them.
 function stripDirs(root, n) {
   let cur = root;
   for (let i = 0; i < n; i++) {
     const items = fs.readdirSync(cur);
-    if (items.length === 1 && fs.statSync(path.join(cur, items[0])).isDirectory()) {
-      cur = path.join(cur, items[0]);
-    } else break;
+    if (items.length !== 1) break;
+    if (BUNDLE_DIR.test(items[0])) break; // the payload itself — never descend into it
+    let st;
+    try {
+      st = fs.statSync(path.join(cur, items[0]));
+    } catch {
+      break;
+    }
+    if (!st.isDirectory()) break;
+    cur = path.join(cur, items[0]);
   }
   return cur;
 }
@@ -349,6 +365,7 @@ module.exports = {
   swapDir,
   // exported for tests
   restoreZipModes,
+  BUNDLE_DIR,
   stripDirs,
   walk,
 };

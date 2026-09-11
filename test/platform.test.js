@@ -54,23 +54,32 @@ test('win: parses tasklist csv', () => {
 
 // --- macOS ------------------------------------------------------------------
 
-test('mac: parses system_profiler json and skips Apple-bundled apps', () => {
+// Directories are passed explicitly so this runs identically on any host — the real
+// defaults are POSIX paths, and the predicate that uses them is covered in appfilter.test.js.
+const MAC_DIRS = ['/Applications', '/Users/teej/Applications'];
+
+test('mac: parses system_profiler json, skipping Apple apps and non-installed bundles', () => {
   const out = JSON.stringify({
     SPApplicationsDataType: [
       { _name: 'ShareX', version: '21.0.0', path: '/Applications/ShareX.app', obtained_from: 'identified_developer' },
       { _name: 'Safari', version: '19.0', path: '/Applications/Safari.app', obtained_from: 'apple' },
       { _name: 'Console', version: '1.0', path: '/Applications/Utilities/Console.app', obtained_from: 'apple_sw' },
       { _name: 'No Version', path: '/Applications/NoVersion.app', obtained_from: 'unknown' },
+      // Spotlight reports every bundle on disk, not the installed set. These are real
+      // rows from a developer machine and must not reach the inventory: taking the
+      // highest version across matches, any of them would pin an app as up to date.
+      { _name: 'Electron', version: '44.3.0', path: '/Users/teej/p/node_modules/electron/dist/Electron.app', obtained_from: 'unknown' },
+      { _name: 'Bedrock Panel', version: '9.9.9', path: '/Users/teej/p/dist/mac-arm64/Bedrock Panel.app', obtained_from: 'unknown' },
     ],
   });
-  assert.deepEqual(mac.parseSystemProfiler(out), [
+  assert.deepEqual(mac.parseSystemProfiler(out, MAC_DIRS), [
     { name: 'ShareX', version: '21.0.0', flavor: 'app', path: '/Applications/ShareX.app' },
   ]);
 });
 
 test('mac: malformed system_profiler output yields nothing rather than throwing', () => {
-  assert.deepEqual(mac.parseSystemProfiler('not json at all'), []);
-  assert.deepEqual(mac.parseSystemProfiler(''), []);
+  assert.deepEqual(mac.parseSystemProfiler('not json at all', MAC_DIRS), []);
+  assert.deepEqual(mac.parseSystemProfiler('', MAC_DIRS), []);
 });
 
 test('mac: reads CFBundleShortVersionString from an XML Info.plist', () => {
