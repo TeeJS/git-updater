@@ -340,3 +340,24 @@ test('realContained: accepts paths inside the root and rejects ones reached via 
     fs.rmSync(base, { recursive: true, force: true });
   }
 });
+
+test('containmentChecker: memoizing one directory does not let a sibling escape', { skip: isWin && !canSymlink && 'needs symlink privilege' }, () => {
+  const base = tmp();
+  try {
+    const dest = path.join(base, 'stage');
+    const outside = path.join(base, 'outside');
+    fs.mkdirSync(path.join(dest, 'good'), { recursive: true });
+    fs.mkdirSync(outside);
+    fs.symlinkSync(outside, path.join(dest, 'evil'), 'dir');
+
+    const contained = tar.containmentChecker(dest);
+    // Warm the cache with a legitimate directory first — the escape must still be
+    // rejected afterwards, i.e. the memo is per directory and never a blanket verdict.
+    assert.ok(contained(path.join(dest, 'good', 'a.txt')));
+    assert.equal(contained(path.join(dest, 'evil', 'a.txt')), null);
+    assert.ok(contained(path.join(dest, 'good', 'b.txt'))); // cache hit, still allowed
+    assert.equal(contained(path.join(dest, 'evil', 'b.txt')), null); // cache hit, still denied
+  } finally {
+    fs.rmSync(base, { recursive: true, force: true });
+  }
+});

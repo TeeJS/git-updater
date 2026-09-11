@@ -121,6 +121,7 @@ function restoreZipModes(zipPath, destDir) {
     return [];
   }
   const root = path.resolve(destDir);
+  const contained = tar.containmentChecker(destDir);
   const resolved = [];
   for (const e of entries) {
     if (e.isDirectory) continue;
@@ -132,7 +133,7 @@ function restoreZipModes(zipPath, destDir) {
     // symlinked path component out of destDir onto someone else's file.
     const full = path.resolve(destDir, e.entryName);
     if (!full.startsWith(root + path.sep)) continue;
-    if (!tar.realContained(destDir, full)) continue;
+    if (!contained(full)) continue;
     resolved.push({ path: path.relative(destDir, full), mode });
     if (isWin) continue; // nothing to apply, but the entry is still reported
     try {

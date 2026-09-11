@@ -38,23 +38,48 @@ const octal = (buf, off, len) => {
 // once the deepest existing ancestor is known to be inside destDir, the rest is safe.
 // Returns `full` when the write is contained, or null to skip the entry.
 function realContained(destDir, full) {
-  let root;
-  try {
-    root = fs.realpathSync(destDir);
-  } catch {
-    return null; // destDir itself is gone — write nothing
-  }
-  let dir = path.dirname(full);
-  for (;;) {
-    try {
-      const real = fs.realpathSync(dir);
-      return real === root || real.startsWith(root + path.sep) ? full : null;
-    } catch {
-      const parent = path.dirname(dir); // not created yet — check its parent instead
-      if (parent === dir) return null;
-      dir = parent;
+  return containmentChecker(destDir)(full);
+}
+
+// Memoized form, for extracting a whole archive. The check costs one realpath syscall
+// per entry, but entries overwhelmingly share parent directories — a 4000-file build
+// typically has a couple of hundred — so resolving per DIRECTORY instead of per entry
+// turns seconds of syscalls into milliseconds.
+//
+// Caching a positive verdict is sound: this extractor only ever creates real
+// directories, and it refuses to create a symlink whose target leaves destDir, so a
+// directory known to be inside cannot later come to point outside.
+function containmentChecker(destDir) {
+  let root = null;
+  const seen = new Map();
+  return (full) => {
+    if (root === null) {
+      try {
+        root = fs.realpathSync(destDir);
+      } catch {
+        return null; // destDir itself is gone — write nothing
+      }
     }
-  }
+    const key = path.dirname(full);
+    const hit = seen.get(key);
+    if (hit !== undefined) return hit ? full : null;
+    let dir = key;
+    for (;;) {
+      try {
+        const real = fs.realpathSync(dir);
+        const ok = real === root || real.startsWith(root + path.sep);
+        seen.set(key, ok);
+        return ok ? full : null;
+      } catch {
+        const parent = path.dirname(dir); // not created yet — check its parent instead
+        if (parent === dir) {
+          seen.set(key, false);
+          return null;
+        }
+        dir = parent;
+      }
+    }
+  };
 }
 
 // Reject anything that would land outside destDir — absolute paths, drive letters and
@@ -81,6 +106,7 @@ function paxPath(buf) {
 // handling testable from any host, which matters because a lost executable bit only
 // shows up when a user tries to launch the app.
 function extractTarBuffer(buf, destDir) {
+  const contained = containmentChecker(destDir);
   const written = [];
   const dirModes = [];
   let off = 0;
@@ -125,7 +151,7 @@ function extractTarBuffer(buf, destDir) {
     if (!full) continue; // path traversal attempt — drop the entry, keep going
 
     if (type === '5') {
-      if (!realContained(destDir, full)) continue;
+      if (!contained(full)) continue;
       fs.mkdirSync(full, { recursive: true });
       // Directory modes are applied last: a read-only dir would block writing into it.
       if (mode) dirModes.push([full, mode & 0o7777]);
@@ -136,7 +162,7 @@ function extractTarBuffer(buf, destDir) {
       // dropping them silently corrupts the bundle — so a bad target is skipped, never
       // rewritten. The link target must also stay inside destDir.
       const target = safeJoin(path.dirname(full), linkname);
-      if (!target || !realContained(destDir, full)) continue;
+      if (!target || !contained(full)) continue;
       fs.mkdirSync(path.dirname(full), { recursive: true });
       try {
         fs.rmSync(full, { force: true });
@@ -148,7 +174,7 @@ function extractTarBuffer(buf, destDir) {
     }
     if (type !== '0' && type !== '\0' && type !== '7') continue; // char/block/fifo: not ours
 
-    if (!realContained(destDir, full)) continue;
+    if (!contained(full)) continue;
     fs.mkdirSync(path.dirname(full), { recursive: true });
     fs.writeFileSync(full, data);
     if (mode && process.platform !== 'win32') {
@@ -179,4 +205,4 @@ function extractTar(archivePath, destDir) {
   return extractTarBuffer(buf, destDir);
 }
 
-module.exports = { extractTar, extractTarBuffer, safeJoin, realContained };
+module.exports = { extractTar, extractTarBuffer, safeJoin, realContained, containmentChecker };
