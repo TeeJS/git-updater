@@ -318,3 +318,33 @@ test('install: a first install is never verified — there is no baseline to com
     fs.rmSync(base, { recursive: true, force: true });
   }
 });
+
+// --- why a mount failed -------------------------------------------------------
+// The message this replaces asserted a licence agreement for EVERY non-zero hdiutil exit.
+// Measured on real hardware: a file that is not a disk image, and a transient "Resource
+// temporarily unavailable", both produced that text, and neither involved a licence.
+// stderr carries hdiutil's actual reason, so the message quotes it.
+
+test('mountFailure: quotes hdiutil\'s own reason instead of guessing a licence agreement', () => {
+  const m = mac.mountFailure({ code: 1, err: 'hdiutil: attach failed - not recognized\n' });
+  assert.match(m, /not recognized/);
+  assert.ok(!/^could not mount the disk image — it may require/.test(m), 'must not lead with the licence guess');
+  assert.ok(!/hdiutil:/.test(m), 'the tool name prefix is stripped');
+});
+
+test('mountFailure: a real transient failure is reported as itself', () => {
+  // verbatim from a measured failure on macOS 26
+  const m = mac.mountFailure({ code: 1, err: 'hdiutil: attach failed - Resource temporarily unavailable\n' });
+  assert.match(m, /Resource temporarily unavailable/);
+});
+
+test('mountFailure: the licence agreement survives as a possibility, not a diagnosis', () => {
+  const m = mac.mountFailure({ code: 1, err: 'hdiutil: attach failed - boom' });
+  assert.match(m, /If the image requires accepting a licence agreement/);
+});
+
+test('mountFailure: no stderr falls back to the exit code, and a timeout says timeout', () => {
+  assert.match(mac.mountFailure({ code: 1, err: '' }), /hdiutil exit 1/);
+  assert.match(mac.mountFailure({ code: null, err: '' }), /hdiutil exit n\/a/);
+  assert.match(mac.mountFailure({ code: null, err: '', timedOut: true }), /timed out/);
+});

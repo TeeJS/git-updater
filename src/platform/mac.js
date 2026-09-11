@@ -177,6 +177,26 @@ async function ditto(src, dest) {
   );
 }
 
+// Why a mount failed, in hdiutil's OWN words. The previous message asserted a licence
+// agreement for EVERY non-zero exit, and measured on real hardware that is usually wrong:
+// a file that is not a disk image at all, and a transient "Resource temporarily
+// unavailable", both produced the licence-agreement text. stderr is where hdiutil puts the
+// actual reason, so quote it and offer the licence agreement as a possibility rather than
+// a diagnosis. A timeout is a different failure and says so.
+function mountFailure(attach) {
+  if (attach.timedOut) return 'mounting the disk image timed out — the file may be on slow or failing media';
+  // hdiutil prefixes its own name and can wrap; the last non-empty line carries the reason.
+  const reason = String(attach.err || '')
+    .split(/\r?\n/)
+    .map((l) => l.replace(/^hdiutil:\s*/i, '').trim())
+    .filter(Boolean)
+    .pop();
+  const base = reason
+    ? `could not mount the disk image: ${reason}`
+    : `could not mount the disk image (hdiutil exit ${attach.code === null ? 'n/a' : attach.code})`;
+  return `${base}. If the image requires accepting a licence agreement, that needs a human.`;
+}
+
 // Mount a .dmg, copy its payload out, unmount. The /Applications symlink that disk
 // images conventionally carry is skipped: it is a drag-and-drop affordance, not payload.
 async function extractDmg(dmgPath, destDir) {
@@ -193,9 +213,7 @@ async function extractDmg(dmgPath, destDir) {
   try {
     if (attach.code !== 0) {
       fs.rmSync(mnt, { recursive: true, force: true });
-      throw new Error(
-        'could not mount the disk image — it may require accepting a licence agreement, which needs a human'
-      );
+      throw new Error(mountFailure(attach));
     }
     let names;
     try {
@@ -309,4 +327,5 @@ module.exports = {
   scanAppBundles,
   bundleVersion,
   extractDmg,
+  mountFailure,
 };
