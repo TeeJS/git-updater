@@ -17,13 +17,28 @@ function normTag(t) {
 
 // { nums:[1,2,0], pre:'rc1' } from "v1.2.0-rc1". Build metadata ("+abc") is
 // dropped: per semver it does not affect precedence.
+const nums = (s) => s.split('.').map((x) => parseInt(x, 10) || 0);
+
 function splitVer(t) {
   let s = normTag(t);
   const plus = s.indexOf('+');
   if (plus >= 0) s = s.slice(0, plus);
+  // A trailing "(build)" is Apple's own display convention — CFBundleShortVersionString
+  // followed by CFBundleVersion, e.g. Zoom reports "7.1.5 (84650)". It is metadata, not
+  // precedence, exactly like the "+build" above, and it is stripped for the same reason.
+  // Doing it BEFORE the match rather than in the fallback below keeps any prerelease:
+  // "1.2.3-rc1 (build 5)" still parses as 1.2.3-rc1.
+  s = s.replace(/\s*\([^)]*\)\s*$/, '');
   const m = s.match(/^(\d+(?:\.\d+)*)(?:-(.*))?$/);
-  if (!m) return { nums: [0], pre: '' };
-  return { nums: m[1].split('.').map((x) => parseInt(x, 10) || 0), pre: m[2] || '' };
+  if (m) return { nums: nums(m[1]), pre: m[2] || '' };
+  // Anything still unparseable. Returning zero here — which is what this used to do —
+  // reads as "older than every release", so the row says an update is available, the
+  // user installs it, the version string does not change, and the row never clears.
+  // That is the permanent update-available state 67c8c9e fixed once already, reachable
+  // through any unrecognised shape. The leading numeric run is a far better guess:
+  // "1.2.3 build 9" is version 1.2.3, not version 0.
+  const lead = s.match(/^(\d+(?:\.\d+)*)/);
+  return lead ? { nums: nums(lead[1]), pre: '' } : { nums: [0], pre: '' };
 }
 
 function cmpNums(a, b) {

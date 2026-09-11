@@ -203,9 +203,19 @@ async function extractDmg(dmgPath, destDir) {
     } catch {
       throw new Error('the disk image mounted but could not be read');
     }
+    const payload = names.filter((n) => !n.startsWith('.') && n !== 'Applications');
+    // A disk image whose payload is an installer package, not an application. Copying it
+    // "succeeds" and leaves a .pkg sitting in the portable folder doing nothing, while
+    // the row reports the update applied. The asset picker cannot see this — it only saw
+    // a .dmg — so it has to be caught here, with the same advice it gives for the
+    // analogous case it CAN see.
+    if (payload.length && payload.every((n) => /\.(pkg|mpkg)$/i.test(n))) {
+      throw new Error(
+        'this disk image contains an installer package, not an application — Edit the app and change its type to Installer'
+      );
+    }
     let copied = 0;
-    for (const name of names) {
-      if (name.startsWith('.') || name === 'Applications') continue;
+    for (const name of payload) {
       await ditto(path.join(mnt, name), path.join(destDir, name)); // throws on failure
       copied++; // only reached when the copy actually succeeded
     }
