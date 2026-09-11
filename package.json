@@ -36,6 +36,7 @@
       "src/**/*",
       "node_modules/**/*"
     ],
+    "afterAllArtifactBuild": "./build/verify-mac-build.js",
     "win": {
       "signtoolOptions": {
         "sign": "./sign.js"
