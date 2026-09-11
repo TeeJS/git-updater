@@ -214,7 +214,10 @@ function swapDir(dest, srcDir, opts = {}) {
   const hadOld = fs.existsSync(dest);
   if (hadOld) {
     try {
-      fs.renameSync(dest, oldDir); // EBUSY/EPERM here if the app is running
+      // EBUSY/EPERM here if the app is running — on WINDOWS. A POSIX rename of a
+      // running application's directory succeeds, so this is not a cross-platform
+      // guard: macOS and Linux rely on the running-app check in runner.js instead.
+      fs.renameSync(dest, oldDir);
     } catch (e) {
       if (e.code === 'EBUSY' || e.code === 'EPERM' || e.code === 'EACCES') {
         const err = new Error('app files are in use — close the app and Retry');

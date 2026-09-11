@@ -250,6 +250,20 @@ async function handleRepo(repo, id, st, opts) {
         throw e;
       }
     } else {
+      // Re-check immediately before the swap, not just before the download. The download
+      // takes seconds to minutes, and the user may well have launched the app during it.
+      //
+      // This is the ONLY protection on macOS and Linux. On Windows the swap itself fails
+      // with EBUSY or EPERM when files are open, and install.js turns that into "close
+      // the app and Retry" — but a POSIX rename of a running application's directory
+      // SUCCEEDS. Measured on macOS: the process stays alive on the old inode while its
+      // bundle path now resolves to a different version, so every framework, asar
+      // resource or helper it lazy-loads from then on comes from the new one. The app
+      // does not crash at the swap; it crosses versions silently afterwards.
+      if (await detect.isRunning(repo.process || repo.repo)) {
+        log(`SKIP ${key}: ${repo.repo} started during the download`);
+        return { ...base, status: 'failed', reason: `${repo.repo} is running — close it, then Retry` };
+      }
       // Transactional dir swap: stale files vanish with the old dir, user files carry over.
       files = await install.installPortable(file, repo.install, prev.files);
     }

@@ -11,11 +11,21 @@
 //   <root>/git-updater[.exe]            launcher (the original flat install, never touched)
 //   <root>/app-0.1.6/git-updater[.exe]  the version actually running
 //
-// Windows and Linux both work this way. macOS does NOT: an .app bundle is a directory with
-// a code signature that Gatekeeper re-checks on launch, and a bundle swapped in by another
-// process loses the signature continuity it expects — so canApply() is false there and the
-// UI offers the release page instead of an in-place apply. checkForUpdate() still reports
-// new versions on every platform.
+// Windows and Linux both work this way, and the reason it is safe is the INDIRECTION: the
+// running process reads from app-x.y.z, and an update writes a NEW sibling directory and
+// repoints the launcher. Nothing ever replaces the directory being read from.
+//
+// macOS has no equivalent, because the .app bundle IS the unit the system launches. There
+// is nowhere to put a launcher that is not itself inside the thing being replaced. So
+// canApply() is false there and the UI offers the release page instead.
+//
+// An earlier version of this comment said the swap breaks signature continuity. That was
+// measured on hardware and is FALSE: a swapped-in bundle verifies as valid, the running
+// process survives on the old inode, and a relaunch picks up the new version correctly.
+// The real risk is subtler — a running Electron app lazy-loads frameworks, asar resources
+// and helpers from inside its own bundle for as long as it runs, and after the swap that
+// path resolves to a different version. It does not crash at the swap. It crosses versions
+// afterwards. checkForUpdate() still reports new versions on every platform.
 
 const fs = require('fs');
 const path = require('path');
