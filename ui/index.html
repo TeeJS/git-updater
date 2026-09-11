@@ -541,18 +541,28 @@ async function closeAndRetry(r, key) {
 async function checkApps(keys) {
   if (busy) return;
   busy = true; keys.forEach((k) => (st[k] = { ...(st[k] || {}), ph: 'checking' })); renderRepos();
+  const retyped = []; // apps the check switched to Portable — must be reported, not silent
   try {
     for (const k of keys) {
       const { results } = await window.api.check({ only: k });
       const r = results.find((x) => (x.id || x.repo) === k) || results[0];
       if (r) {
         const s = st[k] || {};
+        if (r.retyped) retyped.push(k.split('#')[0]);
         if (r.status === 'failed') st[k] = { ...s, ph: 'failed', reason: r.reason };
         else st[k] = { ...s, ph: r.status === 'current' ? 'current' : 'available', from: r.from || s.from, to: r.to, present: s.present };
       }
       renderRepos();
     }
-    msg('Check complete.', 'ok');
+    // Say what changed AND what it means: for an app the system package manager already
+    // installed, a portable copy sits beside it rather than replacing it, and the user
+    // can only decide whether they want that if we tell them.
+    msg(
+      retyped.length
+        ? `Check complete. ${retyped.join(', ')} switched to Portable — ${retyped.length > 1 ? 'these publish' : 'this publishes'} no installer, so the portable copy installs alongside any existing one.`
+        : 'Check complete.',
+      'ok'
+    );
   } catch (e) { keys.forEach((k) => (st[k] = { ...(st[k] || {}), ph: 'failed', reason: clean(e) })); msg(clean(e), 'bad'); }
   finally { busy = false; renderRepos(); }
 }

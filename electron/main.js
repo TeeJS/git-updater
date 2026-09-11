@@ -241,9 +241,39 @@ ipcMain.handle('pick-folder', async () => {
   });
   return { path: r.canceled || !r.filePaths.length ? '' : r.filePaths[0] };
 });
+// A check can discover that an app typed as an installer publishes no installer, and
+// correct it to portable (see retypeIfNoInstaller in src/runner.js). The runner only
+// decides; persisting belongs here, because config.json is the main process's to own.
+// Never silent: the renderer reports what changed and why, and it is logged.
+function applyRetypes(results) {
+  const changes = (results || []).filter((r) => r.retyped && r.retyped.to === 'portable');
+  if (!changes.length) return;
+  const cfg = readConfig();
+  const hits = [];
+  for (const r of changes) {
+    const m = /^([^/]+)\/([^/]+)#(.+)$/.exec(r.id || '');
+    if (!m) continue;
+    const [, owner, repo, type] = m;
+    // If the user already tracks this repo as portable, correcting would create a
+    // duplicate entry. Leave the installer entry alone and let them untrack it.
+    if (cfg.repos.some((x) => x.owner === owner && x.repo === repo && x.type === 'portable')) continue;
+    const entry = cfg.repos.find((x) => x.owner === owner && x.repo === repo && x.type === type);
+    if (!entry) continue;
+    entry.type = 'portable';
+    entry.install = { ...(entry.install || {}), dir: r.retyped.dir };
+    hits.push(`${owner}/${repo}`);
+  }
+  if (!hits.length) return;
+  saveConfigFile(cfg);
+  log(`retyped to portable (no installer published): ${hits.join(', ')}`);
+  if (win && !win.isDestroyed()) win.webContents.send('config-changed');
+}
+
 ipcMain.handle('check', async (_e, body = {}) => {
   const config = core.validateConfig(readConfig());
-  return runner.run(config, { mode: 'check', only: body.only });
+  const out = await runner.run(config, { mode: 'check', only: body.only });
+  applyRetypes(out.results);
+  return out;
 });
 
 let updating = false; // in-process guard; state lock guards other processes

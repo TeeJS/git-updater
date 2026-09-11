@@ -21,6 +21,44 @@ const isWin = process.platform === 'win32';
 const displayId = (repo) => `${repo.owner}/${repo.repo}`;
 const appKey = (repo) => `${repo.owner}/${repo.repo}#${repo.type}`;
 
+// "Scan this PC" adds every discovered app as an installer. On Linux that is wrong for
+// most repos: of the catalog entries with Linux identifiers, 20 of 40 publish only a
+// portable archive and 3 publish no binary at all, so an installer entry fails on every
+// check. The first check already holds the release payload, so the correction costs
+// nothing here — deciding it when the user ticks the app would cost one API call each,
+// against an anonymous budget of 60 an hour that this app already exhausts in practice.
+//
+// The correction is REPORTED, never silent. It changes an entry the user did not type by
+// hand, and for a package-managed app the portable copy installs ALONGSIDE the existing
+// one rather than replacing it, which the user has to be told so they can untrack it if
+// that is not what they wanted.
+//
+// Mutates `repo` in place and returns the disclosure, or null when nothing changed.
+// `platform` defaults to the running OS; it is explicit so the whole decision table is
+// testable from any host rather than only the one the suite happens to run on.
+function retypeIfNoInstaller(repo, rel, portableRoot, platform) {
+  if (repo.type !== 'installer' || repo.asset) return null;
+  try {
+    core.pickAsset(rel.assets, 'installer', null, null, platform);
+    return null; // it does publish a package — leave the entry alone
+  } catch (e) {
+    // Only this specific case. "no <platform> installer asset" means the release has
+    // nothing usable at all, which stays an error the user should see.
+    if (!/only ships portable builds/.test(e.message)) return null;
+  }
+  const dir = (repo.install && repo.install.dir) || (portableRoot && core.resolvePortableDir(portableRoot, repo.repo));
+  if (!dir) return null; // no portable folder set — the existing clear error stands
+  const from = repo.type;
+  repo.type = 'portable';
+  repo.install = { ...(repo.install || {}), dir };
+  return {
+    from,
+    to: 'portable',
+    dir,
+    note: 'switched to Portable — this app publishes no installer, so the portable copy installs alongside any existing one',
+  };
+}
+
 async function run(config, opts = {}) {
   detect.clearCache(); // fresh registry scan each run — an install may have just changed versions
   const st = state.load(opts.statePath);
@@ -30,7 +68,7 @@ async function run(config, opts = {}) {
     const id = displayId(repo);
     if (only && id.toLowerCase() !== only && appKey(repo).toLowerCase() !== only) continue;
     try {
-      results.push(await handleRepo(repo, id, st, opts));
+      results.push(await handleRepo(repo, id, st, { ...opts, portableRoot: config.portableRoot }));
     } catch (e) {
       results.push({ repo: id, id: appKey(repo), status: 'failed', reason: e.message });
       log(`FAIL ${appKey(repo)}: ${e.message}`);
@@ -53,6 +91,12 @@ async function handleRepo(repo, id, st, opts) {
   const emit = (phase, pct) => opts.onProgress && opts.onProgress(key, phase, pct);
   emit('checking');
   const rel = await github.getLatestRelease(repo.owner, repo.repo, { prerelease: repo.prerelease, tagPrefix: repo.tagPrefix });
+  // Correct the type before anything reads it. Check-time only: an update run installs,
+  // and changing what gets installed mid-run is worse than the clear error it replaces.
+  // It has to happen ahead of the comparison below, or an entry whose installed version
+  // already matches the latest tag returns "current" and is never corrected at all.
+  const retyped = opts.mode === 'check' ? retypeIfNoInstaller(repo, rel, opts.portableRoot) : null;
+
   const latest = rel.tag_name;
   const prev = st[key] || {};
 
@@ -89,11 +133,13 @@ async function handleRepo(repo, id, st, opts) {
   }
 
   const fromV = installed ? core.normTag(installed) : prev.tag && core.normTag(prev.tag);
-  if (!isNew && !opts.force) return { repo: id, id: key, status: 'current', from: fromV, to: core.normTag(latest) };
+  if (!isNew && !opts.force) {
+    return { repo: id, id: key, status: 'current', from: fromV, to: core.normTag(latest), ...(retyped ? { retyped, note: retyped.note } : {}) };
+  }
 
   const base = { repo: id, id: key, from: fromV, to: core.normTag(latest) };
 
-  if (opts.mode === 'check') return { ...base, status: 'updated' };
+  if (opts.mode === 'check') return { ...base, status: 'updated', ...(retyped ? { retyped, note: retyped.note } : {}) };
 
   // Manual `asset` pattern overrides; otherwise auto-pick this platform's asset from
   // the type. For installers, match the flavor of the EXISTING install (msi vs exe on
@@ -225,4 +271,4 @@ async function handleRepo(repo, id, st, opts) {
   }
 }
 
-module.exports = { run };
+module.exports = { run, retypeIfNoInstaller };
