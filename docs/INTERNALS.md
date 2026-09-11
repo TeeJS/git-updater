@@ -116,10 +116,34 @@ dlib, silent auth from the local `Connect-AzAccount` session). Machines without 
 setup build unsigned with a warning.
 
 `npm run dist:mac` produces `.dmg` and `.zip` for x64 and arm64, Developer ID signed with the
-hardened runtime and `build/entitlements.mac.plist`, then notarized via notarytool. Set
-`APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD` and `APPLE_TEAM_ID` in the environment.
-(electron-builder 25 takes `hardenedRuntime`/`entitlements` flat on `mac`; v27 moved them under
-`mac.sign` — adjust if the dependency is bumped.)
+hardened runtime and `build/entitlements.mac.plist`, then notarized via notarytool.
+
+Notarization only runs when one of three credential sets is in the environment: `APPLE_API_KEY`
++ `APPLE_API_KEY_ID` + `APPLE_API_ISSUER` (recommended), `APPLE_ID` +
+`APPLE_APP_SPECIFIC_PASSWORD` + `APPLE_TEAM_ID`, or `APPLE_KEYCHAIN` + `APPLE_KEYCHAIN_PROFILE`.
+With none of them the step is skipped with a warning and the build still "succeeds".
+
+### Two signing-config traps, both of which fail silently
+
+Neither of these errors or warns. They produce a build that looks fine and is not.
+
+- **`mac.notarize` reads backwards in the schema.** electron-builder 26's description says the
+  boolean is "whether to disable" the notarize integration. It is not. Verified in the source of
+  both 25.1.8 (`macPackager.js`) and 26.15.3 (`mac/MacTargetHelper.js`): only an explicit
+  `=== false` skips notarization, and `true` behaves the same as omitting it. `notarize: true`
+  is correct. Do not "fix" it to `false`.
+- **`win.sign` moved in electron-builder 26.** The top-level key no longer exists in that
+  schema; app-builder-lib reads `win.signtoolOptions.sign`. The old key is not an error and
+  produces no warning — it is ignored, so the build ships UNSIGNED. `package.json` still uses
+  the flat `win.sign` because the pinned version is 25.1.8. **Nest it in the same change that
+  bumps electron-builder.**
+
+`mac.hardenedRuntime`, `entitlements`, `entitlementsInherit` and `notarize` are all still
+top-level properties of `mac` in 26, so no equivalent migration is needed there. `mac.sign`
+exists in 26 but is a `function | string | null` custom-signing hook — the analogue of the old
+`win.sign`, not a container for these settings. (The v27 docs do describe nesting them under
+`mac.sign`; that is a later change.) `hardenedRuntime` already defaults to true, so setting it
+explicitly is documentation rather than behavior.
 
 `npm run dist:linux` produces `.AppImage` and `.tar.gz` for x64 and arm64. No signing.
 
