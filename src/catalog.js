@@ -24,7 +24,7 @@ const CATALOG = [
   { name: 'Brave', repo: 'brave/brave-browser', match: /Brave/i },
   // Media
   { name: 'Audacity', repo: 'audacity/audacity', match: /^Audacity/i, linux: ['audacity', 'Audacity'] },
-  { name: 'HandBrake', repo: 'HandBrake/HandBrake', match: /^HandBrake/i, linux: ['handbrake', 'handbrake-gtk', 'HandBrake'] },
+  { name: 'HandBrake', repo: 'HandBrake/HandBrake', match: /^HandBrake/i, linux: ['handbrake', 'handbrake-cli', 'handbrake-gtk', 'HandBrake'] },
   // Imaging
   { name: 'Paint.NET', repo: 'paintdotnet/release', match: /paint\.net/i, platforms: ['win32'] },
   { name: 'Greenshot', repo: 'greenshot/greenshot', match: /Greenshot/i, platforms: ['win32'] },
@@ -92,7 +92,7 @@ const CATALOG = [
   { name: 'OpenBB', repo: 'OpenBB-finance/OpenBB', match: /OpenBB/i },
   { name: 'World Monitor', repo: 'koala73/worldmonitor', match: /World.?Monitor/i },
   // Developer tools & runtimes
-  { name: 'Godot', repo: 'godotengine/godot', match: /^Godot/i, linux: ['godot3', 'Godot Engine'] },
+  { name: 'Godot', repo: 'godotengine/godot', match: /^Godot/i, linux: ['godot', 'godot3', 'Godot Engine'] },
   { name: 'Neovim', repo: 'neovim/neovim', match: /^Neovim\b/i, linux: ['neovim', 'Neovim'] },
   { name: 'Zed', repo: 'zed-industries/zed', match: /^Zed\b/i },
   { name: 'Deno', repo: 'denoland/deno', match: /^Deno\b/i, linux: ['deno'] },
@@ -128,7 +128,7 @@ const CATALOG = [
   // Editors & docs
   { name: 'Atom', repo: 'atom/atom', match: /^Atom$/i },
   { name: 'MarkText', repo: 'marktext/marktext', match: /MarkText/i },
-  { name: 'Joplin', repo: 'laurent22/joplin', match: /^Joplin\b/i, linux: ['joplin', 'Joplin'] },
+  { name: 'Joplin', repo: 'laurent22/joplin', match: /^Joplin\b/i, linux: ['joplin', 'joplin-desktop', 'Joplin'] },
   { name: 'draw.io Desktop', repo: 'jgraph/drawio-desktop', match: /draw\.io/i, linux: ['drawio', 'draw.io'] },
   { name: 'Typst', repo: 'typst/typst', match: /^Typst\b/i },
   { name: 'DBeaver', repo: 'dbeaver/dbeaver', match: /DBeaver/i, linux: ['dbeaver-ce', 'DBeaver Community'] },
