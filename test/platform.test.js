@@ -112,8 +112,15 @@ test('linux: debian versions lose the epoch and the distro revision', () => {
   assert.equal(linux.cleanDebVersion('1.2.3~rc1-1'), '1.2.3-rc1');
 });
 
-test('linux: parses dpkg-query output', () => {
-  const out = 'notepadqq\t2.0.0-1build3\nfirefox\t2:140.0-1\nbroken\n';
+test('linux: parses dpkg-query output and keeps only installed packages', () => {
+  const out = [
+    'ii \tnotepadqq\t2.0.0-1build3',
+    'ii \tfirefox\t2:140.0-1',
+    'rc \tremoved-but-configured\t1.0-1', // uninstalled, config retained — not an install
+    'iU \thalf-configured\t3.0-1',
+    'broken',
+    '',
+  ].join('\n');
   assert.deepEqual(linux.parseDpkg(out), [
     { name: 'notepadqq', version: '2.0.0', flavor: 'deb' },
     { name: 'firefox', version: '140.0', flavor: 'deb' },
@@ -132,6 +139,8 @@ test('linux: parses flatpak and snap listings', () => {
   ]);
   const snap = ['Name       Version   Rev    Tracking       Publisher   Notes', 'code       1.98.2    174    latest/stable  vscode✓     classic', ''].join('\n');
   assert.deepEqual(linux.parseSnap(snap), [{ name: 'code', version: '1.98.2', flavor: 'snap' }]);
+  // Prose splits into columns too, and must not become a package named "No" at "snaps".
+  assert.deepEqual(linux.parseSnap('No snaps are installed yet.\n'), []);
 });
 
 test('linux: an absent package manager contributes nothing, it does not throw', () => {

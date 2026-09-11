@@ -29,12 +29,16 @@ function cleanDebVersion(v) {
 
 // --- dpkg --------------------------------------------------------------------
 
-// Parse `dpkg-query -W -f=${Package}\t${Version}\n` into [{ name, version, flavor }].
+// Parse `dpkg-query -W -f=${db:Status-Abbrev}\t${Package}\t${Version}\n`.
+// Only fully installed packages count. dpkg also lists ones that were removed with their
+// configuration retained, and offering to "update" something the user uninstalled is
+// worse than not listing it at all. Status "ii" is installed; everything else is skipped.
 function parseDpkg(stdout) {
   const out = [];
   for (const line of stdout.split(/\r?\n/)) {
-    const [name, version] = line.split('\t');
-    if (!name || !version) continue;
+    const [status, name, version] = line.split('\t');
+    if (!status || !name || !version) continue;
+    if (status.trim() !== 'ii') continue;
     const v = cleanDebVersion(version);
     if (v) out.push({ name: name.trim(), version: v, flavor: 'deb' });
   }
@@ -75,12 +79,15 @@ function parseFlatpak(stdout) {
 // (Name Version Rev Tracking Publisher Notes).
 function parseSnap(stdout) {
   const out = [];
-  const lines = stdout.split(/\r?\n/);
-  for (const line of lines) {
+  for (const line of stdout.split(/\r?\n/)) {
     if (!line.trim()) continue;
     const cols = line.trim().split(/\s+/);
     if (cols.length < 2) continue;
     if (cols[0] === 'Name') continue; // header
+    // Any prose line splits into columns too, and would otherwise become a package:
+    // "No snaps are installed yet." yields one named "No" at version "snaps". A version
+    // column has to contain a digit.
+    if (!/\d/.test(cols[1])) continue;
     out.push({ name: cols[0], version: cols[1], flavor: 'snap' });
   }
   return out;
@@ -93,7 +100,7 @@ function parseSnap(stdout) {
 // a Fedora box rpm + flatpak, with no per-distro branching anywhere.
 async function installedApps() {
   const [deb, rpm, flatpak, snap] = await Promise.all([
-    run('dpkg-query', ['-W', '-f=${Package}\\t${Version}\\n']),
+    run('dpkg-query', ['-W', '-f=${db:Status-Abbrev}\\t${Package}\\t${Version}\\n']),
     run('rpm', ['-qa', '--qf', '%{NAME}\\t%{VERSION}\\n']),
     run('flatpak', ['list', '--app', '--columns=name,version']),
     run('snap', ['list']),
