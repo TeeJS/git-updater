@@ -12,7 +12,8 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { run } = require('./exec');
+const exec = require('./exec');
+const { run } = exec;
 
 // Where apps actually live. ~/Applications is the per-user equivalent and is where a
 // non-admin install of a downloaded .app ends up.
@@ -145,30 +146,62 @@ function killProcess(pid, force) {
 // hdiutil + ditto for disk images. Both are signed system utilities and take an argv
 // array — no shell, consistent with the rest of the engine.
 
+// Copying a 300MB bundle off a compressed disk image is not an inventory query — the
+// 60s default would kill ditto mid-copy and, before the exit code was checked, that
+// partial copy reported success. Matches the installer timeout in src/install.js.
+const COPY_TIMEOUT = 10 * 60 * 1000;
+
+// ditto succeeds SILENTLY, so its stdout says nothing about whether it worked; only the
+// exit code does. A failure here must throw rather than leave a half-copied bundle that
+// extracts clean and dies at first launch.
+async function ditto(src, dest) {
+  const r = await exec.runStatus('ditto', [src, dest], { timeout: COPY_TIMEOUT });
+  if (r.code === 0) return;
+  throw new Error(
+    r.timedOut
+      ? `copying ${path.basename(src)} timed out — the disk image may be on slow or failing media`
+      : `copying ${path.basename(src)} failed (ditto exit ${r.code === null ? 'n/a' : r.code})`
+  );
+}
+
 // Mount a .dmg, copy its payload out, unmount. The /Applications symlink that disk
 // images conventionally carry is skipped: it is a drag-and-drop affordance, not payload.
 async function extractDmg(dmgPath, destDir) {
   const mnt = fs.mkdtempSync(path.join(os.tmpdir(), 'git-updater-dmg-'));
-  await run('hdiutil', ['attach', dmgPath, '-nobrowse', '-noautoopen', '-readonly', '-mountpoint', mnt], {
-    acceptAnyExit: true,
-  });
+  // The mount must be judged by hdiutil's OWN exit code. mkdtempSync has already created
+  // the mountpoint, so a failed attach still leaves a readable empty directory — testing
+  // for a readdir throw could never fire, which made the licence-agreement message below
+  // unreachable in precisely the case it was written for.
+  const attach = await exec.runStatus(
+    'hdiutil',
+    ['attach', dmgPath, '-nobrowse', '-noautoopen', '-readonly', '-mountpoint', mnt],
+    { timeout: COPY_TIMEOUT }
+  );
   try {
+    if (attach.code !== 0) {
+      fs.rmSync(mnt, { recursive: true, force: true });
+      throw new Error(
+        'could not mount the disk image — it may require accepting a licence agreement, which needs a human'
+      );
+    }
     let names;
     try {
       names = fs.readdirSync(mnt);
     } catch {
-      throw new Error('could not mount the disk image — it may require accepting a licence agreement');
+      throw new Error('the disk image mounted but could not be read');
     }
     let copied = 0;
     for (const name of names) {
       if (name.startsWith('.') || name === 'Applications') continue;
-      await run('ditto', [path.join(mnt, name), path.join(destDir, name)]);
-      copied++;
+      await ditto(path.join(mnt, name), path.join(destDir, name)); // throws on failure
+      copied++; // only reached when the copy actually succeeded
     }
     if (!copied) throw new Error('the disk image contained nothing to install');
   } finally {
-    await run('hdiutil', ['detach', mnt, '-force'], { acceptAnyExit: true });
-    fs.rmSync(mnt, { recursive: true, force: true });
+    if (attach.code === 0) {
+      await run('hdiutil', ['detach', mnt, '-force'], { acceptAnyExit: true });
+      fs.rmSync(mnt, { recursive: true, force: true });
+    }
   }
 }
 
@@ -180,7 +213,19 @@ async function extract(archivePath, destDir) {
   }
   if (/\.zip$/i.test(archivePath)) {
     // -x extract, -k treat the source as a PKZip archive.
-    await run('ditto', ['-x', '-k', archivePath, destDir]);
+    //
+    // NOTE: this bypasses the symlink-containment guard in src/tar.js entirely — ditto
+    // is doing the extraction, so the archive's own paths and links are its problem, not
+    // ours. That is deliberate (nothing else preserves a bundle's signature), but it does
+    // mean a malicious .zip is contained by ditto's behaviour alone.
+    const r = await exec.runStatus('ditto', ['-x', '-k', archivePath, destDir], { timeout: COPY_TIMEOUT });
+    if (r.code !== 0) {
+      throw new Error(
+        r.timedOut
+          ? 'extracting the archive timed out'
+          : `extracting the archive failed (ditto exit ${r.code === null ? 'n/a' : r.code})`
+      );
+    }
     return true;
   }
   return false;
@@ -197,4 +242,5 @@ module.exports = {
   parsePs,
   scanAppBundles,
   bundleVersion,
+  extractDmg,
 };

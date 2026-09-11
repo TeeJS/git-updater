@@ -9,15 +9,21 @@
 
 const { spawn } = require('child_process');
 
-// Run a command without blocking; resolve its stdout ('' on any failure, including
-// the command not existing at all). Callers treat '' as "this source has nothing".
-function run(cmd, args, opts = {}) {
+// Run a command and report how it went: { code, out, timedOut }.
+//   code     the exit status, or null when the process never ran or was killed
+//   out      stdout, '' on any failure
+//   timedOut true when the watchdog killed it
+//
+// Use this whenever SUCCESS MATTERS. run() below cannot express it: a tool that
+// succeeds silently and a tool that fails both produce '', and copying tools like
+// ditto are exactly that shape — silence on success is the normal case.
+function runStatus(cmd, args, opts = {}) {
   return new Promise((resolve) => {
     let child;
     try {
       child = spawn(cmd, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
     } catch {
-      return resolve('');
+      return resolve({ code: null, out: '', timedOut: false });
     }
     let out = '';
     let done = false;
@@ -26,25 +32,35 @@ function run(cmd, args, opts = {}) {
       done = true;
       resolve(v);
     };
-    // A hung inventory command must not hang the whole scan.
+    // A hung command must not hang the whole operation. Callers that copy large files
+    // MUST raise this; the default suits an inventory query, not a 300MB bundle copy.
     const timer = setTimeout(() => {
       try {
         child.kill();
       } catch {}
-      finish('');
+      finish({ code: null, out: '', timedOut: true });
     }, opts.timeout || 60_000);
     child.stdout.on('data', (d) => (out += d));
     child.on('error', () => {
       clearTimeout(timer);
-      finish('');
+      finish({ code: null, out: '', timedOut: false });
     });
     child.on('close', (code) => {
       clearTimeout(timer);
-      // Some inventory tools exit nonzero with partial-but-usable output; callers that
-      // care pass acceptAnyExit. The default stays strict, as the registry reader was.
-      finish(code === 0 || opts.acceptAnyExit ? out : '');
+      finish({ code, out, timedOut: false });
     });
   });
 }
 
-module.exports = { run };
+// Resolve a command's stdout, or '' on any failure including the command not existing.
+// Callers treat '' as "this source has nothing to contribute", which is right for the
+// inventory queries and wrong for anything whose failure must be noticed — use
+// runStatus for those.
+async function run(cmd, args, opts = {}) {
+  const r = await runStatus(cmd, args, opts);
+  // Some inventory tools exit nonzero with partial-but-usable output; callers that care
+  // pass acceptAnyExit. The default stays strict, as the registry reader was.
+  return r.code === 0 || (opts.acceptAnyExit && r.code !== null) ? r.out : '';
+}
+
+module.exports = { run, runStatus };

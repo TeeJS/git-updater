@@ -1,0 +1,210 @@
+'use strict';
+
+// The macOS extraction paths, driven with a stubbed subprocess layer.
+//
+// Neither a Windows nor a Linux machine can run ditto or hdiutil, so without this the
+// module's entire control flow ships unexecuted. Stubbing the one seam it has — the
+// exec module — runs the real branching, which is where all three of these bugs lived:
+// a silent ditto failure, a timeout short enough to cause one, and an error message
+// that could never fire.
+
+const { test } = require('node:test');
+const assert = require('node:assert');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+
+const exec = require('../src/platform/exec');
+const mac = require('../src/platform/mac');
+
+const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'git-updater-mac-'));
+
+// Replace exec.runStatus for one test. `plan` is called with (cmd, args, opts) and
+// returns the { code, out, timedOut } the real command would have produced.
+// Must be async and AWAIT fn: returning the promise from inside try/finally restores
+// the real functions the instant fn returns its promise, long before the awaited work
+// inside it runs, and every stub silently has no effect.
+async function withStub(plan, fn) {
+  const real = exec.runStatus;
+  const realRun = exec.run;
+  const calls = [];
+  exec.runStatus = async (cmd, args, opts) => {
+    calls.push({ cmd, args, opts });
+    return plan(cmd, args, opts) || { code: 0, out: '', timedOut: false };
+  };
+  exec.run = async () => ''; // detach and the inventory queries are not under test here
+  try {
+    return await fn(calls);
+  } finally {
+    exec.runStatus = real;
+    exec.run = realRun;
+  }
+}
+
+// hdiutil attaching successfully means the mountpoint now has content.
+const mountWith = (names) => (cmd, args) => {
+  if (cmd === 'hdiutil' && args[0] === 'attach') {
+    const mnt = args[args.indexOf('-mountpoint') + 1];
+    for (const n of names) fs.writeFileSync(path.join(mnt, n), 'payload');
+    return { code: 0, out: '', timedOut: false };
+  }
+  return { code: 0, out: '', timedOut: false };
+};
+
+test('dmg: a failing ditto throws instead of silently shipping a partial bundle', async () => {
+  const dest = tmp();
+  try {
+    await withStub(
+      (cmd, args) => {
+        if (cmd === 'ditto') return { code: 1, out: '', timedOut: false };
+        return mountWith(['App.app', 'Extra.app'])(cmd, args);
+      },
+      async () => {
+        await assert.rejects(() => mac.extractDmg('/x/App.dmg', dest), /copying App\.app failed \(ditto exit 1\)/);
+      }
+    );
+  } finally {
+    fs.rmSync(dest, { recursive: true, force: true });
+  }
+});
+
+test('dmg: a ditto timeout is reported as a timeout, not as success', async () => {
+  const dest = tmp();
+  try {
+    await withStub(
+      (cmd, args) => {
+        if (cmd === 'ditto') return { code: null, out: '', timedOut: true };
+        return mountWith(['App.app'])(cmd, args);
+      },
+      async () => {
+        await assert.rejects(() => mac.extractDmg('/x/App.dmg', dest), /timed out/);
+      }
+    );
+  } finally {
+    fs.rmSync(dest, { recursive: true, force: true });
+  }
+});
+
+test('dmg: copying a large bundle gets far more than the inventory-query timeout', async () => {
+  const dest = tmp();
+  try {
+    await withStub(mountWith(['App.app']), async (calls) => {
+      await mac.extractDmg('/x/App.dmg', dest);
+      const copy = calls.find((c) => c.cmd === 'ditto');
+      // 60s is the exec default and is not enough for a 300MB bundle off a compressed
+      // image; being killed mid-copy is what made the silent-partial case reachable.
+      assert.ok(copy.opts && copy.opts.timeout > 60_000, 'ditto must raise the default timeout');
+    });
+  } finally {
+    fs.rmSync(dest, { recursive: true, force: true });
+  }
+});
+
+test('dmg: a failed mount reports the licence agreement, not an empty image', async () => {
+  const dest = tmp();
+  try {
+    await withStub(
+      (cmd, args) => (cmd === 'hdiutil' && args[0] === 'attach' ? { code: 1, out: '', timedOut: false } : undefined),
+      async () => {
+        // mkdtempSync has already created the mountpoint, so readdir succeeds on an
+        // empty directory. Judging the mount by hdiutil's own exit code is what makes
+        // this message reachable at all — it was dead before.
+        await assert.rejects(() => mac.extractDmg('/x/App.dmg', dest), /licence agreement/);
+      }
+    );
+  } finally {
+    fs.rmSync(dest, { recursive: true, force: true });
+  }
+});
+
+test('dmg: a mounted but empty image is still an error', async () => {
+  const dest = tmp();
+  try {
+    await withStub(mountWith([]), async () => {
+      await assert.rejects(() => mac.extractDmg('/x/App.dmg', dest), /contained nothing to install/);
+    });
+  } finally {
+    fs.rmSync(dest, { recursive: true, force: true });
+  }
+});
+
+test('dmg: the drag-to-Applications symlink and dotfiles are not treated as payload', async () => {
+  const dest = tmp();
+  try {
+    await withStub(mountWith(['App.app', 'Applications', '.background', '.DS_Store']), async (calls) => {
+      await mac.extractDmg('/x/App.dmg', dest);
+      const copied = calls.filter((c) => c.cmd === 'ditto').map((c) => path.basename(c.args[0]));
+      assert.deepEqual(copied, ['App.app']);
+    });
+  } finally {
+    fs.rmSync(dest, { recursive: true, force: true });
+  }
+});
+
+test('dmg: the image is detached after a successful mount', async () => {
+  const dest = tmp();
+  try {
+    await withStub(mountWith(['App.app']), async (calls) => {
+      await mac.extractDmg('/x/App.dmg', dest);
+      // detach goes through run(), which the stub replaces wholesale, so assert on the
+      // attach/copy ordering that precedes it rather than on the detach call itself.
+      assert.deepEqual(
+        calls.map((c) => c.cmd),
+        ['hdiutil', 'ditto']
+      );
+    });
+  } finally {
+    fs.rmSync(dest, { recursive: true, force: true });
+  }
+});
+
+test('zip: a failing ditto extraction throws rather than reporting success', async () => {
+  const dest = tmp();
+  try {
+    await withStub(
+      (cmd) => (cmd === 'ditto' ? { code: 2, out: '', timedOut: false } : undefined),
+      async () => {
+        await assert.rejects(() => mac.extract('/x/App-mac.zip', dest), /extracting the archive failed/);
+      }
+    );
+  } finally {
+    fs.rmSync(dest, { recursive: true, force: true });
+  }
+});
+
+test('zip: a successful ditto extraction reports that it handled the archive', async () => {
+  const dest = tmp();
+  try {
+    await withStub(
+      () => ({ code: 0, out: '', timedOut: false }),
+      async (calls) => {
+        assert.equal(await mac.extract('/x/App-mac.zip', dest), true);
+        assert.deepEqual(calls[0].args.slice(0, 2), ['-x', '-k']);
+        // An archive macOS does not claim is left to the generic extractor.
+        assert.equal(await mac.extract('/x/app.tar.gz', dest), false);
+      }
+    );
+  } finally {
+    fs.rmSync(dest, { recursive: true, force: true });
+  }
+});
+
+// --- the seam itself ---------------------------------------------------------
+
+test('exec: run() cannot distinguish silent success from failure, runStatus can', async () => {
+  // This is the whole reason ditto needed runStatus. A tool that succeeds without
+  // printing anything and a tool that fails both give run() the empty string.
+  const ok = await exec.runStatus(process.execPath, ['-e', 'process.exit(0)']);
+  const bad = await exec.runStatus(process.execPath, ['-e', 'process.exit(3)']);
+  assert.deepEqual([ok.code, ok.out], [0, '']);
+  assert.deepEqual([bad.code, bad.out], [3, '']);
+  assert.equal(await exec.run(process.execPath, ['-e', 'process.exit(0)']), '');
+  assert.equal(await exec.run(process.execPath, ['-e', 'process.exit(3)']), '');
+});
+
+test('exec: a command that does not exist resolves rather than throwing', async () => {
+  const r = await exec.runStatus('definitely-not-a-real-command-xyz', []);
+  assert.equal(r.code, null);
+  assert.equal(r.out, '');
+  assert.equal(await exec.run('definitely-not-a-real-command-xyz', []), '');
+});
