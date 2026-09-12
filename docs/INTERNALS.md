@@ -327,8 +327,10 @@ a guard that could not fail.
 
 - the notarization guard had four paths that returned silently, guarding nothing
 - a "verified non-vacuous" claim rested on a matcher that passed with the fix reverted
-- three tests inherited the platform from the host, so each verified one OS and asserted
-  against an empty array on the other
+- three tests inherited the platform from the host. Two failed loudly on the wrong OS,
+  picking the host's architecture instead of the one under test. The third was worse: its
+  rows were filtered out before the check was reached, so it asserted against an empty
+  array — and an empty array with an empty expectation passes while testing nothing
 - a revert script died on a syntax error and left the suite green, so the check that exists
   to stop an unverified claim was itself unverified
 
