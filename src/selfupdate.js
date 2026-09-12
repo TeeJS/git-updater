@@ -150,6 +150,27 @@ async function waitForExit(pid, deps = {}) {
 
 // --- check --------------------------------------------------------------------
 
+// The assets this updater can update ITSELF from, which is a narrower set than the ones
+// it can install for other apps.
+//
+// The launcher model needs a DIRECTORY: app-<version>/ containing an executable named
+// git-updater, sitting beside the launcher. An AppImage is a single self-contained file,
+// so there is nothing to put a versioned sibling inside and nothing at app-<version>/
+// git-updater to hand off to. The generic asset picker prefers an AppImage on Linux —
+// correctly, for a tracked app — so our own release would have been picked as the one
+// shape this mechanism cannot use, and prepareUpdate would fail at the "downloaded build
+// has no git-updater" check after downloading the whole thing.
+//
+// Dropping it here rather than teaching the picker about it: preferring an AppImage is
+// right for every OTHER app, and this is the only caller with a layout requirement.
+function selfUpdateAssets(assets) {
+  const list = assets || [];
+  const usable = list.filter((a) => !/\.appimage$/i.test(a.name || ''));
+  // If a release somehow ships nothing else, let the picker report that rather than
+  // throwing "no assets" from here with less context.
+  return usable.length ? usable : list;
+}
+
 async function checkForUpdate(currentVersion) {
   const rel = await github.getLatestRelease(REPO_OWNER, REPO_NAME);
   const tag = core.normTag(rel.tag_name || '');
@@ -168,7 +189,7 @@ async function prepareUpdate(root, currentVersion, onProgress = () => {}) {
   if (!found) throw new Error('no newer release found');
   const { rel, version: tag } = found;
 
-  const asset = core.pickAsset(rel.assets, 'portable');
+  const asset = core.pickAsset(selfUpdateAssets(rel.assets), 'portable');
 
   const downloadDir = path.join(SELF_ROOT, tag);
   fs.mkdirSync(downloadDir, { recursive: true });
@@ -274,6 +295,7 @@ async function cleanupLeftovers(root, currentVersion) {
 }
 
 module.exports = {
+  selfUpdateAssets,
   REPO: { owner: REPO_OWNER, repo: REPO_NAME },
   canApply,
   makeExecutable,

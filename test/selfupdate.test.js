@@ -125,3 +125,45 @@ test('cleanupLeftovers: removes older app-* folders and stale stage/download dir
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+// --- self-update asset choice --------------------------------------------------
+// The launcher model needs a DIRECTORY: app-<version>/ holding an executable named
+// git-updater, beside the launcher. An AppImage is a single self-contained file, so
+// there is nowhere to put a versioned sibling and nothing to hand off to.
+//
+// The generic picker prefers an AppImage on Linux, which is right for every tracked app
+// and wrong for this one caller.
+
+const core = require('../src/core');
+
+test('selfupdate: its own Linux release picks the tarball, never the AppImage', () => {
+  // Exactly what package.json's linux targets produce.
+  const assets = [
+    'git-updater-0.1.7-linux-x64.AppImage',
+    'git-updater-0.1.7-linux-arm64.AppImage',
+    'git-updater-0.1.7-linux-x64.tar.gz',
+    'git-updater-0.1.7-linux-arm64.tar.gz',
+  ].map((name) => ({ name }));
+
+  // The generic picker, used for tracked apps, chooses the AppImage — correctly.
+  assert.match(core.pickAsset(assets, 'portable', 'x64', null, 'linux').name, /\.AppImage$/);
+
+  // Self-update must not, or prepareUpdate downloads the whole thing and then fails on
+  // "downloaded build has no git-updater".
+  const picked = core.pickAsset(selfupdate.selfUpdateAssets(assets), 'portable', 'x64', null, 'linux');
+  assert.equal(picked.name, 'git-updater-0.1.7-linux-x64.tar.gz');
+});
+
+test('selfupdate: Windows and macOS asset choice is unaffected', () => {
+  const win = ['git-updater-0.1.7-x64.zip', 'git-updater-0.1.7-arm64.zip'].map((name) => ({ name }));
+  assert.equal(
+    core.pickAsset(selfupdate.selfUpdateAssets(win), 'portable', 'x64', null, 'win32').name,
+    'git-updater-0.1.7-x64.zip'
+  );
+});
+
+test('selfupdate: a release with nothing but AppImages is left to the picker to report', () => {
+  // Better a clear "no Linux portable asset" from the picker than an empty list here.
+  const only = [{ name: 'git-updater-9.9.9-linux-x64.AppImage' }];
+  assert.deepEqual(selfupdate.selfUpdateAssets(only), only);
+});
