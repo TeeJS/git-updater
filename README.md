@@ -15,13 +15,17 @@ Grab the build for your machine from **[Releases](https://github.com/TeeJS/git-u
 |---|---|---|
 | **Windows** | `git-updater-<v>-<arch>.zip` (x64, arm64) | unzip anywhere, run `git-updater.exe` |
 | **macOS** | `git-updater-<v>-mac-arm64.dmg` (Apple Silicon) | open it, drag to Applications |
-| **Linux** | `git-updater-<v>-linux-<arch>.AppImage` (x64, arm64) | `chmod +x`, then run it |
+| **Linux** | `git-updater-<v>-linux-<arch>.tar.gz` (x64, arm64) | extract anywhere, run `git-updater` |
 
 No setup, no admin rights, no background service, and closing the window exits everything.
 Windows builds are Authenticode-signed (Thomas Schmitz, via Azure Trusted Signing); macOS
 builds are Developer ID signed and notarized.
 
 **On macOS, only notarized apps will run** — see [below](#on-macos).
+
+An AppImage is published too. It needs `libfuse2`, which recent Ubuntu releases no longer
+install by default, so on many current systems it will not start unless that is present.
+The tarball has no such requirement, which is why it is the recommended Linux download.
 
 ## What it does
 
@@ -38,10 +42,12 @@ builds are Developer ID signed and notarized.
   batches with live progress (Downloading 42% → Verifying → Installing). Each row has an
   overflow menu: Edit, Force reinstall, Close app & update, View release, Open folder,
   Stop tracking.
-- **Scan this PC.** Finds programs you already have that git-updater recognizes — a curated
-  catalog of 120+ GitHub-released apps (browsers, media, dev tools, AI tools, runtimes),
-  filtered to the ones that exist on your platform — and adds the ones you pick. Or browse
-  the whole catalog and cherry-pick.
+- **Scan this PC** (Windows and macOS). Finds programs you already have that git-updater
+  recognizes — a curated catalog of 120+ GitHub-released apps (browsers, media, dev tools,
+  AI tools, runtimes), filtered to the ones that exist on your platform — and adds the ones
+  you pick. Not offered on Linux, where your package manager already owns most of what it
+  would find and accepting a suggestion would give you a second copy outside it. Browsing
+  the whole catalog and cherry-picking works everywhere.
 - **Safe by default.** Every download is checksum-verified. Portable updates are
   transactional — a failed or interrupted update restores the previous version completely,
   and your settings inside the app folder survive. Installers that need admin rights fall
