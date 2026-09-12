@@ -30,4 +30,5 @@ contextBridge.exposeInMainWorld('api', {
   selfUpdateLastApply: () => ipcRenderer.invoke('selfupdate:lastApply'),
   selfUpdateOpenRelease: () => ipcRenderer.invoke('selfupdate:openRelease'),
   getVersion: () => ipcRenderer.invoke('app:version'),
+  getPlatform: () => ipcRenderer.invoke('app:platform'),
 });

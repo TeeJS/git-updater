@@ -149,9 +149,28 @@ ipcMain.handle('scan:open', (_e, mode) => {
     autoHideMenuBar: true,
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false },
   });
-  scanWin.loadFile(path.join(__dirname, '..', 'ui', 'scan.html'), mode === 'all' ? { query: { mode: 'all' } } : undefined);
+  // Linux has no installed-apps mode, so the window always opens on the catalog there
+  // rather than on a tab that would answer nothing.
+  const wanted = SCAN_PLATFORMS.has(process.platform) ? mode : 'all';
+  scanWin.loadFile(path.join(__dirname, '..', 'ui', 'scan.html'), wanted === 'all' ? { query: { mode: 'all' } } : undefined);
 });
+// "Scan this PC" reads what is ALREADY INSTALLED and offers matches. That is the wrong
+// question on Linux, where a package manager already owns most of what it would find:
+// accepting a suggestion installs a SECOND copy outside dpkg, and the user ends up with
+// two, launching whichever the desktop happens to resolve.
+//
+// Browsing the catalog is unaffected and stays — it never inspects the system, so none of
+// that applies. Windows and macOS keep the scan: there is no system package manager
+// updating those apps behind our back, which is the entire reason this program exists.
+//
+// Refused here as well as hidden in the UI. A disabled button is a suggestion; an empty
+// answer from the main process is the guarantee.
+const SCAN_PLATFORMS = new Set(['win32', 'darwin']);
+
+ipcMain.handle('app:platform', () => ({ platform: process.platform, canScan: SCAN_PLATFORMS.has(process.platform) }));
+
 ipcMain.handle('scan:run', async () => {
+  if (!SCAN_PLATFORMS.has(process.platform)) return [];
   detect.clearCache();
   const tracked = new Set(readConfig().repos.map((r) => `${r.owner}/${r.repo}`.toLowerCase()));
   return catalog.matchInstalled(await detect.allInstalled(), tracked); // filtered to this OS

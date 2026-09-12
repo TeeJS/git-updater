@@ -220,7 +220,7 @@
     <div class="divider"></div>
 
     <div class="scan-row">
-      <span class="scan-label"><strong class="sec-h2">Known apps</strong><span class="helper" style="margin:0">· Scan this PC, or browse everything git-updater can manage.</span></span>
+      <span class="scan-label"><strong class="sec-h2">Known apps</strong><span class="helper" style="margin:0" id="knownHelp">· Scan this PC, or browse everything git-updater can manage.</span></span>
       <span style="display:flex;gap:.5rem">
         <button id="scanPc">Scan this PC</button>
         <button id="browseAll">Browse all apps</button>
@@ -607,6 +607,19 @@ window.api.onProgress(({ id, phase, pct }) => {
 });
 
 $('scanPc').onclick = () => window.api.openScan();
+
+// "Scan this PC" offers apps already installed. On Linux the package manager already owns
+// most of those, so accepting a suggestion installs a SECOND copy outside it. The button
+// is hidden there rather than left to disappoint. Browsing the catalog never inspects the
+// system, so it stays on every platform.
+window.api
+  .getPlatform()
+  .then(({ canScan }) => {
+    if (canScan) return;
+    $('scanPc').style.display = 'none';
+    $('knownHelp').textContent = '· Browse everything git-updater can manage.';
+  })
+  .catch(() => {}); // an older main process without the handler keeps today's behaviour
 $('browseAll').onclick = () => window.api.openScan('all');
 window.api.onConfigChanged(() => load()); // scan window added apps -> refresh the list
 

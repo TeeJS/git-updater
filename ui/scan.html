@@ -164,12 +164,29 @@ $('add').onclick = async () => {
 };
 $('close').onclick = () => window.close();
 
-// Optional start mode via ?mode=all
-if (new URLSearchParams(location.search).get('mode') === 'all') {
+const showAll = () => {
   mode = 'all';
   $('mode').querySelectorAll('button').forEach((x) => x.classList.toggle('active', x.dataset.mode === 'all'));
-}
-load();
+};
+
+// Optional start mode via ?mode=all
+if (new URLSearchParams(location.search).get('mode') === 'all') showAll();
+
+// On Linux there is no installed-apps scan — the package manager already owns most of
+// what it would find, so accepting a suggestion would install a second copy outside it.
+// The main process returns nothing there; this hides the tab rather than leaving one that
+// answers nothing. Awaited before the first load so the window never renders the wrong tab.
+(async () => {
+  try {
+    const { canScan } = await window.api.getPlatform();
+    if (!canScan) {
+      const tab = $('mode').querySelector('[data-mode="installed"]');
+      if (tab) tab.style.display = 'none';
+      showAll();
+    }
+  } catch {} // an older main process without the handler keeps today's behaviour
+  load();
+})();
 </script>
 </body>
 </html>
