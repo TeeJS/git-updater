@@ -180,3 +180,26 @@ test('platform: an unsupported OS degrades to empty inventories, not a crash', a
   // ...and its asset table falls back to the Linux conventions.
   assert.equal(assetTable('aix').id, 'linux');
 });
+
+// --- store-managed apps -------------------------------------------------------
+// An App Store app is updated by the App Store, never from a GitHub release, so offering
+// it can only produce a false match. Worse than a false match, though: measured on a real
+// machine, every App Store app carries its receipt INSIDE the bundle at
+// Contents/_MASReceipt/receipt (Bitwarden, Developer, iScreen Shoter all do; Developer ID
+// apps like Chrome and Docker have none). An update replaces the bundle whole, so the
+// receipt goes with it and the app loses its App Store update path.
+
+test('parseSystemProfiler: App Store apps are excluded, like Apple\'s own', () => {
+  const json = JSON.stringify({
+    SPApplicationsDataType: [
+      { _name: 'Bitwarden', version: '2026.8.0', path: '/Applications/Bitwarden.app', obtained_from: 'mac_app_store' },
+      { _name: 'Safari', version: '26.0', path: '/Applications/Safari.app', obtained_from: 'apple' },
+      { _name: 'Legacy', version: '1.0', path: '/Applications/Legacy.app', obtained_from: 'apple_sw' },
+      { _name: 'Docker', version: '4.90.0', path: '/Applications/Docker.app', obtained_from: 'identified_developer' },
+      { _name: 'Deskflow', version: '1.26.0.0', path: '/Applications/Deskflow.app', obtained_from: 'unknown' },
+    ],
+  });
+  const names = mac.parseSystemProfiler(json).map((r) => r.name).sort();
+  // identified_developer and unknown are the two provenances a GitHub release can serve
+  assert.deepEqual(names, ['Deskflow', 'Docker']);
+});

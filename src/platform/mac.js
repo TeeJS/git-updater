@@ -19,6 +19,24 @@ const { isInstalledAppPath, APP_DIRS } = require('./appfilter');
 
 // --- system_profiler ---------------------------------------------------------
 
+// Provenances that are updated by a STORE rather than from a GitHub release. Apple's own
+// apps come through Software Update; App Store apps come through the App Store. Offering
+// either can only produce a false match, because the version schemes are unrelated to any
+// tag we would compare against.
+//
+// mac_app_store is the more damaging of the two, and the reason is structural rather than
+// cosmetic. Measured on a real machine: every App Store app carries its receipt INSIDE the
+// bundle at Contents/_MASReceipt/receipt — Bitwarden, Developer and iScreen Shoter all do,
+// while Developer ID apps like Chrome and Docker have none. An update replaces the bundle
+// whole, so the receipt goes with it, and the app loses both its App Store update path and
+// the receipt it may validate at launch. Bitwarden is the live case: it ships on the App
+// Store AND on GitHub, so it WILL match a tracked repo.
+//
+// The cost is a user who wanted to migrate from the App Store build to the GitHub build.
+// That is not what an updater is for, and it is a far smaller harm than silently breaking
+// a working install.
+const STORE_MANAGED = new Set(['apple', 'apple_sw', 'mac_app_store']);
+
 // Parse `system_profiler SPApplicationsDataType -json` into [{ name, version, flavor, path }].
 // Apple's own bundled apps are excluded: they update through Software Update, never
 // from a GitHub release, so offering them would only produce false matches.
@@ -35,7 +53,7 @@ function parseSystemProfiler(stdout, dirs) {
   const out = [];
   for (const r of rows) {
     if (!r || !r._name) continue;
-    if (r.obtained_from === 'apple' || r.obtained_from === 'apple_sw') continue;
+    if (STORE_MANAGED.has(r.obtained_from)) continue;
     const version = r.version || '';
     if (!version) continue;
     // Spotlight reports every bundle on disk, not the installed set. Without this the
