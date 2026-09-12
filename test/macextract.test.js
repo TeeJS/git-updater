@@ -359,7 +359,10 @@ test('the .pkg-in-a-disk-image message does not point at a setting that cannot w
   const core = require('../src/core');
   // Precondition: for a dmg-only release the Installer lane really is a dead end.
   assert.throws(
-    () => core.pickAsset([{ name: 'App-1.0.dmg' }, { name: 'App-1.0-mac.zip' }], 'installer', 'darwin'),
+    // pickAsset(assets, type, arch, flavor, platform) — 'darwin' belongs in the FIFTH
+    // slot. Passed third it is read as an architecture, the platform falls back to the
+    // host, and the assertion checks a Windows message on Windows.
+    () => core.pickAsset([{ name: 'App-1.0.dmg' }, { name: 'App-1.0-mac.zip' }], 'installer', null, null, 'darwin'),
     /change its type to Portable/
   );
   assert.match(mac.PKG_IN_DMG, /installer package/);
