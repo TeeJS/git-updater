@@ -93,6 +93,109 @@ elevated instead makes those installs fully silent.
 Downloads are staged in git-updater's own data dir, never executed from the system temp dir.
 No localhost server; the UI talks to the engine over Electron IPC only.
 
+## macOS specifics
+
+Everything here was MEASURED on macOS 26.6.2, Apple Silicon, against real vendor disk
+images and a real Developer ID. Where something is reasoning rather than measurement it
+says so. That distinction is not pedantry: several confident claims in this file's own
+history turned out to be wrong, and the wrong ones survived because nobody could tell them
+apart from the checked ones.
+
+### Gatekeeper has two outcomes, not a spectrum
+
+| bundle | result |
+|---|---|
+| notarized, Developer ID | accepted |
+| Developer ID, **not** notarized | rejected |
+| ad-hoc signed | rejected |
+| notarized, one file added | rejected — "a sealed resource is missing or invalid" |
+
+There is no unsigned executable on Apple Silicon; the floor is ad-hoc, which is refused.
+So a Developer ID signature without a notarization ticket is worth exactly as much as no
+signature at all, which is why the build refuses to produce one (see below).
+
+### Extraction
+
+`.dmg` and `.zip` go to `hdiutil` and `ditto` rather than the engine's own extractor. An
+application bundle carries symlinks, mode bits and a signature, and a generic unzipper
+destroys all three. Measured on the real Claude.app: 14 symlinks through
+`Electron Framework.framework` survive, the Mach-O comes out 755, and `stapler validate`
+still passes on the extracted copy — so extraction does not cost notarization.
+
+`ditto` copies `com.apple.quarantine` **verbatim**, identity and all: the same UUID
+appears on the image and on the extracted app. Not stripping quarantine is therefore the
+default rather than a policy this code implements.
+
+Four real vendor images all had the same root layout — one `.app`, the `/Applications`
+drag symlink, and dotfiles. A disk image whose payload is a `.pkg` is refused with advice
+to switch the entry to Installer, because copying it would leave a package sitting in the
+portable folder doing nothing while the row reported success.
+
+### Two guards that exist because the failures are silent
+
+**The flattener stops at a bundle.** `stripDirs` strips version-named wrapper folders by
+descending into any lone directory. A `.app` is a directory, so `stage/Foo.app` became
+`stage/Foo.app/Contents` and what got installed was a Contents folder with no bundle
+around it. See `BUNDLE_DIR` in `src/install.js`.
+
+**Carry-over never writes inside a bundle.** Preserving user files across an update is
+right for a portable Windows app, where settings sit beside the executable. On macOS the
+app folder *is* the bundle, and one foreign file breaks its seal. Confirmed end to end
+with a three-way control: same app, same image, same code path, the only variable being
+whether a file existed inside the old bundle.
+
+On top of that, `installPortable` verifies **differentially** — codesign the extracted
+payload, swap with the old version parked rather than deleted, codesign the result, and
+treat only a valid-then-invalid transition as damage, restoring the previous version. It
+is not an absolute check on purpose: plenty of projects ship an unsigned or ad-hoc `.app`,
+and refusing those would quietly drop support for software a user can install by hand.
+`--verify --strict`, not `--deep`: measured on an 854 MB, 3422-file bundle, plain verify
+is ~155ms and already catches an injected file, `--strict` ~356ms, `--deep` ~686ms for no
+extra catch, and `--deep` is deprecated by Apple.
+
+### "Close the app and Retry" is a Windows mechanism
+
+`install.js` detects a running app by the directory rename failing with `EBUSY`/`EPERM`.
+A POSIX rename of a running application's directory **succeeds**. Measured: the process
+stays alive on the old inode while its bundle path resolves to the new version, so
+everything it lazy-loads afterwards crosses versions. It does not crash at the swap.
+
+So on macOS and Linux the only protection is the running-app check in `src/runner.js`,
+which runs twice — before the download and again immediately before the swap, because a
+download is ample time for the user to launch the app.
+
+### Self-update is check-only
+
+Windows and Linux are safe because of **indirection**: the running process reads from
+`app-x.y.z`, an update writes a new sibling directory, and the launcher repoints. Nothing
+replaces what is being read from.
+
+A `.app` bundle is the unit macOS launches, so there is nowhere to put a launcher that is
+not itself inside the thing being replaced. `canApply()` is false there and the banner
+links to the release page.
+
+Note what this reason is *not*. An earlier version of this project claimed an in-place
+macOS self-update would break the signature continuity Gatekeeper re-checks. Measured, and
+false: a swapped-in bundle verifies as valid, the running process survives, and a relaunch
+picks up the new version. The conclusion held, the stated reason did not — and the wrong
+reason pointed at a solvable-looking problem instead of an architectural one.
+
+### The build refuses to ship an unnotarized app
+
+`mac.notarize: true` is a request. With no credentials electron-builder logs a skip and
+**exits 0**, producing a correctly signed, hardened, entitled app that Gatekeeper refuses.
+`build/verify-mac-build.js` checks the artifact with
+`codesign --test-requirement==notarized` — the only check that asks the right question,
+since `codesign -v` passes on a signed-but-unnotarized app — and fails the build.
+
+Set `GITUPDATER_ALLOW_UNNOTARIZED=1` for a local build you are not shipping. A partial
+credential set is reported by name rather than ignored, because that is what a
+misconfigured CI looks like and it reads as configured.
+
+Targets are **arm64 only**. Intel is out of scope. The asset picker still prefers a
+native-arch build and falls back to universal, and penalises an x64-only upstream release
+only lightly, because Rosetta runs it.
+
 ## Auth (optional)
 
 All tracked repos are public, so no token is needed. Set `GITHUB_TOKEN` only to lift the
