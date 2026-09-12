@@ -100,7 +100,7 @@ test('dmg: copying a large bundle gets far more than the inventory-query timeout
   }
 });
 
-test('dmg: a failed mount reports the licence agreement, not an empty image', async () => {
+test('dmg: a failed mount throws, rather than reporting an empty image', async () => {
   const dest = tmp();
   try {
     await withStub(
@@ -108,8 +108,36 @@ test('dmg: a failed mount reports the licence agreement, not an empty image', as
       async () => {
         // mkdtempSync has already created the mountpoint, so readdir succeeds on an
         // empty directory. Judging the mount by hdiutil's own exit code is what makes
-        // this message reachable at all — it was dead before.
-        await assert.rejects(() => mac.extractDmg('/x/App.dmg', dest), /licence agreement/);
+        // this path reachable at all — it was dead before.
+        //
+        // Asserted on "could not mount" rather than on the licence wording, which is what
+        // it used to check: the message now names a licence ONLY when the image actually
+        // has one, so the old assertion tied a reachability guarantee to a cause that is
+        // usually absent.
+        await assert.rejects(() => mac.extractDmg('/x/App.dmg', dest), /could not mount the disk image/);
+      }
+    );
+  } finally {
+    fs.rmSync(dest, { recursive: true, force: true });
+  }
+});
+
+test('dmg: a mount that failed on a LICENCE AGREEMENT says so', async () => {
+  const dest = tmp();
+  try {
+    await withStub(
+      (cmd, args) => {
+        if (cmd === 'hdiutil' && args[0] === 'attach') {
+          return { code: 1, out: '', err: 'hdiutil: attach failed - attach canceled', timedOut: false };
+        }
+        // the image reports a licence agreement in its own resources
+        if (cmd === 'hdiutil' && args[0] === 'udifderez') {
+          return { code: 0, out: '<key>LPic</key><key>STR#</key><key>TEXT</key>', timedOut: false };
+        }
+        return undefined;
+      },
+      async () => {
+        await assert.rejects(() => mac.extractDmg('/x/App.dmg', dest), /requires agreeing to a licence agreement/);
       }
     );
   } finally {
@@ -338,9 +366,15 @@ test('mountFailure: a real transient failure is reported as itself', () => {
   assert.match(m, /Resource temporarily unavailable/);
 });
 
-test('mountFailure: the licence agreement survives as a possibility, not a diagnosis', () => {
-  const m = mac.mountFailure({ code: 1, err: 'hdiutil: attach failed - boom' });
-  assert.match(m, /If the image requires accepting a licence agreement/);
+test('mountFailure: an unknown cause is not dressed up as a licence agreement', () => {
+  // This replaces a test that asserted the OPPOSITE: that the message always offered a
+  // licence agreement as a possibility. It did, and that hedge was measured to be wrong
+  // more often than right — a corrupt file and a transient failure both produced it. Now
+  // the licence is named only when the image is known to carry one, so an unknown cause
+  // reports the unknown cause.
+  const m = mac.mountFailure({ code: 1, err: 'hdiutil: attach failed - boom' }, false);
+  assert.match(m, /could not mount the disk image: attach failed - boom/);
+  assert.ok(!/licence/i.test(m));
 });
 
 test('mountFailure: no stderr falls back to the exit code, and a timeout says timeout', () => {
@@ -367,4 +401,41 @@ test('the .pkg-in-a-disk-image message does not point at a setting that cannot w
   );
   assert.match(mac.PKG_IN_DMG, /installer package/);
   assert.ok(!/type to Installer/i.test(mac.PKG_IN_DMG), 'must not advise the Installer type: that loops');
+});
+
+// --- a disk image behind a licence agreement -----------------------------------
+// Found in the WILD, not in a fixture. deskflow 1.26.0's macOS image carries a software
+// licence agreement (GPL v2, 15,178 characters). hdiutil prints the licence, waits for an
+// answer, gets EOF because our stdin is the null device, and declines — reporting
+// "attach canceled", which is true and tells a user nothing.
+//
+// This was the last untested claim on the branch. I could not author an SLA image to test
+// it (hdiutil udifrez is unimplemented on macOS 26 — resource forks cannot be created any
+// more), and I had written that SLA images were probably aging out. A current release
+// disproved that.
+
+test('mountFailure: a known licence agreement is stated, not guessed at', () => {
+  const m = mac.mountFailure({ code: 1, err: 'hdiutil: attach failed - attach canceled' }, true);
+  assert.match(m, /requires agreeing to a licence agreement/);
+  // "attach canceled" is hdiutil's answer to a question the user never saw. Quoting it
+  // here would be accurate and useless.
+  assert.ok(!/attach canceled/.test(m), 'the useless reason is replaced, not appended');
+  assert.match(m, /will not agree to one for you/, 'says whose decision it is');
+});
+
+test('mountFailure: without a licence agreement it still quotes hdiutil, and does not guess one', () => {
+  const m = mac.mountFailure({ code: 1, err: 'hdiutil: attach failed - image not recognized' }, false);
+  assert.match(m, /image not recognized/);
+  assert.ok(!/licence agreement/i.test(m), 'no licence is mentioned when there is no licence');
+});
+
+test('mountFailure: a timeout outranks a licence agreement', () => {
+  // A licence prompt cannot be why a 10-minute copy timed out, so the timeout is the
+  // more useful answer even when the image does carry an agreement.
+  assert.match(mac.mountFailure({ code: null, err: '', timedOut: true }, true), /timed out/);
+});
+
+test('LICENCE_AGREEMENT: tells the user what to do, and does not offer to do it for them', () => {
+  assert.match(mac.LICENCE_AGREEMENT, /open the image yourself/);
+  assert.match(mac.LICENCE_AGREEMENT, /install the app by hand/);
 });

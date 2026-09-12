@@ -224,13 +224,42 @@ async function ditto(src, dest) {
 // unavailable", both produced the licence-agreement text. stderr is where hdiutil puts the
 // actual reason, so quote it and offer the licence agreement as a possibility rather than
 // a diagnosis. A timeout is a different failure and says so.
-function mountFailure(attach) {
+// When a licence agreement is the KNOWN cause, say so definitively and do not hedge. The
+// hedged version of this message shipped first and was measured to be wrong more often
+// than right, so guessing a cause is not better than naming it.
+//
+// git-updater will not agree to a licence on the user's behalf. Technically it could:
+// `yes | hdiutil attach` mounts the image, measured on deskflow 1.26.0. It is deliberately
+// not done. The agreement is a legal act, the text is 15,000 characters we never show, and
+// we cannot know whether a given image carries the GPL or a restrictive EULA. That is the
+// same posture as not stripping com.apple.quarantine: the honest limitation beats the
+// convenient workaround.
+const LICENCE_AGREEMENT =
+  'this disk image requires agreeing to a licence agreement before it can be opened, and ' +
+  'git-updater will not agree to one for you — open the image yourself, accept the licence, ' +
+  'and install the app by hand';
+
+function mountFailure(attach, hasLicence) {
   if (attach.timedOut) return 'mounting the disk image timed out — the file may be on slow or failing media';
+  if (hasLicence) return LICENCE_AGREEMENT;
   const reason = stderrReason(attach, 'hdiutil');
-  const base = reason
+  return reason
     ? `could not mount the disk image: ${reason}`
     : `could not mount the disk image (hdiutil exit ${attach.code === null ? 'n/a' : attach.code})`;
-  return `${base}. If the image requires accepting a licence agreement, that needs a human.`;
+}
+
+// Does this image carry a software licence agreement? Read from the image's own resources,
+// which is where hdiutil looks: LPic names the languages, STR# the button labels, TEXT the
+// agreement itself. Only called on the FAILURE path, so its cost never touches a good build.
+//
+// udifderez still works on macOS 26 even though its write counterpart udifrez does not —
+// resource forks cannot be CREATED any more, which is why an SLA image could not be
+// authored here for testing, and why this was the last untested claim on the branch until
+// a real one turned up in the wild.
+async function hasLicenceAgreement(dmgPath) {
+  const r = await exec.runStatus('hdiutil', ['udifderez', '-xml', dmgPath], { timeout: 30_000 });
+  if (r.code !== 0) return false; // cannot tell; fall back to quoting hdiutil
+  return /<key>(LPic|STR#|TEXT)<\/key>/.test(r.out || '');
 }
 
 // Said here rather than inline so it can be asserted without a real disk image: a test that
@@ -255,7 +284,11 @@ async function extractDmg(dmgPath, destDir) {
   try {
     if (attach.code !== 0) {
       fs.rmSync(mnt, { recursive: true, force: true });
-      throw new Error(mountFailure(attach));
+      // hdiutil prints "attach canceled" for a licence agreement it could not get an answer
+      // to — our stdin is the null device, so the prompt reads EOF and it declines. That
+      // reason is true and useless to a user. Ask the image whether it has an agreement and
+      // say so instead. Measured in the wild on deskflow 1.26.0, whose image carries GPL v2.
+      throw new Error(mountFailure(attach, await hasLicenceAgreement(dmgPath)));
     }
     let names;
     try {
@@ -386,4 +419,6 @@ module.exports = {
   extractDmg,
   mountFailure,
   PKG_IN_DMG,
+  LICENCE_AGREEMENT,
+  hasLicenceAgreement,
 };
