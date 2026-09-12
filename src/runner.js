@@ -256,10 +256,15 @@ async function handleRepo(repo, id, st, opts) {
       // This is the ONLY protection on macOS and Linux. On Windows the swap itself fails
       // with EBUSY or EPERM when files are open, and install.js turns that into "close
       // the app and Retry" — but a POSIX rename of a running application's directory
-      // SUCCEEDS. Measured on macOS: the process stays alive on the old inode while its
-      // bundle path now resolves to a different version, so every framework, asar
-      // resource or helper it lazy-loads from then on comes from the new one. The app
-      // does not crash at the swap; it crosses versions silently afterwards.
+      // SUCCEEDS. Measured on macOS with a real signed Electron app: it survived the
+      // swap for at least 30 seconds — including having its old directory DELETED
+      // underneath it — across four processes, with no crash and no crash report. A
+      // fresh read at the live path returns the new version while the process keeps
+      // executing code loaded before the swap.
+      //
+      // So this is not "it crashes". It is old code, new files, one path, and nobody
+      // has managed to provoke a failure from that mismatch. Unprovoked is not safe:
+      // whatever the app loads next comes from a version it did not start with.
       if (await detect.isRunning(repo.process || repo.repo)) {
         log(`SKIP ${key}: ${repo.repo} started during the download`);
         return { ...base, status: 'failed', reason: `${repo.repo} is running — close it, then Retry` };

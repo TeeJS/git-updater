@@ -21,11 +21,15 @@
 //
 // An earlier version of this comment said the swap breaks signature continuity. That was
 // measured on hardware and is FALSE: a swapped-in bundle verifies as valid, the running
-// process survives on the old inode, and a relaunch picks up the new version correctly.
-// The real risk is subtler — a running Electron app lazy-loads frameworks, asar resources
-// and helpers from inside its own bundle for as long as it runs, and after the swap that
-// path resolves to a different version. It does not crash at the swap. It crosses versions
-// afterwards. checkForUpdate() still reports new versions on every platform.
+// process survives, and a relaunch picks up the new version correctly. A real signed
+// Electron app also survived the swap outright — four processes, 30 seconds, old
+// directory deleted underneath it, no crash.
+//
+// So the case against an in-place macOS self-update rests on the indirection argument
+// above, which needs no hardware, and NOT on a crash nobody has observed. What is left is
+// a version mismatch — the running process keeps executing code it loaded before the
+// swap, while its own bundle path now serves different files — that we could not provoke
+// a failure from. checkForUpdate() still reports new versions on every platform.
 
 const fs = require('fs');
 const path = require('path');

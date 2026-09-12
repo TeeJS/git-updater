@@ -156,9 +156,19 @@ extra catch, and `--deep` is deprecated by Apple.
 ### "Close the app and Retry" is a Windows mechanism
 
 `install.js` detects a running app by the directory rename failing with `EBUSY`/`EPERM`.
-A POSIX rename of a running application's directory **succeeds**. Measured: the process
-stays alive on the old inode while its bundle path resolves to the new version, so
-everything it lazy-loads afterwards crosses versions. It does not crash at the swap.
+A POSIX rename of a running application's directory **succeeds**.
+
+What was measured, on a real signed Electron app: it survived the swap for at least 30
+seconds across four processes, including having its old directory deleted underneath it,
+with no crash and no crash report. A fresh read at the live path returns the new version
+while the process keeps executing code loaded before the swap.
+
+What was NOT measured: the mechanism. An attempt to show the old inodes still mapped
+returned nothing usable, which is a limitation of the tool on macOS rather than evidence
+of absence. And no failure has been provoked from the mismatch.
+
+So the honest statement is that it did not crash and the bad case could not be forced —
+**not** that it is safe. Old code, new files, one path.
 
 So on macOS and Linux the only protection is the running-app check in `src/runner.js`,
 which runs twice — before the download and again immediately before the swap, because a
