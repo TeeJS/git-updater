@@ -348,3 +348,20 @@ test('mountFailure: no stderr falls back to the exit code, and a timeout says ti
   assert.match(mac.mountFailure({ code: null, err: '' }), /hdiutil exit n\/a/);
   assert.match(mac.mountFailure({ code: null, err: '', timedOut: true }), /timed out/);
 });
+
+// A disk image holding a .pkg used to advise switching the entry to Installer. Measured,
+// that advice is a closed loop: the mac asset table counts a .dmg as portable-only and an
+// installer as .pkg-only, so a release publishing only a .dmg makes the installer lane
+// throw "change its type to Portable". The two messages send the user back and forth
+// forever, and each one is correct on its own. Asserted against the message value rather
+// than by mounting an image, so it runs on every platform.
+test('the .pkg-in-a-disk-image message does not point at a setting that cannot work', () => {
+  const core = require('../src/core');
+  // Precondition: for a dmg-only release the Installer lane really is a dead end.
+  assert.throws(
+    () => core.pickAsset([{ name: 'App-1.0.dmg' }, { name: 'App-1.0-mac.zip' }], 'installer', 'darwin'),
+    /change its type to Portable/
+  );
+  assert.match(mac.PKG_IN_DMG, /installer package/);
+  assert.ok(!/type to Installer/i.test(mac.PKG_IN_DMG), 'must not advise the Installer type: that loops');
+});

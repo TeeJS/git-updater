@@ -32,6 +32,12 @@ const { isInstalledAppPath, APP_DIRS } = require('./appfilter');
 // the receipt it may validate at launch. Bitwarden is the live case: it ships on the App
 // Store AND on GitHub, so it WILL match a tracked repo.
 //
+// The harm that needs no unusual configuration at all is Scan. Receipt destruction
+// requires install.dir to point at the App Store app's location, which is deliberate; but
+// Scan offers the app, the user ticks it, and git-updater installs a SECOND copy into the
+// portable root while the App Store keeps updating the first. Two copies, neither broken,
+// neither wanted, and no error anywhere.
+//
 // The cost is a user who wanted to migrate from the App Store build to the GitHub build.
 // That is not what an updater is for, and it is a far smaller harm than silently breaking
 // a working install.
@@ -227,6 +233,12 @@ function mountFailure(attach) {
   return `${base}. If the image requires accepting a licence agreement, that needs a human.`;
 }
 
+// Said here rather than inline so it can be asserted without a real disk image: a test that
+// needs hdiutil only runs on macOS, and a macOS-only test is not a test anywhere else.
+const PKG_IN_DMG =
+  'this disk image contains an installer package (.pkg) rather than an application, ' +
+  'which git-updater cannot install on macOS — install it by hand from the disk image';
+
 // Mount a .dmg, copy its payload out, unmount. The /Applications symlink that disk
 // images conventionally carry is skipped: it is a drag-and-drop affordance, not payload.
 async function extractDmg(dmgPath, destDir) {
@@ -255,11 +267,23 @@ async function extractDmg(dmgPath, destDir) {
     // A disk image whose payload is an installer package, not an application. Copying it
     // "succeeds" and leaves a .pkg sitting in the portable folder doing nothing, while
     // the row reports the update applied. The asset picker cannot see this — it only saw
-    // a .dmg — so it has to be caught here, with the same advice it gives for the
-    // analogous case it CAN see.
+    // a .dmg — so it has to be caught here.
+    //
+    // It must NOT advise switching the entry to Installer, which is what it used to say.
+    // Measured: that advice is a closed loop. The mac asset table counts a .dmg as
+    // portable only and an installer as .pkg only, so for a release publishing just a
+    // .dmg, pickAsset(assets, 'installer') throws "this app only ships portable builds —
+    // change its type to Portable". Switch to Installer and it sends you back to
+    // Portable; switch back and you land here again. Each message is right on its own
+    // and together they are an infinite loop the user cannot escape.
+    //
+    // Handling this properly would mean teaching the installer lane to select a .dmg,
+    // mount it and hand the .pkg to the desktop installer for authorization — the
+    // elevation path in install.js already exists for that. Until then, say what is
+    // true and do not send the user somewhere that cannot work.
     if (payload.length && payload.every((n) => /\.(pkg|mpkg)$/i.test(n))) {
       throw new Error(
-        'this disk image contains an installer package, not an application — Edit the app and change its type to Installer'
+        PKG_IN_DMG
       );
     }
     let copied = 0;
@@ -361,4 +385,5 @@ module.exports = {
   bundleVersion,
   extractDmg,
   mountFailure,
+  PKG_IN_DMG,
 };

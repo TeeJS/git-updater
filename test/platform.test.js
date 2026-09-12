@@ -56,6 +56,9 @@ test('win: parses tasklist csv', () => {
 
 // Directories are passed explicitly so this runs identically on any host — the real
 // defaults are POSIX paths, and the predicate that uses them is covered in appfilter.test.js.
+// A LITERAL fixture, deliberately pinned so the same table runs on every platform — not a
+// path anyone is expected to have. Reading these from the host is what made the App Store
+// test pass on macOS and fail on Windows.
 const MAC_DIRS = ['/Applications', '/Users/teej/Applications'];
 
 test('mac: parses system_profiler json, skipping Apple apps and non-installed bundles', () => {
