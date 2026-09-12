@@ -216,7 +216,8 @@ async function prepareUpdate(root, currentVersion, onProgress = () => {}) {
       const { srcDir } = await install.extractArchive(file, stage);
       if (!fs.existsSync(path.join(srcDir, EXE))) throw new Error(`downloaded build has no ${EXE}`);
       makeExecutable(srcDir);
-      fs.renameSync(srcDir, target);
+      // Retried: Windows can still be scanning what we just extracted (see install.js).
+      install.renameWithRetry(srcDir, target);
     } finally {
       fs.rmSync(stage, { recursive: true, force: true });
     }

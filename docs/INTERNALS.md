@@ -308,6 +308,14 @@ launcher on its first update — its files are never touched again.
   (nothing runs from them any more), stale stage dirs, and day-old downloads. The next `load()`
   consumes `last-apply.json` and warns if the version that came up isn't the one expected.
 
+A directory rename can fail with EPERM on Windows even when nothing is legitimately using
+the path — real-time antivirus scanning a freshly extracted 150MB build is the usual cause.
+Reported in the field on the 0.2.0 self-update, renaming a staging directory the same
+process had created moments earlier. Every rename in the swap now retries with backoff
+(`renameWithRetry` in `src/install.js`), which is the same mitigation `sign.js` already
+used at build time. A rename blocked because the app is genuinely running still fails
+after the last attempt, so "close it and Retry" is delayed rather than lost.
+
 Why not swap in place: a running Electron process can't have its own directory renamed (dozens
 of open DLL/resource handles), and renames done from inside Electron hit EPERM even from a
 sibling copy — a known, unresolved class of electron-updater issues. New-folder-plus-launcher

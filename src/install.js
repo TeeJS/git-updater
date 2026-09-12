@@ -64,6 +64,47 @@ function stripDirs(root, n) {
 
 const OLD_SUFFIX = '.git-updater-old'; // previous version parked here during the swap
 
+// Windows holds transient handles on files that were just written — real-time antivirus
+// scanning 150MB of freshly extracted executables is the usual cause — and a directory
+// rename then fails with EPERM even though nothing is legitimately using it.
+//
+// Reported from a real machine: a self-update failed renaming a staging directory it had
+// created itself moments earlier, with EPERM on a path nothing else could have been
+// holding. docs/INTERNALS already described this as a known class; it had no mitigation.
+//
+// Retrying is the established answer and this project already does it at BUILD time
+// (waitUnlocked in sign.js). A second is plenty for a scanner to let go. A rename that
+// fails because the app is genuinely RUNNING still fails after the last attempt, so the
+// caller's "close it and Retry" message is delayed by a moment rather than replaced.
+//
+// Synchronous by necessity: swapDir is sync, and the whole point of it is that no other
+// work interleaves between parking the old version and moving the new one in.
+const TRANSIENT_RENAME = new Set(['EPERM', 'EACCES', 'EBUSY', 'ENOTEMPTY']);
+const sleepSync = (ms) => {
+  try {
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+  } catch {
+    const until = Date.now() + ms; // SharedArrayBuffer unavailable: spin rather than skip
+    while (Date.now() < until);
+  }
+};
+
+function renameWithRetry(from, to, opts = {}) {
+  const rename = opts.rename || fs.renameSync;
+  const sleep = opts.sleep || sleepSync;
+  const waits = opts.waits || [100, 200, 400, 800];
+  for (let i = 0; ; i++) {
+    try {
+      return rename(from, to);
+    } catch (e) {
+      if (i >= waits.length || !TRANSIENT_RENAME.has(e.code)) throw e;
+      sleep(waits[i]);
+    }
+  }
+}
+
+
+
 // Extract an archive into destDir using 7z-wasm (pure WASM, no external binary).
 // Mounts destDir into the wasm FS, copies the archive in, extracts, cleans up.
 // opts.archiveName keeps the real extension so 7-Zip picks the right codec — needed
@@ -217,7 +258,7 @@ function swapDir(dest, srcDir, opts = {}) {
       // EBUSY/EPERM here if the app is running — on WINDOWS. A POSIX rename of a
       // running application's directory succeeds, so this is not a cross-platform
       // guard: macOS and Linux rely on the running-app check in runner.js instead.
-      fs.renameSync(dest, oldDir);
+      renameWithRetry(dest, oldDir);
     } catch (e) {
       if (e.code === 'EBUSY' || e.code === 'EPERM' || e.code === 'EACCES') {
         const err = new Error('app files are in use — close the app and Retry');
@@ -228,9 +269,9 @@ function swapDir(dest, srcDir, opts = {}) {
     }
   }
   try {
-    fs.renameSync(srcDir, dest);
+    renameWithRetry(srcDir, dest);
   } catch (e) {
-    if (hadOld) fs.renameSync(oldDir, dest); // complete rollback: old version restored whole
+    if (hadOld) renameWithRetry(oldDir, dest); // complete rollback: old version restored whole
     throw e;
   }
 
@@ -407,6 +448,7 @@ module.exports = {
   detectInstallerKind,
   extractArchive,
   swapDir,
+  renameWithRetry,
   // exported for tests
   restoreZipModes,
   BUNDLE_DIR,
