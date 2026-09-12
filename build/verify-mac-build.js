@@ -136,6 +136,12 @@ exports.default = async function verifyMacBuild(context) {
     );
   }
 
+  // electron-builder leaves the .dmg unsigned and unstapled, and the .dmg is what the user
+  // downloads. Sign, notarize and staple it before verifying anything. See
+  // build/notarize-dmg.js for what was measured and why the order matters.
+  const dmgs = require('./notarize-dmg').notarizeDmgs(context);
+  for (const d of dmgs) console.log(`  • disk image signed, notarized and stapled: ${path.basename(d)}`);
+
   const creds = credentialState();
   const bad = apps.filter((a) => !isNotarized(a));
   if (!bad.length) {
