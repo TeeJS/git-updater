@@ -314,6 +314,49 @@ sibling copy — a known, unresolved class of electron-updater issues. New-folde
 sidesteps it entirely. Cost: the launcher copy stays on disk (~270 MB) next to the current
 version. `bin/watch.js` (headless CLI) does not self-update — apply is GUI-only.
 
+## Checking a change actually works
+
+The cross-platform port closed fourteen defects. Twelve would have shipped something that
+reported success and then did not work — an installed folder with no application inside
+it, an inventory that marked apps current from build leftovers, an update that silently
+invalidated every signed app it touched, a build that exited 0 producing an artifact macOS
+refuses to run. **Not one was found by a failing test.**
+
+More usefully: of the faults found in the CHECKS rather than the code, every single one was
+a guard that could not fail.
+
+- the notarization guard had four paths that returned silently, guarding nothing
+- a "verified non-vacuous" claim rested on a matcher that passed with the fix reverted
+- three tests inherited the platform from the host, so each verified one OS and asserted
+  against an empty array on the other
+- a revert script died on a syntax error and left the suite green, so the check that exists
+  to stop an unverified claim was itself unverified
+
+That is the same failure mode as the twelve, one level up, and much harder to see: a
+passing test and an absent test look identical from outside. **On this branch the guards
+failed about as often as the code, and more quietly.**
+
+Three mechanisms caught them, every time. None is about being careful.
+
+1. **Revert the fix and expect red.** Before claiming a test proves anything, break the
+   thing it tests and confirm that exact test fails and others do not. If nothing goes
+   red, the test is decoration.
+2. **Quote the commit SHA you measured at, never the branch name.** A failed checkout or a
+   stale worktree otherwise produces a confident, wrong report. That happened, and was
+   caught only because an error scrolled past above a plausible result.
+3. **Pin test inputs; never widen the expectation.** Every time an assertion was loosened
+   for portability it lost the ability to fail. `test/hostindependence.test.js` enforces
+   this mechanically for the platform argument, and has a test proving its own parser can
+   fire — because a guard that never fires and one that cannot fire are indistinguishable.
+
+What found the defects themselves: running the code on the real OS, executing control flow
+with the subprocess layer stubbed (`test/macextract.test.js`), reading for faults in the
+RELATIONSHIP between individually-correct pieces, and running a catalog against a real
+machine's package list instead of trusting its patterns.
+
+The suite grew from 70 tests to 196. The tests are the record of what was found, not the
+instrument that found it.
+
 ## Architecture
 
 ```
