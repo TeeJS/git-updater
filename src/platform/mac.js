@@ -164,15 +164,32 @@ function killProcess(pid, force) {
 // partial copy reported success. Matches the installer timeout in src/install.js.
 const COPY_TIMEOUT = 10 * 60 * 1000;
 
+// The last meaningful line a tool wrote to stderr, with its own name prefix stripped.
+// Apple's tools put the actual reason there — "Resource temporarily unavailable",
+// "image not recognized" — and reporting an exit code instead throws it away. Shared so
+// a new call site cannot quietly forget, which is how both ditto sites came to.
+function stderrReason(r, tool) {
+  const strip = new RegExp(`^${tool}:\\s*`, 'i');
+  return String((r && r.err) || '')
+    .split(/\r?\n/)
+    .map((l) => l.replace(strip, '').trim())
+    .filter(Boolean)
+    .pop();
+}
+
 // ditto succeeds SILENTLY, so its stdout says nothing about whether it worked; only the
 // exit code does. A failure here must throw rather than leave a half-copied bundle that
 // extracts clean and dies at first launch.
 async function ditto(src, dest) {
   const r = await exec.runStatus('ditto', [src, dest], { timeout: COPY_TIMEOUT });
   if (r.code === 0) return;
+  if (r.timedOut) {
+    throw new Error(`copying ${path.basename(src)} timed out — the disk image may be on slow or failing media`);
+  }
+  const why = stderrReason(r, 'ditto');
   throw new Error(
-    r.timedOut
-      ? `copying ${path.basename(src)} timed out — the disk image may be on slow or failing media`
+    why
+      ? `copying ${path.basename(src)} failed: ${why}`
       : `copying ${path.basename(src)} failed (ditto exit ${r.code === null ? 'n/a' : r.code})`
   );
 }
@@ -185,12 +202,7 @@ async function ditto(src, dest) {
 // a diagnosis. A timeout is a different failure and says so.
 function mountFailure(attach) {
   if (attach.timedOut) return 'mounting the disk image timed out — the file may be on slow or failing media';
-  // hdiutil prefixes its own name and can wrap; the last non-empty line carries the reason.
-  const reason = String(attach.err || '')
-    .split(/\r?\n/)
-    .map((l) => l.replace(/^hdiutil:\s*/i, '').trim())
-    .filter(Boolean)
-    .pop();
+  const reason = stderrReason(attach, 'hdiutil');
   const base = reason
     ? `could not mount the disk image: ${reason}`
     : `could not mount the disk image (hdiutil exit ${attach.code === null ? 'n/a' : attach.code})`;
@@ -261,9 +273,11 @@ async function extract(archivePath, destDir) {
     // mean a malicious .zip is contained by ditto's behaviour alone.
     const r = await exec.runStatus('ditto', ['-x', '-k', archivePath, destDir], { timeout: COPY_TIMEOUT });
     if (r.code !== 0) {
+      if (r.timedOut) throw new Error('extracting the archive timed out');
+      const why = stderrReason(r, 'ditto');
       throw new Error(
-        r.timedOut
-          ? 'extracting the archive timed out'
+        why
+          ? `extracting the archive failed: ${why}`
           : `extracting the archive failed (ditto exit ${r.code === null ? 'n/a' : r.code})`
       );
     }
@@ -324,6 +338,7 @@ module.exports = {
   parseSystemProfiler,
   parseInfoPlistXml,
   parsePs,
+  stderrReason,
   scanAppBundles,
   bundleVersion,
   extractDmg,

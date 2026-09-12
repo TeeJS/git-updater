@@ -114,6 +114,11 @@ There is no unsigned executable on Apple Silicon; the floor is ad-hoc, which is 
 So a Developer ID signature without a notarization ticket is worth exactly as much as no
 signature at all, which is why the build refuses to produce one (see below).
 
+Note what this does NOT restrict: git-updater installs an unsigned or ad-hoc app perfectly
+well, and the differential guard below deliberately lets both through, because it refuses
+only an app that verified BEFORE and does not after. Whether macOS will then launch what
+was installed is macOS's decision, not this program's.
+
 ### Extraction
 
 `.dmg` and `.zip` go to `hdiutil` and `ditto` rather than the engine's own extractor. An

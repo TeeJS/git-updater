@@ -21,7 +21,7 @@ No setup, no admin rights, no background service, and closing the window exits e
 Windows builds are Authenticode-signed (Thomas Schmitz, via Azure Trusted Signing); macOS
 builds are Developer ID signed and notarized.
 
-**On macOS, git-updater can only manage notarized apps** — see [below](#on-macos).
+**On macOS, only notarized apps will run** — see [below](#on-macos).
 
 ## What it does
 
@@ -52,10 +52,10 @@ builds are Developer ID signed and notarized.
 
 ## On macOS
 
-**Only notarized apps can be managed.** On Apple Silicon, macOS accepts a notarized app
-and refuses everything else — including an app signed with a valid Developer ID that was
-simply never notarized, which it treats exactly as it treats an unsigned one. git-updater
-cannot change that, and does not try to.
+**Only notarized apps will run.** git-updater will install any app you point it at, but
+on Apple Silicon macOS refuses to LAUNCH anything that is not notarized — including an app
+signed with a valid Developer ID that was simply never notarized, which it treats exactly
+as it treats an unsigned one. git-updater cannot change that, and does not try to.
 
 **Downloads keep their quarantine flag.** macOS attaches it, Apple's own copy tool carries
 it across unchanged, and git-updater does not strip it. One consequence worth knowing: an
@@ -64,9 +64,9 @@ arrives carrying the download's own quarantine — so your earlier approval does
 over with it.
 
 **An update that would damage an app is rolled back.** A macOS application is sealed, and
-a single stray file inside it stops the app launching. If an update leaves a bundle whose
+a single stray file inside it stops macOS accepting it. If an update leaves a bundle whose
 signature no longer verifies, git-updater puts the previous version back rather than
-leaving you with one that will not start.
+leaving you with the damaged one.
 
 **git-updater updates itself in place on Windows and Linux**, where the new version is
 installed in its own folder and the launcher switches to it on next start. On macOS it
