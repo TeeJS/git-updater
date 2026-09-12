@@ -12,6 +12,7 @@ const github = require('../src/github');
 const runner = require('../src/runner');
 const state = require('../src/state');
 const detect = require('../src/detect');
+const paths = require('../src/paths');
 const catalog = require('../src/catalog');
 const selfupdate = require('../src/selfupdate');
 const { log, LOG_FILE } = require('../src/log');
@@ -36,8 +37,8 @@ function portableDir(cfg, r) {
   return cfg.portableRoot ? `${cfg.portableRoot.replace(/[\\/]+$/, '')}/${r.repo}` : null;
 }
 
-// Config lives with state under %APPDATA%\git-updater — never the launch cwd.
-const DATA_DIR = path.join(process.env.APPDATA || app.getPath('appData'), 'git-updater');
+// Config lives with state in git-updater's own config dir — never the launch cwd.
+const DATA_DIR = paths.configDir();
 const CONFIG_PATH = process.env.GITUPDATER_CONFIG || path.join(DATA_DIR, 'config.json');
 
 // One-time import of an older config sitting next to the app or in the cwd.
@@ -112,7 +113,7 @@ ipcMain.handle('installed:get', async () => {
     if (r.type === 'installer') {
       let v = null;
       try {
-        v = await detect.registryVersion(r.detect || r.repo);
+        v = await detect.installedVersion(r.detect || r.repo);
       } catch {}
       out[key] = { current: v, present: !!v };
     } else {
@@ -153,7 +154,7 @@ ipcMain.handle('scan:open', (_e, mode) => {
 ipcMain.handle('scan:run', async () => {
   detect.clearCache();
   const tracked = new Set(readConfig().repos.map((r) => `${r.owner}/${r.repo}`.toLowerCase()));
-  return catalog.matchInstalled(await detect.allInstalled(), tracked);
+  return catalog.matchInstalled(await detect.allInstalled(), tracked); // filtered to this OS
 });
 // The whole catalog (for "All known apps" browsing), tracked entries flagged.
 ipcMain.handle('catalog:all', () => {
@@ -204,7 +205,7 @@ ipcMain.handle('asset:preview', async (_e, appKey) => {
   const repo = readConfig().repos.find((r) => `${r.owner}/${r.repo}#${r.type}` === appKey);
   if (!repo) throw new Error('app not found');
   const rel = await github.getLatestRelease(repo.owner, repo.repo, { prerelease: repo.prerelease, tagPrefix: repo.tagPrefix });
-  const asset = repo.asset ? core.matchAsset(rel.assets, repo.asset) : core.pickWindowsAsset(rel.assets, repo.type);
+  const asset = repo.asset ? core.matchAsset(rel.assets, repo.asset) : core.pickAsset(rel.assets, repo.type);
   return { tag: rel.tag_name, asset: asset.name };
 });
 // --- Self-update (portable, run-as-is) ----------------------------------------
@@ -216,13 +217,21 @@ ipcMain.handle('selfupdate:check', async () => {
   if (!app.isPackaged) return null; // dev run
   try {
     const found = await selfupdate.checkForUpdate(app.getVersion());
-    return found ? { version: found.version } : null;
+    // canApply is false on macOS, where a running .app bundle cannot be swapped without
+    // breaking the signature Gatekeeper re-checks. The banner still reports the new
+    // version there; its button opens the release page instead of applying.
+    return found ? { version: found.version, canApply: selfupdate.canApply() } : null;
   } catch (e) {
     log(`selfupdate check: ${e && e.message ? e.message : e}`); // e.g. no releases yet
     return null;
   }
 });
 ipcMain.handle('selfupdate:lastApply', () => selfupdate.consumeApplyMarker(app.getVersion()));
+// The releases page for git-updater itself. The URL is built HERE, from the engine's own
+// constants — the renderer never passes a URL across the bridge, same as release:open.
+ipcMain.handle('selfupdate:openRelease', () =>
+  shell.openExternal(`https://github.com/${selfupdate.REPO.owner}/${selfupdate.REPO.repo}/releases`)
+);
 ipcMain.handle('app:version', () => app.getVersion());
 
 ipcMain.handle('pick-folder', async () => {
@@ -232,9 +241,39 @@ ipcMain.handle('pick-folder', async () => {
   });
   return { path: r.canceled || !r.filePaths.length ? '' : r.filePaths[0] };
 });
+// A check can discover that an app typed as an installer publishes no installer, and
+// correct it to portable (see retypeIfNoInstaller in src/runner.js). The runner only
+// decides; persisting belongs here, because config.json is the main process's to own.
+// Never silent: the renderer reports what changed and why, and it is logged.
+function applyRetypes(results) {
+  const changes = (results || []).filter((r) => r.retyped && r.retyped.to === 'portable');
+  if (!changes.length) return;
+  const cfg = readConfig();
+  const hits = [];
+  for (const r of changes) {
+    const m = /^([^/]+)\/([^/]+)#(.+)$/.exec(r.id || '');
+    if (!m) continue;
+    const [, owner, repo, type] = m;
+    // If the user already tracks this repo as portable, correcting would create a
+    // duplicate entry. Leave the installer entry alone and let them untrack it.
+    if (cfg.repos.some((x) => x.owner === owner && x.repo === repo && x.type === 'portable')) continue;
+    const entry = cfg.repos.find((x) => x.owner === owner && x.repo === repo && x.type === type);
+    if (!entry) continue;
+    entry.type = 'portable';
+    entry.install = { ...(entry.install || {}), dir: r.retyped.dir };
+    hits.push(`${owner}/${repo}`);
+  }
+  if (!hits.length) return;
+  saveConfigFile(cfg);
+  log(`retyped to portable (no installer published): ${hits.join(', ')}`);
+  if (win && !win.isDestroyed()) win.webContents.send('config-changed');
+}
+
 ipcMain.handle('check', async (_e, body = {}) => {
   const config = core.validateConfig(readConfig());
-  return runner.run(config, { mode: 'check', only: body.only });
+  const out = await runner.run(config, { mode: 'check', only: body.only });
+  applyRetypes(out.results);
+  return out;
 });
 
 let updating = false; // in-process guard; state lock guards other processes
@@ -260,6 +299,7 @@ ipcMain.handle('update', async (e, body = {}) => {
 ipcMain.handle('selfupdate:apply', async (e) => {
   if (updating) throw new Error('an update is already in progress');
   if (!app.isPackaged) throw new Error('self-update is unavailable in a dev run');
+  if (!selfupdate.canApply()) throw new Error('on macOS, download the new version from the release page');
   updating = true;
   try {
     const onProgress = (phase, pct) => e.sender.send('update:progress', { id: 'self', phase, pct });
@@ -317,5 +357,9 @@ ipcMain.handle('selfupdate:apply', async (e) => {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
-  app.on('window-all-closed', () => app.quit()); // close the window -> everything exits
+  // Close the window -> everything exits, on every platform INCLUDING macOS, where the
+  // convention is normally to stay resident in the dock. That convention is declined on
+  // purpose: git-updater runs nothing at startup, keeps no background service and phones
+  // home never, and a process lingering after the window closes would contradict that.
+  app.on('window-all-closed', () => app.quit());
 })();

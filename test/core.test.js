@@ -130,3 +130,50 @@ test('buildSummary: counts and lines', () => {
   assert.match(s.text, /o\/a  1\.0\.0 → 1\.1\.0/);
   assert.match(s.text, /o\/c  boom/);
 });
+
+// --- version strings that used to collapse to zero ----------------------------
+// splitVer's regex is anchored at both ends, and the no-match branch returned zero.
+// Zero reads as "older than every release", so the row says an update is available, the
+// user installs it, the version string does not change, and the row never clears.
+
+test('cmpVersion: a trailing build number in parentheses is metadata, not precedence', () => {
+  // Apple's own display convention: CFBundleShortVersionString then CFBundleVersion.
+  // Measured on a real Mac: Zoom reports exactly "7.1.5 (84650)".
+  assert.equal(core.cmpVersion('7.1.5 (84650)', '7.1.5'), 0, 'no phantom update');
+  assert.equal(core.cmpVersion('7.1.5 (84650)', 'v7.1.5'), 0);
+  assert.ok(core.cmpVersion('7.1.5 (84650)', '7.1.6') < 0, 'a real update is still offered');
+  assert.ok(core.cmpVersion('7.1.6 (84651)', '7.1.5') > 0);
+  // Before the fix these were all EQUAL, because both sides collapsed to zero.
+  assert.ok(core.cmpVersion('7.1.5 (84650)', '99.0.0 (1)') < 0);
+});
+
+test('cmpVersion: a prerelease survives a parenthesised build suffix', () => {
+  // This case was NOT broken before: the hyphen let the anchored regex match, with
+  // "rc1 (build 5)" landing in the prerelease group. So this guards the new paren strip
+  // against BREAKING it, rather than catching the old bug — stripping the parens before
+  // the match is what keeps rc1, where a leading-run fallback alone would discard it.
+  // Stated plainly because a test that cannot fail either way is worth nothing, and this
+  // one only fails if the strip is done in the wrong place.
+  assert.ok(core.cmpVersion('1.2.3-rc1 (build 5)', '1.2.2') > 0, 'rc1 of 1.2.3 beats 1.2.2');
+  assert.ok(core.cmpVersion('1.2.3-rc1 (build 5)', '1.2.3') < 0, 'but is older than final');
+  assert.ok(core.cmpVersion('1.2.3-rc2 (build 9)', '1.2.3-rc1 (build 5)') > 0, 'rc2 beats rc1');
+});
+
+test('cmpVersion: an unparseable tail falls back to the leading run, not to zero', () => {
+  assert.equal(core.cmpVersion('1.2.3 build 9', '1.2.3'), 0);
+  assert.ok(core.cmpVersion('1.2.3 build 9', '1.2.4') < 0);
+  // Genuinely numberless strings still have nothing to compare and stay at zero.
+  assert.equal(core.cmpVersion('nightly', 'nightly'), 0);
+});
+
+test('cmpVersion: the shapes that already worked still work', () => {
+  // Real strings measured off a Mac's inventory, plus the two suffix cases that
+  // 67c8c9e and alignInstalledVersion were written for.
+  assert.equal(core.cmpVersion('26246.1702.5102.8942', '26246.1702.5102.8942'), 0);
+  assert.equal(core.cmpVersion('26.032.0217', '26.032.0217'), 0);
+  assert.ok(core.cmpVersion('1.2', '1.2.0') === 0);
+  assert.ok(core.cmpVersion('1.2.0-rc1', '1.2.0') < 0);
+  assert.ok(core.cmpVersion('1.2.0+abc', '1.2.0') === 0);
+  assert.equal(core.alignInstalledVersion('5.5.3.20260724', '5.5.3'), '5.5.3');
+  assert.equal(core.alignInstalledVersion('152.1.94.117', '1.94.117'), '1.94.117');
+});

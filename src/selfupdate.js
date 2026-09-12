@@ -1,34 +1,59 @@
 'use strict';
 
 // Self-update, Squirrel.Windows style: a new version is a brand-new sibling folder
-// (<root>\app-<version>\), created by plain extraction — nothing a process is running from
-// is ever renamed or deleted. The exe at <root> acts as the launcher: on start it hands off
-// to the newest app-* folder that is newer than itself. Old app-* folders are removed on a
-// later start, once nothing runs from them. The only binary ever executed is this same
-// signed exe (no helper, no shell, no script).
+// (<root>/app-<version>/), created by plain extraction — nothing a process is running from
+// is ever renamed or deleted. The launcher at <root> hands off on start to the newest app-*
+// folder that is newer than itself. Old app-* folders are removed on a later start, once
+// nothing runs from them. The only binary ever executed is this same signed build (no
+// helper, no shell, no script).
 //
 // Layout (the flat unzip-and-run install simply becomes the launcher on the first update):
-//   <root>\git-updater.exe          launcher (the original flat install, never touched again)
-//   <root>\app-0.1.6\git-updater.exe  the version actually running
+//   <root>/git-updater[.exe]            launcher (the original flat install, never touched)
+//   <root>/app-0.1.6/git-updater[.exe]  the version actually running
+//
+// Windows and Linux both work this way, and the reason it is safe is the INDIRECTION: the
+// running process reads from app-x.y.z, and an update writes a NEW sibling directory and
+// repoints the launcher. Nothing ever replaces the directory being read from.
+//
+// macOS has no equivalent, because the .app bundle IS the unit the system launches. There
+// is nowhere to put a launcher that is not itself inside the thing being replaced. So
+// canApply() is false there and the UI offers the release page instead.
+//
+// An earlier version of this comment said the swap breaks signature continuity. That was
+// measured on hardware and is FALSE: a swapped-in bundle verifies as valid, the running
+// process survives, and a relaunch picks up the new version correctly. A real signed
+// Electron app also survived the swap outright — four processes, 30 seconds, old
+// directory deleted underneath it, no crash.
+//
+// So the case against an in-place macOS self-update rests on the indirection argument
+// above, which needs no hardware, and NOT on a crash nobody has observed. What is left is
+// a version mismatch — the running process keeps executing code it loaded before the
+// swap, while its own bundle path now serves different files — that we could not provoke
+// a failure from. checkForUpdate() still reports new versions on every platform.
 
 const fs = require('fs');
 const path = require('path');
-const os = require('os');
 const { spawn } = require('child_process');
 const core = require('./core');
 const github = require('./github');
 const install = require('./install');
 const state = require('./state');
+const paths = require('./paths');
 const { log } = require('./log');
 
 // Overridable for testing against a repo other than the real one.
 const REPO_OWNER = process.env.GITUPDATER_SELFUPDATE_OWNER || 'TeeJS';
 const REPO_NAME = process.env.GITUPDATER_SELFUPDATE_REPO || 'git-updater';
 
-const EXE = 'git-updater.exe';
+const IS_WIN = process.platform === 'win32';
+const IS_MAC = process.platform === 'darwin';
+const EXE = IS_WIN ? 'git-updater.exe' : 'git-updater';
+
+// Whether a found update can be APPLIED in place on this platform, or only reported.
+const canApply = () => !IS_MAC;
 const VERSION_DIR = /^app-(\d.*)$/;
 const STAGE_PREFIX = '.git-updater-selfupdate-stage-';
-const SELF_ROOT = path.join(process.env.LOCALAPPDATA || os.homedir(), 'git-updater', 'self-update');
+const SELF_ROOT = path.join(paths.dataDir(), 'self-update');
 const APPLY_MARKER = path.join(SELF_ROOT, 'last-apply.json');
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -89,6 +114,21 @@ function handoffTarget(execPath, currentVersion) {
   return target && target.dir !== versionDir ? target : null;
 }
 
+// A freshly extracted Electron build needs its launcher marked executable, and on Linux
+// its bundled chrome-sandbox too — without them the new version refuses to start, which
+// looks exactly like a corrupt update. The archive normally carries these bits and
+// extractArchive preserves them; this is the belt-and-braces pass for an archive built
+// without Unix attributes.
+function makeExecutable(dir) {
+  if (IS_WIN) return;
+  for (const rel of [EXE, 'chrome-sandbox']) {
+    const p = path.join(dir, rel);
+    try {
+      if (fs.existsSync(p)) fs.chmodSync(p, rel === 'chrome-sandbox' ? 0o4755 : 0o755);
+    } catch {}
+  }
+}
+
 function launch(dir, args = []) {
   spawn(path.join(dir, EXE), args, { detached: true, stdio: 'ignore', windowsHide: false }).unref();
 }
@@ -110,6 +150,27 @@ async function waitForExit(pid, deps = {}) {
 
 // --- check --------------------------------------------------------------------
 
+// The assets this updater can update ITSELF from, which is a narrower set than the ones
+// it can install for other apps.
+//
+// The launcher model needs a DIRECTORY: app-<version>/ containing an executable named
+// git-updater, sitting beside the launcher. An AppImage is a single self-contained file,
+// so there is nothing to put a versioned sibling inside and nothing at app-<version>/
+// git-updater to hand off to. The generic asset picker prefers an AppImage on Linux —
+// correctly, for a tracked app — so our own release would have been picked as the one
+// shape this mechanism cannot use, and prepareUpdate would fail at the "downloaded build
+// has no git-updater" check after downloading the whole thing.
+//
+// Dropping it here rather than teaching the picker about it: preferring an AppImage is
+// right for every OTHER app, and this is the only caller with a layout requirement.
+function selfUpdateAssets(assets) {
+  const list = assets || [];
+  const usable = list.filter((a) => !/\.appimage$/i.test(a.name || ''));
+  // If a release somehow ships nothing else, let the picker report that rather than
+  // throwing "no assets" from here with less context.
+  return usable.length ? usable : list;
+}
+
 async function checkForUpdate(currentVersion) {
   const rel = await github.getLatestRelease(REPO_OWNER, REPO_NAME);
   const tag = core.normTag(rel.tag_name || '');
@@ -123,11 +184,12 @@ async function checkForUpdate(currentVersion) {
 // never existed, the same operation every tracked-app fresh install already does. A
 // failure anywhere leaves the running version and the launcher completely untouched.
 async function prepareUpdate(root, currentVersion, onProgress = () => {}) {
+  if (!canApply()) throw new Error('applying an update in place is not supported on this platform');
   const found = await checkForUpdate(currentVersion);
   if (!found) throw new Error('no newer release found');
   const { rel, version: tag } = found;
 
-  const asset = core.pickWindowsAsset(rel.assets, 'portable');
+  const asset = core.pickAsset(selfUpdateAssets(rel.assets), 'portable');
 
   const downloadDir = path.join(SELF_ROOT, tag);
   fs.mkdirSync(downloadDir, { recursive: true });
@@ -153,6 +215,7 @@ async function prepareUpdate(root, currentVersion, onProgress = () => {}) {
     try {
       const { srcDir } = await install.extractArchive(file, stage);
       if (!fs.existsSync(path.join(srcDir, EXE))) throw new Error(`downloaded build has no ${EXE}`);
+      makeExecutable(srcDir);
       fs.renameSync(srcDir, target);
     } finally {
       fs.rmSync(stage, { recursive: true, force: true });
@@ -232,6 +295,10 @@ async function cleanupLeftovers(root, currentVersion) {
 }
 
 module.exports = {
+  selfUpdateAssets,
+  REPO: { owner: REPO_OWNER, repo: REPO_NAME },
+  canApply,
+  makeExecutable,
   layout,
   listVersions,
   newestNewerThan,

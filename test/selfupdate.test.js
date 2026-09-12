@@ -4,16 +4,19 @@ const path = require('path');
 const os = require('os');
 const fs = require('fs');
 
-// selfupdate.js computes its storage root from %LOCALAPPDATA% at require-time — point it at
-// an isolated temp dir BEFORE requiring so these tests never touch the real one.
+// selfupdate.js computes its storage root at require-time — point it at an isolated
+// temp dir BEFORE requiring so these tests never touch the real one, on any host.
 const FAKE_LOCALAPPDATA = fs.mkdtempSync(path.join(os.tmpdir(), 'gu-selfupdate-env-'));
-process.env.LOCALAPPDATA = FAKE_LOCALAPPDATA;
+process.env.GITUPDATER_DATA_DIR = path.join(FAKE_LOCALAPPDATA, 'git-updater');
 
 const { test } = require('node:test');
 const assert = require('node:assert');
 const selfupdate = require('../src/selfupdate');
 
-const EXE = 'git-updater.exe';
+// The launcher filename is platform-dependent (src/selfupdate.js), and listVersions
+// only counts a folder as a version when it contains THAT name — so the fixtures must
+// use the same one, or every assertion here silently finds nothing off Windows.
+const EXE = process.platform === 'win32' ? 'git-updater.exe' : 'git-updater';
 function versionDir(root, v) {
   const dir = path.join(root, `app-${v}`);
   fs.mkdirSync(dir, { recursive: true });
@@ -22,14 +25,13 @@ function versionDir(root, v) {
 }
 
 test('layout: launcher at root vs a versioned copy', () => {
-  assert.deepEqual(selfupdate.layout('D:\\apps\\git-updater\\git-updater.exe'), {
-    root: 'D:\\apps\\git-updater',
-    versionDir: null,
-  });
-  assert.deepEqual(selfupdate.layout('D:\\apps\\git-updater\\app-0.1.6\\git-updater.exe'), {
-    root: 'D:\\apps\\git-updater',
-    versionDir: 'D:\\apps\\git-updater\\app-0.1.6',
-  });
+  // Built with path.join rather than literals: path parsing is platform-specific, so a
+  // hardcoded "D:\apps\..." is one long filename to Linux and the test fails for a
+  // reason that has nothing to do with the code under test.
+  const root = path.join(path.sep === '\\' ? 'D:\\apps' : '/opt', 'git-updater');
+  const versionDir = path.join(root, 'app-0.1.6');
+  assert.deepEqual(selfupdate.layout(path.join(root, EXE)), { root, versionDir: null });
+  assert.deepEqual(selfupdate.layout(path.join(versionDir, EXE)), { root, versionDir });
 });
 
 test('listVersions / newestNewerThan: app-* folders with the exe, newest first, only newer wins', () => {
@@ -104,8 +106,8 @@ test('cleanupLeftovers: removes older app-* folders and stale stage/download dir
     const freshStage = path.join(root, '.git-updater-selfupdate-stage-def');
     touch(staleStage, staleAt);
     touch(freshStage, Date.now());
-    const staleDownload = path.join(process.env.LOCALAPPDATA, 'git-updater', 'self-update', 'v0.1.5');
-    const freshDownload = path.join(process.env.LOCALAPPDATA, 'git-updater', 'self-update', 'v0.1.7');
+    const staleDownload = path.join(process.env.GITUPDATER_DATA_DIR, 'self-update', 'v0.1.5');
+    const freshDownload = path.join(process.env.GITUPDATER_DATA_DIR, 'self-update', 'v0.1.7');
     touch(staleDownload, staleAt);
     touch(freshDownload, Date.now());
 
@@ -122,4 +124,46 @@ test('cleanupLeftovers: removes older app-* folders and stale stage/download dir
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
+});
+
+// --- self-update asset choice --------------------------------------------------
+// The launcher model needs a DIRECTORY: app-<version>/ holding an executable named
+// git-updater, beside the launcher. An AppImage is a single self-contained file, so
+// there is nowhere to put a versioned sibling and nothing to hand off to.
+//
+// The generic picker prefers an AppImage on Linux, which is right for every tracked app
+// and wrong for this one caller.
+
+const core = require('../src/core');
+
+test('selfupdate: its own Linux release picks the tarball, never the AppImage', () => {
+  // Exactly what package.json's linux targets produce.
+  const assets = [
+    'git-updater-0.1.7-linux-x64.AppImage',
+    'git-updater-0.1.7-linux-arm64.AppImage',
+    'git-updater-0.1.7-linux-x64.tar.gz',
+    'git-updater-0.1.7-linux-arm64.tar.gz',
+  ].map((name) => ({ name }));
+
+  // The generic picker, used for tracked apps, chooses the AppImage — correctly.
+  assert.match(core.pickAsset(assets, 'portable', 'x64', null, 'linux').name, /\.AppImage$/);
+
+  // Self-update must not, or prepareUpdate downloads the whole thing and then fails on
+  // "downloaded build has no git-updater".
+  const picked = core.pickAsset(selfupdate.selfUpdateAssets(assets), 'portable', 'x64', null, 'linux');
+  assert.equal(picked.name, 'git-updater-0.1.7-linux-x64.tar.gz');
+});
+
+test('selfupdate: Windows and macOS asset choice is unaffected', () => {
+  const win = ['git-updater-0.1.7-x64.zip', 'git-updater-0.1.7-arm64.zip'].map((name) => ({ name }));
+  assert.equal(
+    core.pickAsset(selfupdate.selfUpdateAssets(win), 'portable', 'x64', null, 'win32').name,
+    'git-updater-0.1.7-x64.zip'
+  );
+});
+
+test('selfupdate: a release with nothing but AppImages is left to the picker to report', () => {
+  // Better a clear "no Linux portable asset" from the picker than an empty list here.
+  const only = [{ name: 'git-updater-9.9.9-linux-x64.AppImage' }];
+  assert.deepEqual(selfupdate.selfUpdateAssets(only), only);
 });

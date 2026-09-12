@@ -94,7 +94,14 @@ test('installPortable: a bad archive leaves the current install completely untou
     fs.mkdirSync(dest, { recursive: true });
     fs.writeFileSync(path.join(dest, 'app.exe'), 'v1');
     const empty = makeZip(base, {}); // extracts to zero files
-    await assert.rejects(() => install.installPortable(empty, { dir: dest }), /no files/);
+    // The message differs by platform and the message is not the point: on macOS the zip
+    // goes through ditto, which rejects an empty archive before our own "contained no
+    // files" check is reached. Matching only one of them made this fail on macOS BEFORE
+    // reaching the assertion below, which is the one that matters.
+    await assert.rejects(
+      () => install.installPortable(empty, { dir: dest }),
+      /no files|extracting the archive failed/
+    );
     assert.equal(fs.readFileSync(path.join(dest, 'app.exe'), 'utf8'), 'v1');
   } finally {
     fs.rmSync(base, { recursive: true, force: true });
