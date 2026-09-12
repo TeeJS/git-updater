@@ -154,3 +154,66 @@ test('installerCmd: mac and linux kinds, with and without overrides', () => {
   });
   assert.deepEqual(core.installerCmd('rpm', '/tmp/app.rpm'), { exe: 'rpm', args: ['-U', '--quiet', '/tmp/app.rpm'] });
 });
+
+// --- the macOS zip that names no platform ---------------------------------------
+// Found in live data, not a fixture: bedrock-panel v0.9.6 publishes bedrock-panel-arm64.dmg
+// and bedrock-panel-arm64.zip. The zip is the macOS bundle and its NAME says nothing about
+// that, so neither the Windows nor the Linux reject regex catches it — both look for a
+// platform word and there is none.
+//
+// On x64 the correct build wins on architecture and hides the problem. On arm64 the bare
+// arm64 token beats a portable .exe carrying no arch token, and beats an x86_64 AppImage
+// outright, so an arm64 Windows or Linux machine downloaded a macOS .app bundle.
+
+const BEDROCK = [
+  'bedrock-panel-arm64.dmg',
+  'bedrock-panel-arm64.zip',
+  'bedrock-panel-portable.exe',
+  'bedrock-panel-setup.exe',
+  'bedrock-panel-x86_64.AppImage',
+  'bedrock-panel_amd64.deb',
+].map((name) => ({ name }));
+
+test('a .zip paired with a .dmg is never chosen off macOS, even on arm64', () => {
+  assert.equal(core.pickAsset(BEDROCK, 'portable', 'arm64', null, 'win32').name, 'bedrock-panel-portable.exe');
+  assert.equal(core.pickAsset(BEDROCK, 'portable', 'x64', null, 'win32').name, 'bedrock-panel-portable.exe');
+  assert.notEqual(core.pickAsset(BEDROCK, 'portable', 'arm64', null, 'linux').name, 'bedrock-panel-arm64.zip');
+});
+
+test('...and on macOS that same pair still resolves to the disk image', () => {
+  assert.equal(core.pickAsset(BEDROCK, 'portable', 'arm64', null, 'darwin').name, 'bedrock-panel-arm64.dmg');
+});
+
+test('the installer lane is unaffected on every platform', () => {
+  assert.equal(core.pickAsset(BEDROCK, 'installer', 'x64', null, 'win32').name, 'bedrock-panel-setup.exe');
+  assert.equal(core.pickAsset(BEDROCK, 'installer', 'x64', 'deb', 'linux').name, 'bedrock-panel_amd64.deb');
+  // No .pkg is published, so macOS correctly has nothing to offer and says which type works.
+  assert.throws(() => core.pickAsset(BEDROCK, 'installer', 'arm64', null, 'darwin'), /change its type to Portable/);
+});
+
+test("git-updater's OWN Windows zip has the identical shape and must survive", () => {
+  // This is why the rule cannot be a filename pattern. git-updater-0.2.0-arm64.zip names
+  // no platform either; what separates the two is that OUR release has no .dmg of that
+  // stem — ours is mac-arm64.dmg — and bedrock-panel's does.
+  const ours = [
+    'git-updater-0.2.0-x64.zip',
+    'git-updater-0.2.0-arm64.zip',
+    'git-updater-0.2.0-mac-arm64.dmg',
+    'git-updater-0.2.0-mac-arm64.zip',
+    'git-updater-0.2.0-linux-x64.tar.gz',
+    'git-updater-0.2.0-linux-arm64.tar.gz',
+  ].map((name) => ({ name }));
+  assert.equal(core.pickAsset(ours, 'portable', 'arm64', null, 'win32').name, 'git-updater-0.2.0-arm64.zip');
+  assert.equal(core.pickAsset(ours, 'portable', 'x64', null, 'win32').name, 'git-updater-0.2.0-x64.zip');
+  assert.equal(core.pickAsset(ours, 'portable', 'arm64', null, 'darwin').name, 'git-updater-0.2.0-mac-arm64.dmg');
+  assert.equal(core.pickAsset(ours, 'portable', 'arm64', null, 'linux').name, 'git-updater-0.2.0-linux-arm64.tar.gz');
+});
+
+test('macCompanionZips pairs on the stem and nothing else', () => {
+  const { macCompanionZips } = require('../src/platform/assets');
+  assert.deepEqual([...macCompanionZips(['Foo-arm64.dmg', 'Foo-arm64.zip'])], ['Foo-arm64.zip']);
+  // Different stem: not a pair, and our own release depends on this staying true.
+  assert.deepEqual([...macCompanionZips(['Foo-mac-arm64.dmg', 'Foo-arm64.zip'])], []);
+  assert.deepEqual([...macCompanionZips(['Foo-arm64.zip'])], [], 'a zip with no dmg at all');
+  assert.deepEqual([...macCompanionZips([])], []);
+});

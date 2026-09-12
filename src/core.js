@@ -149,7 +149,7 @@ function matchAsset(assets, pattern) {
 // pure data, so this file keeps its "no IO" guarantee.
 // ---------------------------------------------------------------------------
 
-const { assetTable } = require('./platform/assets');
+const { assetTable, macCompanionZips } = require('./platform/assets');
 
 // arch: machine architecture ('x64' | 'arm64' | 'ia32'). flavor: how the app is
 // ALREADY installed (Windows 'msi' | 'exe', Linux 'deb' | 'rpm', or null) — strongly
@@ -168,8 +168,13 @@ function scoreAsset(name, type, arch, flavor, table) {
 // platform. arch defaults to the running machine's architecture, platform to the
 // running OS ('win32' | 'darwin' | 'linux').
 function pickAsset(assets, type, arch, flavor, platform) {
-  const list = assets || [];
   const table = assetTable(platform);
+  // Off macOS, drop a .zip that is the companion of a .dmg — it is the macOS bundle, and
+  // nothing in its NAME says so. See macCompanionZips for why this cannot be a reject
+  // pattern. Windows and Linux only: on macOS that zip is a legitimate candidate.
+  const all = assets || [];
+  const drop = table.id === 'darwin' ? new Set() : macCompanionZips(all.map((a) => a.name));
+  const list = drop.size ? all.filter((a) => !drop.has(a.name)) : all;
   const a4 = arch || (typeof process !== 'undefined' && process.arch) || 'x64';
   let best = null;
   let bestScore = -Infinity;

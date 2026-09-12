@@ -216,6 +216,31 @@ const linux = {
   },
 };
 
+// A .zip sitting beside a .dmg of the SAME name is the macOS build.
+//
+// electron-builder emits exactly that pair — Foo-arm64.dmg and Foo-arm64.zip — and the
+// zip carries no platform word at all. Neither the Windows nor the Linux reject regex
+// catches it, because both look for a platform WORD and there is none. On x64 the correct
+// build wins on architecture and hides it; on arm64 the bare arm64 token beats a portable
+// .exe with no arch token and beats an x86_64 AppImage outright, so an arm64 Windows or
+// Linux machine downloads a macOS .app bundle and installs it.
+//
+// The filename alone cannot settle this, and that is the whole difficulty: git-updater's
+// own Windows asset is git-updater-0.2.0-arm64.zip, the identical shape. What separates
+// them is the RELEASE, not the name — ours has no .dmg of that stem and bedrock-panel's
+// does. So the rule is about the pair, which is why it lives here rather than in a reject
+// regex that only ever sees one name.
+//
+// Measured against bedrock-panel v0.9.6, which is where this was found.
+function macCompanionZips(names) {
+  const stems = new Set(
+    (names || []).filter((n) => /\.dmg$/i.test(n)).map((n) => n.replace(/\.dmg$/i, '').toLowerCase())
+  );
+  return new Set(
+    (names || []).filter((n) => /\.zip$/i.test(n) && stems.has(n.replace(/\.zip$/i, '').toLowerCase()))
+  );
+}
+
 const TABLES = { win32: win, darwin: mac, linux };
 
 // The table for a platform key ('win32' | 'darwin' | 'linux'), defaulting to the
@@ -226,4 +251,4 @@ function assetTable(platform) {
   return TABLES[key] || linux;
 }
 
-module.exports = { assetTable, TABLES, SETUP_TOKEN };
+module.exports = { assetTable, macCompanionZips, TABLES, SETUP_TOKEN };
