@@ -76,13 +76,22 @@ test('mac: a Windows-only release throws with the macOS label', () => {
 
 // --- Linux ------------------------------------------------------------------
 
-test('linux portable: AppImage beats the tarball, ignores win/mac', () => {
+test('linux portable: the tarball beats the AppImage, ignores win/mac', () => {
   const assets = A(
     'app-1.2.3-x86_64.AppImage',
     'app-1.2.3-linux-x64.tar.gz',
     'App-1.2.3-universal.dmg',
     'App-Setup-1.2.3-win-x64.exe'
   );
+  // An AppImage's runtime needs libfuse2, which Ubuntu has not shipped by default since
+  // 22.04, so on a current desktop it fails before the app is reached. The tarball runs.
+  assert.equal(lin(assets, 'portable').name, 'app-1.2.3-linux-x64.tar.gz');
+});
+
+test('linux portable: an AppImage is still chosen when it is the only option', () => {
+  // Something that may need libfuse2 beats nothing at all — the preference above is
+  // between usable assets, not a rejection.
+  const assets = A('app-1.2.3-x86_64.AppImage', 'App-Setup-1.2.3-win-x64.exe');
   assert.equal(lin(assets, 'portable').name, 'app-1.2.3-x86_64.AppImage');
 });
 

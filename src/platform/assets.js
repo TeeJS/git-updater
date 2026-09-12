@@ -192,9 +192,18 @@ const linux = {
   typeScore(name, type, flavor) {
     let s = 0;
     if (type === 'portable') {
-      // AppImage is self-contained and needs nothing but the executable bit.
-      if (/\.appimage$/i.test(name)) s += 3;
-      else if (/\.tar\.(gz|xz|bz2)$|\.tgz$/i.test(name)) s += 2;
+      // A tarball is preferred over an AppImage, which is the reverse of what the format
+      // promises. An AppImage is self-contained, but its runtime dlopen()s libfuse.so.2 and
+      // Ubuntu has not shipped libfuse2 by default since 22.04 — so on a current Ubuntu or
+      // Kubuntu it dies before the app is reached, with an error naming FUSE rather than
+      // anything the user can act on. The runtime CAN extract-and-run instead, but only when
+      // asked (APPIMAGE_EXTRACT_AND_RUN / --appimage-extract-and-run); it never falls back on
+      // its own, and electron-builder exposes no option to ship a newer runtime that would.
+      // Measured on Ubuntu 26.04: the AppImage fails at dlopen, the tarball extracts and runs.
+      // An AppImage is still chosen when it is the ONLY portable asset — something that may
+      // need libfuse2 beats nothing at all.
+      if (/\.tar\.(gz|xz|bz2)$|\.tgz$/i.test(name)) s += 3;
+      else if (/\.appimage$/i.test(name)) s += 2;
       else if (/\.zip$/i.test(name)) s += 1;
       if (SETUP_TOKEN.test(name)) s -= 5;
       return s;

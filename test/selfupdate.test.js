@@ -145,13 +145,26 @@ test('selfupdate: its own Linux release picks the tarball, never the AppImage', 
     'git-updater-0.1.7-linux-arm64.tar.gz',
   ].map((name) => ({ name }));
 
-  // The generic picker, used for tracked apps, chooses the AppImage — correctly.
-  assert.match(core.pickAsset(assets, 'portable', 'x64', null, 'linux').name, /\.AppImage$/);
-
-  // Self-update must not, or prepareUpdate downloads the whole thing and then fails on
-  // "downloaded build has no git-updater".
+  // Self-update must land on the tarball, or prepareUpdate downloads the whole thing and
+  // then fails on "downloaded build has no git-updater".
   const picked = core.pickAsset(selfupdate.selfUpdateAssets(assets), 'portable', 'x64', null, 'linux');
   assert.equal(picked.name, 'git-updater-0.1.7-linux-x64.tar.gz');
+});
+
+test('selfupdate: the AppImage filter still decides when the picker alone would not', () => {
+  // The Linux picker now prefers a tarball over an AppImage on libfuse2 grounds, so for our
+  // own release the two agree. They are not the same rule and must not be conflated: the
+  // picker expresses a PREFERENCE between usable assets, the filter a hard LAYOUT
+  // requirement — the launcher needs a directory and an AppImage is a single file.
+  // A release with no tarball is where only the filter saves it, so assert that case.
+  const assets = ['app-1.0.0-x86_64.AppImage', 'app-1.0.0-linux-x64.zip'].map((name) => ({ name }));
+
+  // Unfiltered, the AppImage still outscores a plain zip.
+  assert.match(core.pickAsset(assets, 'portable', 'x64', null, 'linux').name, /\.AppImage$/);
+
+  // Filtered, self-update takes the zip, which can at least contain a directory.
+  const picked = core.pickAsset(selfupdate.selfUpdateAssets(assets), 'portable', 'x64', null, 'linux');
+  assert.equal(picked.name, 'app-1.0.0-linux-x64.zip');
 });
 
 test('selfupdate: Windows and macOS asset choice is unaffected', () => {
