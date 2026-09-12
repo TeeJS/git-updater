@@ -1,6 +1,6 @@
 {
   "name": "git-updater",
-  "version": "0.1.7",
+  "version": "0.2.0",
   "description": "On-demand desktop GUI that updates apps from their GitHub releases (portable & installed). Windows, macOS and Linux. Electron front-end, no localhost server, no shell.",
   "bin": {
     "git-updater": "bin/watch.js"
