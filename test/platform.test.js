@@ -199,7 +199,11 @@ test('parseSystemProfiler: App Store apps are excluded, like Apple\'s own', () =
       { _name: 'Deskflow', version: '1.26.0.0', path: '/Applications/Deskflow.app', obtained_from: 'unknown' },
     ],
   });
-  const names = mac.parseSystemProfiler(json).map((r) => r.name).sort();
+  // MAC_DIRS, not the host's: without it the app directories come from process.platform,
+  // so these POSIX paths match nothing on Windows and the assertion passes on an empty
+  // array. Same shape as the arch-inheriting cases fixed earlier — a test that only runs
+  // on one platform is not a test on the other.
+  const names = mac.parseSystemProfiler(json, MAC_DIRS).map((r) => r.name).sort();
   // identified_developer and unknown are the two provenances a GitHub release can serve
   assert.deepEqual(names, ['Deskflow', 'Docker']);
 });
