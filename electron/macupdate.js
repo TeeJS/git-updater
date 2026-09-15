@@ -16,9 +16,6 @@
 // Loaded only on macOS — electron/main.js does `require('./macupdate')` behind an IS_MAC
 // guard, so electron-updater never loads on Windows or Linux.
 
-const { autoUpdater } = require('electron-updater');
-const { app } = require('electron');
-const core = require('../src/core');
 const selfupdate = require('../src/selfupdate');
 const { log } = require('../src/log');
 
@@ -32,34 +29,30 @@ const logger = {
   debug: () => {},
 };
 
-let configured = false;
-function configure() {
-  if (configured) return;
+// Load + configure electron-updater's autoUpdater on first use, memoized. Requiring
+// electron-updater pulls in a large module tree and constructs the native MacUpdater, so
+// deferring it keeps that cost off app startup — the updater is only touched when the user
+// clicks Check all.
+let _autoUpdater = null;
+function updater() {
+  if (_autoUpdater) return _autoUpdater;
+  const { autoUpdater } = require('electron-updater');
   autoUpdater.autoDownload = false; // the banner's Update button drives the download
   autoUpdater.autoInstallOnAppQuit = false; // and we install explicitly, never by surprise
   autoUpdater.logger = logger;
-  configured = true;
+  _autoUpdater = autoUpdater;
+  return _autoUpdater;
 }
 
-// True: a packaged macOS build can apply an update in place. (main.js already gates on
-// app.isPackaged before calling here, so this is unconditional.)
-function canApply() {
-  return true;
-}
-
-// electron-updater 6 sets `isUpdateAvailable` on the check result; fall back to a version
-// compare if a build ever leaves it undefined.
+// electron-updater 6 reports whether a newer release exists on the check result.
 function isNewer(result) {
-  if (!result) return false;
-  if (typeof result.isUpdateAvailable === 'boolean') return result.isUpdateAvailable;
-  const v = result.updateInfo && result.updateInfo.version;
-  return !!v && core.cmpVersion(v, app.getVersion()) > 0;
+  return !!(result && result.isUpdateAvailable);
 }
 
 // Report a newer release, or null. Mirrors selfupdate.checkForUpdate's shape so the
 // selfupdate:check handler can return the same { version } to the renderer.
 async function check() {
-  configure();
+  const autoUpdater = updater();
   const result = await autoUpdater.checkForUpdates();
   if (!isNewer(result)) return null;
   const version = result.updateInfo && result.updateInfo.version;
@@ -74,7 +67,7 @@ async function check() {
 // so the renderer can show "Restarting into X…", exactly like the Windows/Linux handler
 // returns { relaunching } before its process exits. quitAndInstall then fires on a short timer.
 function apply({ onProgress } = {}) {
-  configure();
+  const autoUpdater = updater();
   return new Promise((resolve, reject) => {
     let settled = false;
     const cleanup = () => {
@@ -124,8 +117,8 @@ function apply({ onProgress } = {}) {
         }
         return autoUpdater.downloadUpdate();
       })
-      .catch((e) => finish(reject, e instanceof Error ? e : new Error(String(e))));
+      .catch(onErr);
   });
 }
 
-module.exports = { canApply, check, apply };
+module.exports = { check, apply };
