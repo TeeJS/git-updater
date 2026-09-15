@@ -179,21 +179,25 @@ So on macOS and Linux the only protection is the running-app check in `src/runne
 which runs twice — before the download and again immediately before the swap, because a
 download is ample time for the user to launch the app.
 
-### Self-update is check-only
+### Self-update: launcher on Windows/Linux, Squirrel.Mac on macOS
 
 Windows and Linux are safe because of **indirection**: the running process reads from
 `app-x.y.z`, an update writes a new sibling directory, and the launcher repoints. Nothing
 replaces what is being read from.
 
-A `.app` bundle is the unit macOS launches, so there is nowhere to put a launcher that is
-not itself inside the thing being replaced. `canApply()` is false there and the banner
-links to the release page.
+A `.app` bundle is the unit macOS launches, so there is nowhere to put a launcher outside the
+thing being replaced — the launcher model does not fit. macOS instead self-updates the way
+every other Electron app does: **Squirrel.Mac**, driven by `electron-updater`
+(`electron/macupdate.js`). It downloads the signed+notarized `.zip`, verifies it against the
+`latest-mac.yml` manifest read straight off our GitHub releases, swaps the bundle with its own
+helper after the app quits, and relaunches. `src/selfupdate.js` (the launcher model) is not
+used on macOS; `electron/main.js` branches to `macupdate` behind an `IS_MAC` guard, so
+electron-updater never loads on Windows or Linux.
 
-Note what this reason is *not*. An earlier version of this project claimed an in-place
-macOS self-update would break the signature continuity Gatekeeper re-checks. Measured, and
-false: a swapped-in bundle verifies as valid, the running process survives, and a relaunch
-picks up the new version. The conclusion held, the stated reason did not — and the wrong
-reason pointed at a solvable-looking problem instead of an architectural one.
+The in-place macOS swap is safe. An earlier version of this project claimed it would break the
+signature continuity Gatekeeper re-checks; measured, and false — a swapped-in bundle verifies
+as valid, the running process survives, and a relaunch picks up the new version. That is the
+mechanism Squirrel.Mac relies on.
 
 ### The build refuses to ship an unnotarized app
 
@@ -294,12 +298,14 @@ launcher on its first update — its files are never touched again.
   root, rename that fresh folder to `app-<tag>` — the same "fresh install" rename every tracked
   portable app already does — then write `last-apply.json` and start the launcher with
   `--wait-pid <own pid>` and exit. A failure at any step leaves the running version untouched.
-- **macOS is the exception.** An `.app` is a directory carrying a code signature that
-  Gatekeeper re-checks on launch, and a bundle swapped in by another process loses the
-  signature continuity it expects — so `selfupdate.canApply()` is false there. The banner
-  still reports new versions on every platform; on macOS its button opens the release page
-  instead of applying. The URL is built in the main process from the engine's own constants,
-  so the renderer never passes a URL across the IPC bridge.
+- **macOS uses a different mechanism** (`electron/macupdate.js`, not `src/selfupdate.js`).
+  There is no launcher-and-sibling layout; `electron-updater` (Squirrel.Mac) checks
+  `latest-mac.yml` on our GitHub releases, and on **Update** downloads+verifies the signed
+  `.zip`, swaps the `.app` bundle via its own helper after the app quits, and relaunches. The
+  banner is identical — `selfupdate:check` returns `canApply: true` on macOS, and the same
+  `update:progress` stream and `last-apply.json` marker are reused. `selfupdate:openRelease`
+  remains as a fallback link. `electron/main.js` reaches all of this behind an `IS_MAC` guard,
+  so electron-updater never loads on Windows or Linux.
 - On every start (`electron/main.js`, before the single-instance lock): if `--wait-pid` is
   present, wait for that process to exit (it holds the lock). Then, if a newer `app-*` folder
   exists that isn't the one we're running from, spawn its exe and exit — that's the launcher
@@ -316,11 +322,13 @@ process had created moments earlier. Every rename in the swap now retries with b
 used at build time. A rename blocked because the app is genuinely running still fails
 after the last attempt, so "close it and Retry" is delayed rather than lost.
 
-Why not swap in place: a running Electron process can't have its own directory renamed (dozens
-of open DLL/resource handles), and renames done from inside Electron hit EPERM even from a
-sibling copy — a known, unresolved class of electron-updater issues. New-folder-plus-launcher
-sidesteps it entirely. Cost: the launcher copy stays on disk (~270 MB) next to the current
-version. `bin/watch.js` (headless CLI) does not self-update — apply is GUI-only.
+Why not swap in place **on Windows**: a running Electron process can't have its own directory
+renamed (dozens of open DLL/resource handles), and renames done from inside Electron hit EPERM
+even from a sibling copy — a known class of in-place-update failures under antivirus.
+New-folder-plus-launcher sidesteps it entirely. Cost: the launcher copy stays on disk (~270 MB)
+next to the current version. (macOS has no such open-handle problem — Squirrel.Mac swaps the
+whole bundle after the app quits, which is why macOS uses that instead; see above.)
+`bin/watch.js` (headless CLI) does not self-update — apply is GUI-only.
 
 ## Checking a change actually works
 
