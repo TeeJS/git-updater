@@ -14,7 +14,7 @@ which credentials, which commands.
 |---|---|---|---|---|
 | Windows | Windows | Authenticode (Azure Trusted Signing) | `npm run dist:win` | `git-updater-<v>-x64.zip`, `git-updater-<v>-arm64.zip` |
 | macOS | **a Mac** (arm64) | Developer ID + notarized + stapled | `npm run dist:mac` | `git-updater-<v>-mac-arm64.dmg`, `git-updater-<v>-mac-arm64.zip` |
-| Linux | Linux or WSL2 | none | `npm run dist:linux` | `git-updater-<v>-linux-x64.tar.gz`, `-arm64.tar.gz`, `git-updater-<v>-linux-x64.AppImage`, `-arm64.AppImage` |
+| Linux | Linux or WSL2 | none | `npm run dist:linux` | `git-updater-<v>-linux-x64.tar.gz`, `-arm64.tar.gz`, `git-updater-<v>-linux-x86_64.AppImage`, `-arm64.AppImage` |
 
 macOS **cannot** be signed or notarized off a Mac (`codesign`, `xcrun notarytool`,
 `stapler` are macOS-only), and Linux's AppImage packaging won't cross-build reliably from
@@ -114,6 +114,10 @@ npm run dist:linux
 Produces the tarballs and AppImages for x64 and arm64. The **tar.gz is the recommended
 download**; the AppImage needs `libfuse2`, which recent Ubuntu releases no longer install by
 default (noted in the README).
+
+Note: the **x64 AppImage is named `…-linux-x86_64.AppImage`**, not `-x64`, because
+electron-builder forces AppImage's own arch label regardless of the `artifactName` template.
+The tarballs and the arm64 AppImage follow the `x64` / `arm64` naming as expected.
 
 ---
 
