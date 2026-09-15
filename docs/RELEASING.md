@@ -13,7 +13,7 @@ which credentials, which commands.
 | Platform | Host required | Signing | Command | Artifacts (`<v>` = version) |
 |---|---|---|---|---|
 | Windows | Windows | Authenticode (Azure Trusted Signing) | `npm run dist:win` | `git-updater-<v>-x64.zip`, `git-updater-<v>-arm64.zip` |
-| macOS | **a Mac** (arm64) | Developer ID + notarized + stapled | `npm run dist:mac` | `git-updater-<v>-mac-arm64.dmg`, `git-updater-<v>-mac-arm64.zip` |
+| macOS | **a Mac** (arm64) | Developer ID + notarized + stapled | `npm run dist:mac` | `git-updater-<v>-mac-arm64.dmg`, `git-updater-<v>-mac-arm64.zip`, `git-updater-<v>-mac-arm64.zip.blockmap`, `latest-mac.yml` |
 | Linux | Linux or WSL2 | none | `npm run dist:linux` | `git-updater-<v>-linux-x64.tar.gz`, `-arm64.tar.gz`, `git-updater-<v>-linux-x86_64.AppImage`, `-arm64.AppImage` |
 
 macOS **cannot** be signed or notarized off a Mac (`codesign`, `xcrun notarytool`,
@@ -140,8 +140,9 @@ release is published (step 6), at the `--target` commit.
 # Windows host
 gh release upload vX.Y.Z dist/git-updater-X.Y.Z-x64.zip dist/git-updater-X.Y.Z-arm64.zip
 
-# macOS host
-gh release upload vX.Y.Z dist/git-updater-X.Y.Z-mac-arm64.dmg dist/git-updater-X.Y.Z-mac-arm64.zip
+# macOS host — latest-mac.yml + the .zip.blockmap feed the Squirrel.Mac self-updater
+# (electron-updater reads latest-mac.yml off the release); upload them alongside the dmg/zip.
+gh release upload vX.Y.Z dist/git-updater-X.Y.Z-mac-arm64.dmg dist/git-updater-X.Y.Z-mac-arm64.zip dist/git-updater-X.Y.Z-mac-arm64.zip.blockmap dist/latest-mac.yml
 
 # Linux host
 gh release upload vX.Y.Z dist/git-updater-X.Y.Z-linux-*.tar.gz dist/git-updater-X.Y.Z-linux-*.AppImage

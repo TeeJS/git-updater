@@ -20,7 +20,8 @@
   "license": "MIT",
   "dependencies": {
     "7z-wasm": "^1.2.0",
-    "adm-zip": "^0.6.1"
+    "adm-zip": "^0.6.1",
+    "electron-updater": "^6.8.9"
   },
   "devDependencies": {
     "electron": "^44.3.0",
@@ -72,7 +73,14 @@
       "gatekeeperAssess": false,
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist",
-      "notarize": true
+      "notarize": true,
+      "publish": [
+        {
+          "provider": "github",
+          "owner": "TeeJS",
+          "repo": "git-updater"
+        }
+      ]
     },
     "linux": {
       "artifactName": "git-updater-${version}-linux-${arch}.${ext}",

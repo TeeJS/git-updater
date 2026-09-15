@@ -17,6 +17,11 @@ const catalog = require('../src/catalog');
 const selfupdate = require('../src/selfupdate');
 const { log, LOG_FILE } = require('../src/log');
 
+// macOS self-updates in place via Squirrel.Mac (electron/macupdate.js), not the launcher model
+// in src/selfupdate.js. Required only on macOS, so electron-updater never loads on Win/Linux.
+const IS_MAC = process.platform === 'darwin';
+const macupdate = IS_MAC ? require('./macupdate') : null;
+
 log(`--- git-updater ${app.getVersion()} started ---`);
 process.on('uncaughtException', (e) => log(`UNCAUGHT: ${e && e.stack ? e.stack : e}`));
 process.on('unhandledRejection', (e) => log(`UNHANDLED: ${e && e.stack ? e.stack : e}`));
@@ -238,10 +243,13 @@ ipcMain.handle('asset:preview', async (_e, appKey) => {
 ipcMain.handle('selfupdate:check', async () => {
   if (!app.isPackaged) return null; // dev run
   try {
+    if (IS_MAC) {
+      // macOS applies in place via Squirrel.Mac (electron-updater), reading latest-mac.yml off
+      // our GitHub releases — so what the banner reports is exactly what will install.
+      const found = await macupdate.check();
+      return found ? { version: found.version, canApply: true } : null;
+    }
     const found = await selfupdate.checkForUpdate(app.getVersion());
-    // canApply is false on macOS, where a running .app bundle cannot be swapped without
-    // breaking the signature Gatekeeper re-checks. The banner still reports the new
-    // version there; its button opens the release page instead of applying.
     return found ? { version: found.version, canApply: selfupdate.canApply() } : null;
   } catch (e) {
     log(`selfupdate check: ${e && e.message ? e.message : e}`); // e.g. no releases yet
@@ -321,10 +329,16 @@ ipcMain.handle('update', async (e, body = {}) => {
 ipcMain.handle('selfupdate:apply', async (e) => {
   if (updating) throw new Error('an update is already in progress');
   if (!app.isPackaged) throw new Error('self-update is unavailable in a dev run');
-  if (!selfupdate.canApply()) throw new Error('on macOS, download the new version from the release page');
   updating = true;
   try {
     const onProgress = (phase, pct) => e.sender.send('update:progress', { id: 'self', phase, pct });
+    if (IS_MAC) {
+      // Squirrel.Mac downloads+verifies the signed zip, swaps the bundle and relaunches; it
+      // owns the restart, so there is no launcher hand-off or app.exit here.
+      const r = await macupdate.apply({ onProgress });
+      log(`self-update(mac): restarting into ${r.version}`);
+      return r;
+    }
     const { tag } = await selfupdate.prepareUpdate(ROOT, app.getVersion(), onProgress);
     selfupdate.writeApplyMarker({ expectVersion: tag });
     selfupdate.relaunchViaLauncher(ROOT, process.pid);
