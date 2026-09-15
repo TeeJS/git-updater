@@ -90,6 +90,46 @@ test('writeApplyMarker/consumeApplyMarker: round-trips, is consumed once, detect
   assert.equal(selfupdate.consumeApplyMarker('1.9.9').ok, false);
 });
 
+test('checkForUpdate: the beta channel (prerelease:true) offers the newest prerelease', async () => {
+  const orig = global.fetch;
+  const calls = [];
+  global.fetch = async (url) => {
+    calls.push(url);
+    return {
+      status: 200, ok: true, headers: { get: () => null },
+      json: async () => [
+        { tag_name: 'v0.2.4-beta.1', draft: false, prerelease: true, assets: [] },
+        { tag_name: 'v0.2.3', draft: false, prerelease: false, assets: [] },
+      ],
+    };
+  };
+  try {
+    const found = await selfupdate.checkForUpdate('0.2.3', { prerelease: true });
+    assert.equal(found && found.version, '0.2.4-beta.1', 'newest release, prerelease included');
+    assert.ok(calls.some((u) => /\/releases\?/.test(u)), 'used the list endpoint');
+    assert.ok(!calls.some((u) => /releases\/latest/.test(u)), 'did NOT use the stable-only /releases/latest');
+  } finally {
+    global.fetch = orig;
+  }
+});
+
+test('checkForUpdate: the stable channel (default) ignores a newer prerelease', async () => {
+  const orig = global.fetch;
+  const calls = [];
+  global.fetch = async (url) => {
+    calls.push(url);
+    // /releases/latest returns the newest STABLE release, never the beta.
+    return { status: 200, ok: true, headers: { get: () => null }, json: async () => ({ tag_name: 'v0.2.3', draft: false, prerelease: false, assets: [] }) };
+  };
+  try {
+    const found = await selfupdate.checkForUpdate('0.2.3'); // no opts = stable
+    assert.equal(found, null, 'already on 0.2.3 stable, so nothing newer');
+    assert.ok(calls.some((u) => /releases\/latest/.test(u)), 'used the stable-only endpoint');
+  } finally {
+    global.fetch = orig;
+  }
+});
+
 test('moveIntoPlace: a fast rename places the build and never copies', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'gu-move-ok-'));
   try {

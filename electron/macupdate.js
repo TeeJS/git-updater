@@ -51,8 +51,9 @@ function isNewer(result) {
 
 // Report a newer release, or null. Mirrors selfupdate.checkForUpdate's shape so the
 // selfupdate:check handler can return the same { version } to the renderer.
-async function check() {
+async function check(opts = {}) {
   const autoUpdater = updater();
+  autoUpdater.allowPrerelease = !!opts.prerelease; // self-update beta channel
   const result = await autoUpdater.checkForUpdates();
   if (!isNewer(result)) return null;
   const version = result.updateInfo && result.updateInfo.version;
@@ -66,8 +67,9 @@ async function check() {
 // Resolves { relaunching:true, version } the moment the download is staged — before the swap —
 // so the renderer can show "Restarting into X…", exactly like the Windows/Linux handler
 // returns { relaunching } before its process exits. quitAndInstall then fires on a short timer.
-function apply({ onProgress } = {}) {
+function apply({ onProgress, prerelease } = {}) {
   const autoUpdater = updater();
+  autoUpdater.allowPrerelease = !!prerelease; // must match check()'s channel, or apply re-checks to a different release
   return new Promise((resolve, reject) => {
     let settled = false;
     const cleanup = () => {

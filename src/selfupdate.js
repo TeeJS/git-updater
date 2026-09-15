@@ -195,8 +195,10 @@ function selfUpdateAssets(assets) {
   return usable.length ? usable : list;
 }
 
-async function checkForUpdate(currentVersion) {
-  const rel = await github.getLatestRelease(REPO_OWNER, REPO_NAME);
+// opts.prerelease: when true, the newest release INCLUDING betas/prereleases is considered
+// (the self-update beta channel); otherwise only the latest stable release, GitHub's default.
+async function checkForUpdate(currentVersion, opts = {}) {
+  const rel = await github.getLatestRelease(REPO_OWNER, REPO_NAME, opts.prerelease ? { prerelease: true } : {});
   const tag = core.normTag(rel.tag_name || '');
   return core.cmpVersion(tag, currentVersion) > 0 ? { rel, version: tag } : null;
 }
@@ -207,9 +209,9 @@ async function checkForUpdate(currentVersion) {
 // its final app-<tag> name — a rename of a fresh, unreferenced folder into a path that
 // never existed, the same operation every tracked-app fresh install already does. A
 // failure anywhere leaves the running version and the launcher completely untouched.
-async function prepareUpdate(root, currentVersion, onProgress = () => {}) {
+async function prepareUpdate(root, currentVersion, onProgress = () => {}, opts = {}) {
   if (!canApply()) throw new Error('applying an update in place is not supported on this platform');
-  const found = await checkForUpdate(currentVersion);
+  const found = await checkForUpdate(currentVersion, opts);
   if (!found) throw new Error('no newer release found');
   const { rel, version: tag } = found;
 

@@ -251,13 +251,14 @@ ipcMain.handle('asset:preview', async (_e, appKey) => {
 ipcMain.handle('selfupdate:check', async () => {
   if (!app.isPackaged) return null; // dev run
   try {
+    const prerelease = !!readConfig().selfUpdatePrerelease; // self-update beta channel (Settings)
     if (IS_MAC) {
       // macOS applies in place via Squirrel.Mac (electron-updater), reading latest-mac.yml off
       // our GitHub releases — so what the banner reports is exactly what will install.
-      const found = await macupdate.check();
+      const found = await macupdate.check({ prerelease });
       return found ? { version: found.version, canApply: true } : null;
     }
-    const found = await selfupdate.checkForUpdate(app.getVersion());
+    const found = await selfupdate.checkForUpdate(app.getVersion(), { prerelease });
     return found ? { version: found.version, canApply: selfupdate.canApply() } : null;
   } catch (e) {
     log(`selfupdate check: ${e && e.message ? e.message : e}`); // e.g. no releases yet
@@ -340,14 +341,15 @@ ipcMain.handle('selfupdate:apply', async (e) => {
   updating = true;
   try {
     const onProgress = (phase, pct) => e.sender.send('update:progress', { id: 'self', phase, pct });
+    const prerelease = !!readConfig().selfUpdatePrerelease; // self-update beta channel (Settings)
     if (IS_MAC) {
       // Squirrel.Mac downloads+verifies the signed zip, swaps the bundle and relaunches; it
       // owns the restart, so there is no launcher hand-off or app.exit here.
-      const r = await macupdate.apply({ onProgress });
+      const r = await macupdate.apply({ onProgress, prerelease });
       log(`self-update(mac): restarting into ${r.version}`);
       return r;
     }
-    const { tag } = await selfupdate.prepareUpdate(ROOT, app.getVersion(), onProgress);
+    const { tag } = await selfupdate.prepareUpdate(ROOT, app.getVersion(), onProgress, { prerelease });
     selfupdate.writeApplyMarker({ expectVersion: tag });
     selfupdate.relaunchViaLauncher(ROOT, process.pid);
     log(`self-update: restarting into ${tag}`);
