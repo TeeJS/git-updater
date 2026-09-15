@@ -629,9 +629,19 @@ async function selfCheck() {
   if (selfupDismissed) return;
   try {
     const u = await window.api.selfUpdateCheck();
-    if (!u) return;
+    if (!u) {
+      // Up to date: confirm it, the same way each app shows its own "Up to date" status,
+      // instead of the banner silently staying hidden.
+      const v = await window.api.getVersion().catch(() => null);
+      $('selfupText').textContent = v ? `git-updater ${v} is up to date.` : 'git-updater is up to date.';
+      $('selfupBtn').style.display = 'none';
+      $('selfupDismiss').disabled = false;
+      $('selfup').classList.add('show');
+      return;
+    }
     $('selfupText').textContent = `git-updater ${u.version} is available.`;
     const btn = $('selfupBtn');
+    btn.style.display = ''; // a prior "up to date" render may have hidden it
     // canApply is false on macOS, where a running .app bundle cannot be replaced in
     // place. The new version is still reported; the button just sends the user to the
     // release page to download it instead of applying it here.

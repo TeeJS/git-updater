@@ -129,6 +129,30 @@ function makeExecutable(dir) {
   }
 }
 
+// Errors that mean "another process is holding a handle" — a real-time scanner mid-scan,
+// not a genuine conflict — so a copy that only needs read access can still get through.
+const RENAME_LOCKED = new Set(['EPERM', 'EACCES', 'EBUSY', 'ENOTEMPTY']);
+
+// Move the freshly extracted build to its final app-<tag> folder. The self-update payload
+// is ~150 MB of just-written executables, and on an EDR-managed machine a real-time scan
+// can hold handles on them for many seconds — well past install.js's default ~1.5 s retry
+// budget — so an exclusive directory rename (MoveFileEx) keeps failing with EPERM even
+// though nothing legitimately owns the folder. Give the rename a much longer window here,
+// then fall back to a plain recursive copy: a copy only needs READ access, which the
+// scanner allows concurrently, whereas the move demands exclusive access it will not yield.
+function moveIntoPlace(srcDir, target, opts = {}) {
+  const waits = opts.waits || [200, 400, 800, 1600, 2000, 2000, 2000, 2000, 2000, 2000, 2000, 2000]; // ~19 s
+  try {
+    install.renameWithRetry(srcDir, target, { ...opts, waits });
+  } catch (e) {
+    if (!RENAME_LOCKED.has(e.code)) throw e;
+    log(`  self-update: rename blocked (${e.code}) after retries; copying into place instead`);
+    fs.rmSync(target, { recursive: true, force: true }); // clear any partial the failed move left
+    fs.cpSync(srcDir, target, { recursive: true });
+    makeExecutable(target); // cpSync should carry the mode, but re-assert it to be safe
+  }
+}
+
 function launch(dir, args = []) {
   spawn(path.join(dir, EXE), args, { detached: true, stdio: 'ignore', windowsHide: false }).unref();
 }
@@ -216,8 +240,7 @@ async function prepareUpdate(root, currentVersion, onProgress = () => {}) {
       const { srcDir } = await install.extractArchive(file, stage);
       if (!fs.existsSync(path.join(srcDir, EXE))) throw new Error(`downloaded build has no ${EXE}`);
       makeExecutable(srcDir);
-      // Retried: Windows can still be scanning what we just extracted (see install.js).
-      install.renameWithRetry(srcDir, target);
+      moveIntoPlace(srcDir, target);
     } finally {
       fs.rmSync(stage, { recursive: true, force: true });
     }
@@ -300,6 +323,7 @@ module.exports = {
   REPO: { owner: REPO_OWNER, repo: REPO_NAME },
   canApply,
   makeExecutable,
+  moveIntoPlace,
   layout,
   listVersions,
   newestNewerThan,

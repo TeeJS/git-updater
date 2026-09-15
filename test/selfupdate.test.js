@@ -90,6 +90,67 @@ test('writeApplyMarker/consumeApplyMarker: round-trips, is consumed once, detect
   assert.equal(selfupdate.consumeApplyMarker('1.9.9').ok, false);
 });
 
+test('moveIntoPlace: a fast rename places the build and never copies', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'gu-move-ok-'));
+  try {
+    const src = path.join(root, 'stage');
+    fs.mkdirSync(src);
+    fs.writeFileSync(path.join(src, EXE), 'new');
+    const target = path.join(root, 'app-9.9.9');
+
+    let sleeps = 0;
+    selfupdate.moveIntoPlace(src, target, { sleep: () => { sleeps++; }, waits: [1, 1] });
+
+    assert.ok(fs.existsSync(path.join(target, EXE)), 'build is at the target');
+    assert.ok(!fs.existsSync(src), 'rename consumed the stage dir');
+    assert.equal(sleeps, 0, 'a clean rename retries nothing');
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('moveIntoPlace: a scanner-locked rename (EPERM) falls back to copying the build into place', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'gu-move-eperm-'));
+  try {
+    const src = path.join(root, 'stage');
+    fs.mkdirSync(path.join(src, 'resources'), { recursive: true });
+    fs.writeFileSync(path.join(src, EXE), 'new');
+    fs.writeFileSync(path.join(src, 'resources', 'app.bin'), 'payload');
+    const target = path.join(root, 'app-9.9.9');
+
+    // Simulate a real-time scanner holding the folder for an exclusive MOVE: every rename
+    // attempt fails EPERM, so the retries are exhausted and the copy fallback must run.
+    const rename = () => { const e = new Error('EPERM: locked'); e.code = 'EPERM'; throw e; };
+    selfupdate.moveIntoPlace(src, target, { rename, sleep: () => {}, waits: [1, 1] });
+
+    assert.equal(fs.readFileSync(path.join(target, EXE), 'utf8'), 'new', 'launcher copied');
+    assert.equal(fs.readFileSync(path.join(target, 'resources', 'app.bin'), 'utf8'), 'payload', 'nested payload copied');
+    assert.ok(fs.existsSync(src), 'copy leaves the stage dir for the caller to clean up');
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('moveIntoPlace: a non-lock error is not masked by the copy fallback', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'gu-move-fatal-'));
+  try {
+    const src = path.join(root, 'stage');
+    fs.mkdirSync(src);
+    fs.writeFileSync(path.join(src, EXE), 'new');
+    const target = path.join(root, 'app-9.9.9');
+
+    const rename = () => { const e = new Error('ENOSPC: no space'); e.code = 'ENOSPC'; throw e; };
+    assert.throws(
+      () => selfupdate.moveIntoPlace(src, target, { rename, sleep: () => {}, waits: [1] }),
+      /ENOSPC/,
+      'a genuine failure surfaces instead of silently copying',
+    );
+    assert.ok(!fs.existsSync(target), 'nothing placed on a fatal error');
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('cleanupLeftovers: removes older app-* folders and stale stage/download dirs, keeps current+newer', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'gu-cleanup-'));
   try {
