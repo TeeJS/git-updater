@@ -22,6 +22,14 @@ const { log, LOG_FILE } = require('../src/log');
 const IS_MAC = process.platform === 'darwin';
 const macupdate = IS_MAC ? require('./macupdate') : null;
 
+// Force HTTP/1.1 for all of Chromium's networking. TLS-inspecting corporate middleboxes
+// (FortiEDR/FortiGate SSL inspection and the like) frequently mangle HTTP/2 streams, which
+// surfaces as net::ERR_HTTP2_PROTOCOL_ERROR mid-download and kills self-update on managed
+// machines even when nothing is actually being blocked. We keep using Electron net.fetch —
+// it trusts the OS certificate store and proxy, which Node's https would not behind SSL
+// inspection — and only drop the transport to h2-free HTTP/1.1. Must run before app ready.
+app.commandLine.appendSwitch('disable-http2');
+
 log(`--- git-updater ${app.getVersion()} started ---`);
 process.on('uncaughtException', (e) => log(`UNCAUGHT: ${e && e.stack ? e.stack : e}`));
 process.on('unhandledRejection', (e) => log(`UNHANDLED: ${e && e.stack ? e.stack : e}`));
