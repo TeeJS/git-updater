@@ -1,4 +1,6 @@
-# git-updater
+<p align="center">
+  <img src="docs/logo.png" alt="git-updater" width="440">
+</p>
 
 **Keep your apps up to date straight from their GitHub releases. Windows, macOS and Linux.**
 

@@ -88,6 +88,8 @@ function createWindow() {
     minHeight: 480,
     backgroundColor: '#0d1117',
     autoHideMenuBar: true,
+    icon: path.join(__dirname, 'icon.png'), // dev + packaged Linux; Win/mac use the bundled app icon
+
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true, // renderer can't reach Node — only the narrow `window.api`
@@ -147,6 +149,7 @@ ipcMain.handle('scan:open', (_e, mode) => {
     parent: win,
     backgroundColor: '#0d1117',
     autoHideMenuBar: true,
+    icon: path.join(__dirname, 'icon.png'),
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false },
   });
   // Linux has no installed-apps mode, so the window always opens on the catalog there
