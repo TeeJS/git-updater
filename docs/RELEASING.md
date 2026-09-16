@@ -168,6 +168,60 @@ This creates the `vX.Y.Z` tag at the target commit and makes the release public.
 
 ---
 
+## Beta releases (the self-update beta channel)
+
+git-updater can update **itself** to prereleases, so you can exercise the whole
+self-update path — download, verify, swap, relaunch — without cutting a stable release each
+time. This is how the 0.2.4 self-update fixes were verified on the locked-down work PC.
+
+**How the channel works**
+
+- A Settings toggle, **"Update git-updater to beta (pre-release) versions"**
+  (`config.selfUpdatePrerelease`, off by default), controls it. It is **separate** from the
+  per-app "include beta versions" checkbox (that one is per tracked app).
+- **Off (default):** self-update uses GitHub's `/releases/latest`, which excludes
+  prereleases — stable users never see betas.
+- **On:** self-update considers the newest release **including prereleases**
+  (`getLatestRelease({prerelease})` on Windows/Linux; `autoUpdater.allowPrerelease` on
+  macOS). SemVer ordering means `X.Y.Z-beta.1 < X.Y.Z-beta.2 < X.Y.Z`, and all are newer
+  than the previous stable — so a beta self-updates forward to the next beta and, eventually,
+  to the stable release.
+
+**Cutting a beta**
+
+Same build steps as a stable release, with three differences: the version carries a
+`-beta.N` suffix, the release is published **`--prerelease` (never `--latest`)**, and it can
+be a **single platform** when you only need to test one (e.g. Windows-only).
+
+```bash
+# version -> X.Y.Z-beta.N in package.json + package-lock.json (same one-liner as step 0)
+# build the platform(s) you need (dist:win / dist:mac / dist:linux), then:
+gh release create vX.Y.Z-beta.N --prerelease --target <branch-or-main> \
+  --title "vX.Y.Z-beta.N" --notes "…" dist/<assets…>
+```
+
+A beta may be built from a **branch** rather than `main` when it should differ from `main`
+on purpose — e.g. beta.1 built with a fix but *without* a later change, so that change
+becomes the visible payload when self-updating beta.1 → beta.2. Target that branch with
+`--target`; publishing a prerelease creates its tag immediately (unlike a draft).
+
+**Testing the loop (mind the chicken-and-egg)**
+
+A broken or older installed build cannot self-update *into* the fix — the fixed code has to
+be running first. So:
+
+1. **Manually drop in** the first beta that contains the new self-update code (unzip over the
+   install folder; settings live elsewhere and are safe).
+2. Turn the beta toggle **on** in Settings.
+3. Publish the **next** beta. On the installed one: **Check all → Update** → it downloads,
+   relaunches into the new beta. Give successive betas a visible change (a version bump is
+   enough; a UI change is clearer) to confirm the update actually landed.
+
+Betas are prereleases, so they never become "Latest" — leave them in place after a stable
+release ships, or delete them later; they don't affect stable users either way.
+
+---
+
 ## Quick reference: what each host needs
 
 | | Windows | macOS | Linux |

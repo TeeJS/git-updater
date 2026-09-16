@@ -330,6 +330,44 @@ next to the current version. (macOS has no such open-handle problem — Squirrel
 whole bundle after the app quits, which is why macOS uses that instead; see above.)
 `bin/watch.js` (headless CLI) does not self-update — apply is GUI-only.
 
+### Self-update on managed / EDR machines (learned on a FortiEDR work PC)
+
+Two failure modes surfaced only on a corporate machine with TLS-inspecting security
+software, and both are now handled — neither reproduces on a clean network, which is why
+they shipped unnoticed:
+
+- **Download fails with `net::ERR_HTTP2_PROTOCOL_ERROR`.** `net.fetch` (Chromium) negotiates
+  HTTP/2, and a TLS-inspecting middlebox (FortiEDR/FortiGate SSL inspection) mangles the h2
+  stream mid-download — nothing is actually *blocked*. Fixed by
+  `app.commandLine.appendSwitch('disable-http2')` in `electron/main.js`, which forces
+  HTTP/1.1. **Keep using `net.fetch`** for the download — it trusts the OS certificate store
+  and proxy, which is what lets it work behind SSL inspection at all. Do **not** switch
+  self-update downloads to Node's `https`: it uses its own CA bundle and would fail cert
+  validation behind the same middlebox. This applies to every download, so tracked-app
+  installs benefit too.
+
+- **The rename is held past the retry budget.** On the ~150 MB self-update payload a
+  real-time scan can hold handles longer than `renameWithRetry`'s default window.
+  `selfupdate.moveIntoPlace()` gives the stage → `app-<tag>` rename a long retry window
+  (~19 s) and then falls back to a recursive **copy** into place — a copy needs only read
+  access, which the scanner allows concurrently, whereas the exclusive move does not. A
+  non-lock error still surfaces instead of being masked by the copy.
+
+**Chicken-and-egg:** a fix to the self-update path can't be delivered *by* self-update — the
+broken installed build is the one doing the updating. Each such fix needs a one-time manual
+drop-in (unzip over the install folder; config/state live elsewhere and are untouched)
+before the mechanism can carry future updates on its own.
+
+### Self-update beta channel
+
+`config.selfUpdatePrerelease` (a Settings toggle, **off by default**, and separate from the
+per-app "include beta versions" checkbox) opts git-updater's *own* updates into prereleases.
+Off, `checkForUpdate` uses GitHub's `/releases/latest`, which excludes prereleases — stable
+users never see betas. On, it considers the newest release including prereleases
+(`getLatestRelease({prerelease})` on Windows/Linux; `autoUpdater.allowPrerelease` on macOS),
+so the update path can be exercised via betas without cutting a stable release. Release-side
+mechanics are in [RELEASING.md](RELEASING.md).
+
 ## Checking a change actually works
 
 The cross-platform port closed fourteen defects. Twelve would have shipped something that
