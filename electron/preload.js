@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('api', {
   openConfig: () => ipcRenderer.invoke('config:open'),
   openLog: () => ipcRenderer.invoke('log:open'),
   openFolder: (appKey) => ipcRenderer.invoke('folder:open', appKey),
+  openApp: (appKey) => ipcRenderer.invoke('app:launch', appKey),
   validateRepo: (owner, repo, prerelease) => ipcRenderer.invoke('repo:validate', { owner, repo, prerelease }),
   closeApp: (appKey, force) => ipcRenderer.invoke('app:close', { appKey, force }),
   pickFolder: () => ipcRenderer.invoke('pick-folder'),

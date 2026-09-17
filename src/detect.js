@@ -129,6 +129,19 @@ async function installedFlavor(needle) {
   return hits[hits.length - 1].flavor || null;
 }
 
+// Where to launch an installed app from — the highest-versioned matching entry's own
+// path (a Windows exe from DisplayIcon, or a macOS .app bundle) and its install directory
+// (Windows InstallLocation). null when nothing matches. The Electron side confirms the
+// path exists and, failing that, hunts the directory (see electron/main.js). Used by
+// "Open App"; installer apps only (portables launch from their own file manifest).
+async function launchTarget(needle) {
+  const hits = await matchEntries(needle);
+  if (!hits.length) return null;
+  hits.sort((a, b) => cmpVersion(a.version, b.version));
+  const best = hits[hits.length - 1];
+  return { path: best.path || null, location: best.location || null };
+}
+
 // --- running-process detection (for a proactive "close the app" warning) ------
 
 // Process names carry the same hazard as inventory names — /usr/bin/ed is a running
@@ -168,6 +181,7 @@ module.exports = {
   nameMatches,
   installedVersion,
   installedFlavor,
+  launchTarget,
   isRunning,
   closeApp,
   clearCache,

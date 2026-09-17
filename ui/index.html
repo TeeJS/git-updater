@@ -379,6 +379,13 @@ function openMenu(r, anchor) {
   const item = (label, fn, danger) => { const b = el('button', danger ? 'danger' : null, label); b.onclick = (e) => { e.stopPropagation(); closeMenu(); fn(); }; menuEl.appendChild(b); };
   const sep = () => menuEl.appendChild(el('div', 'sep'));
 
+  if (s.present) {
+    item('Open App', async () => {
+      try { await window.api.openApp(key); }
+      catch (e) { msg(clean(e), 'bad'); }
+    });
+    sep();
+  }
   item('Check now', () => checkApps([key]));
   item(s.ph === 'failed' ? 'Retry' : !s.present ? 'Install' : 'Update', () => runBatch([key]));
   sep();

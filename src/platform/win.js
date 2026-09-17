@@ -13,20 +13,38 @@ const HIVES = [
   'HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall',
 ];
 
-// Parse `reg query <hive> /s` output into [{ name, version, flavor }]. flavor is how
-// the app was installed ('msi' when MsiExec owns the uninstall string, else 'exe') —
-// used to pick the SAME installer flavor on update so an MSI never lands beside an
-// EXE install. Exported for tests: pure string in, records out.
+// A registry DisplayIcon value into a plain exe path, or null. DisplayIcon is usually
+// the app's own exe (with an optional ",<index>" icon suffix and sometimes quotes), which
+// is exactly what "Open App" wants to launch — but it can also point at an .ico or the
+// uninstaller, so callers take it only when it is a real, non-uninstaller .exe. Pure;
+// exported for tests.
+function cleanIconPath(s) {
+  let v = String(s || '').trim();
+  v = v.replace(/,\s*-?\d+\s*$/, '').trim(); // strip a trailing icon index ("...app.exe",0 / .exe,-15)
+  v = v.replace(/^"(.*)"$/, '$1').trim(); // then any wrapping quotes
+  return v || null;
+}
+
+// Parse `reg query <hive> /s` output into [{ name, version, flavor, path?, location? }].
+// flavor is how the app was installed ('msi' when MsiExec owns the uninstall string, else
+// 'exe') — used to pick the SAME installer flavor on update so an MSI never lands beside an
+// EXE install. path/location (added for "Open App") are the launchable exe from DisplayIcon
+// and the InstallLocation directory; both optional, present only when the registry gave
+// them. Exported for tests: pure string in, records out.
 function parseHive(stdout) {
   const out = [];
   let cur = null;
   const push = () => {
     if (cur && cur.DisplayName && cur.DisplayVersion) {
-      out.push({
+      const icon = cleanIconPath(cur.DisplayIcon);
+      const rec = {
         name: cur.DisplayName,
         version: cur.DisplayVersion,
         flavor: /msiexec/i.test(cur.UninstallString || '') ? 'msi' : 'exe',
-      });
+      };
+      if (icon && /\.exe$/i.test(icon) && !/unins/i.test(icon)) rec.path = icon;
+      if (cur.InstallLocation) rec.location = cur.InstallLocation.replace(/[\\/]+$/, '');
+      out.push(rec);
     }
   };
   for (const line of stdout.split(/\r?\n/)) {
@@ -34,7 +52,7 @@ function parseHive(stdout) {
       push();
       cur = {};
     } else if (cur) {
-      const m = line.match(/^\s+(DisplayName|DisplayVersion|UninstallString)\s+REG_\w+\s+(.*)$/);
+      const m = line.match(/^\s+(DisplayName|DisplayVersion|UninstallString|DisplayIcon|InstallLocation)\s+REG_\w+\s+(.*)$/);
       if (m) cur[m[1]] = m[2].trim();
     }
   }
@@ -69,4 +87,4 @@ function killProcess(pid, force) {
   spawnSync('taskkill', force ? ['/PID', String(pid), '/F', '/T'] : ['/PID', String(pid)], { windowsHide: true });
 }
 
-module.exports = { installedApps, runningProcesses, killProcess, parseHive, parseTasklist };
+module.exports = { installedApps, runningProcesses, killProcess, parseHive, parseTasklist, cleanIconPath };

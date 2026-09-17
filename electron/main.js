@@ -145,6 +145,65 @@ ipcMain.handle('folder:open', (_e, appKey) => {
   const dir = r && portableDir(cfg, r);
   return dir ? shell.openPath(dir) : 'no folder';
 });
+
+// Collect this dir's files as manifest-style relative paths, shallowly (depth<=2 is enough
+// to find an app's main exe without walking a whole install tree). Used only when an
+// installer app has an InstallLocation but no usable DisplayIcon.
+function shallowFiles(dir, depth = 2, prefix = '') {
+  let out = [];
+  let entries;
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return out;
+  }
+  for (const e of entries) {
+    const rel = prefix ? `${prefix}/${e.name}` : e.name;
+    if (e.isDirectory()) {
+      if (depth > 1) out = out.concat(shallowFiles(path.join(dir, e.name), depth - 1, rel));
+    } else {
+      out.push(rel);
+    }
+  }
+  return out;
+}
+
+// "Open App": launch the installed program behind a tracked row.
+//  - portable  -> resolve the main file from our own install manifest + the portable dir.
+//  - installer -> the registry DisplayIcon exe, else hunt InstallLocation for it.
+// Launch is always shell.openPath (ShellExecute) — no shell spawn, no temp exec — so it
+// stays within the same EDR posture as installs and "Open folder".
+ipcMain.handle('app:launch', async (_e, appKey) => {
+  const cfg = readConfig();
+  const r = cfg.repos.find((x) => `${x.owner}/${x.repo}#${x.type}` === appKey);
+  if (!r) throw new Error('app not found');
+  let target = null;
+
+  if (r.type === 'portable') {
+    const dir = portableDir(cfg, r);
+    if (!dir || !dirHasFiles(dir)) throw new Error('this app is not installed yet');
+    const rec = state.load()[appKey];
+    const files = (rec && rec.files) || shallowFiles(dir, 3);
+    const rel = core.pickLaunchFile(files, r.repo, process.platform);
+    if (rel) {
+      const abs = path.join(dir, rel);
+      if (fs.existsSync(abs)) target = abs;
+    }
+  } else {
+    const t = await detect.launchTarget(r.detect || r.repo);
+    if (t && t.path && fs.existsSync(t.path)) target = t.path;
+    if (!target && t && t.location && fs.existsSync(t.location)) {
+      const rel = core.pickLaunchFile(shallowFiles(t.location, 2), r.repo, process.platform);
+      if (rel) target = path.join(t.location, rel);
+    }
+  }
+
+  if (!target) throw new Error(`couldn't find ${r.repo}'s program to open — try Open folder`);
+  log(`launchApp ${appKey} -> ${target}`);
+  const err = await shell.openPath(target); // '' on success, else an OS error string
+  if (err) throw new Error(err);
+  return { ok: true, path: target };
+});
 ipcMain.handle('config:save', (_e, cfg) => {
   saveConfigFile(cfg);
   return { ok: true };

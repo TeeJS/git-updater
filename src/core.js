@@ -337,9 +337,61 @@ function buildSummary(results) {
   return { text: [header, ...lines].join('\n'), counts };
 }
 
+// Pick which file to launch for a PORTABLE app from its install manifest. `files` are
+// manifest-relative paths (any separator), `repoName` biases the choice toward the app's
+// own binary, `platform` is process.platform. Returns the chosen relative path, or null
+// when nothing launchable is present. Pure — no IO; the caller joins it to the install dir
+// and confirms it exists.
+function pickLaunchFile(files, repoName, platform) {
+  const list = (files || []).map((f) => String(f).replace(/\\/g, '/')).filter(Boolean);
+  if (!list.length) return null;
+  const base = (p) => p.slice(p.lastIndexOf('/') + 1);
+  const depth = (p) => p.split('/').length;
+  const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const want = norm(repoName);
+  const named = (arr, key) => arr.find((p) => { const n = norm(key(p)); return want && (n === want || n.includes(want) || want.includes(n)); });
+
+  if (platform === 'darwin') {
+    // A .app bundle is many manifest entries under Foo.app/…; the launch target is the
+    // bundle directory itself. Take the shallowest .app prefix, name-matched if possible.
+    const apps = [...new Set(list.map((p) => { const m = /^(.*?\.app)(\/|$)/i.exec(p); return m ? m[1] : null; }).filter(Boolean))]
+      .sort((a, b) => depth(a) - depth(b) || a.length - b.length);
+    if (!apps.length) return null;
+    return named(apps, (p) => base(p).replace(/\.app$/i, '')) || apps[0];
+  }
+
+  if (platform === 'win32') {
+    // Drop the executables that ship ALONGSIDE the app but are not it: uninstallers,
+    // bundled redistributables, crash/updater helpers. If that leaves nothing, fall back
+    // to the unfiltered set rather than refuse to launch.
+    const NOISE = ['unins', 'setup', 'install', 'update', 'vcredist', 'dxsetup', 'dotnet', 'crashpad', 'crashhandler', 'crashreporter', 'reporter', 'helper', 'updater'];
+    const isNoise = (p) => { const b = norm(base(p).replace(/\.exe$/i, '')); return NOISE.some((n) => b.includes(n)); };
+    let exes = list.filter((p) => /\.exe$/i.test(p));
+    const kept = exes.filter((p) => !isNoise(p));
+    if (kept.length) exes = kept;
+    if (!exes.length) return null;
+    const score = (p) => {
+      const nb = norm(base(p).replace(/\.exe$/i, ''));
+      let s = -depth(p) - p.length / 1000; // prefer shallow, then shorter, as a stable tie-break
+      if (want && nb === want) s += 100;
+      else if (want && (nb.includes(want) || want.includes(nb))) s += 50;
+      return s;
+    };
+    return exes.slice().sort((a, b) => score(b) - score(a))[0];
+  }
+
+  // linux: an AppImage if present, else the top-level extension-less binary.
+  const appimg = list.filter((p) => /\.appimage$/i.test(p)).sort((a, b) => depth(a) - depth(b) || a.length - b.length);
+  if (appimg.length) return named(appimg, base) || appimg[0];
+  const bins = list.filter((p) => !/\.[a-z0-9]{1,5}$/i.test(base(p))).sort((a, b) => depth(a) - depth(b) || a.length - b.length);
+  if (!bins.length) return null;
+  return named(bins, base) || bins[0];
+}
+
 module.exports = {
   normTag,
   cmpVersion,
+  pickLaunchFile,
   alignInstalledVersion,
   compilePattern,
   matchAsset,
