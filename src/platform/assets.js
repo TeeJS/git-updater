@@ -162,7 +162,14 @@ const linux = {
   reject:
     /\.(exe|msi|dmg|pkg|apk|ddeb)$|(?:^|[-_.])(win(?:dows|32|64)?|darwin|mac(?:os)?|osx|android|freebsd|sources?|dbsym|dsyms|pdbs|debuginfo)(?:[-_.0-9]|$)/i,
   ext: {
-    portable: /(\.appimage|\.tar\.gz|\.tgz|\.tar\.xz|\.tar\.bz2|\.zip)$/i,
+    // A .zip counts ONLY when something in the name says Linux. Linux software ships
+    // .tar.gz, .tar.xz or an AppImage; .zip is the Windows and macOS convention, and a
+    // .zip naming no platform is a Windows build far more often than a Linux one.
+    // notepad-plus-plus publishes npp.<v>.portable.x64.zip and no Linux build whatsoever
+    // — no token in that name is a platform word, so it scored as a valid Linux portable
+    // and put notepad++.exe in the portable folder, reporting a successful install.
+    // Godot's "Godot_v4.5-stable_linux.x86_64.zip" is the shape this still accepts.
+    portable: /(?:\.appimage|\.tgz|\.tar\.(?:gz|xz|bz2))$|^(?=.*(?:linux|gnu|x11)).*\.zip$/i,
     installer: /\.(deb|rpm)$/i,
   },
   // x11 is a Linux marker in the wild (Godot ships "..._x11.64.zip"), and the

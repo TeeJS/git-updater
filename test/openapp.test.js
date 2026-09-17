@@ -131,3 +131,26 @@ test('parseHive: entries with no icon/location stay exactly as before (no extra 
   );
   assert.deepEqual(out, [{ name: 'Plain', version: '1.0', flavor: 'msi' }]);
 });
+
+test('launch file: an extension-less document is not a program', () => {
+  // The Linux branch took any file without an extension, and LICENSE, README and COPYING
+  // all qualify. notepad-plus-plus — a Windows app that had been installed into the Linux
+  // portable folder — resolved to updater/LICENSE.
+  const files = ['license.txt', 'readme.txt', 'updater/LICENSE', 'updater/README', 'notepad++.exe'];
+  assert.equal(core.pickLaunchFile(files, 'notepad-plus-plus', 'linux'), null);
+});
+
+test('launch file: the execute bit decides when the caller can check it', () => {
+  const files = ['LICENSE', 'brave', 'chrome_crashpad_handler'];
+  const isExec = (p) => p === 'brave' || p === 'chrome_crashpad_handler';
+  assert.equal(core.pickLaunchFile(files, 'brave-browser', 'linux', isExec), 'brave');
+  // Without the predicate the name still has to carry the decision.
+  assert.equal(core.pickLaunchFile(files, 'brave-browser', 'linux'), 'brave');
+});
+
+test('launch file: a manifest with no modes falls back rather than refusing', () => {
+  // A .zip carries no permission bits, so everything can look non-executable. Narrowing
+  // to nothing would turn "wrong file" into "no file", which is worse.
+  const files = ['myapp', 'data/blob'];
+  assert.equal(core.pickLaunchFile(files, 'myapp', 'linux', () => false), 'myapp');
+});

@@ -353,7 +353,12 @@ function buildSummary(results) {
 // own binary, `platform` is process.platform. Returns the chosen relative path, or null
 // when nothing launchable is present. Pure — no IO; the caller joins it to the install dir
 // and confirms it exists.
-function pickLaunchFile(files, repoName, platform) {
+//
+// isExec: optional predicate, given a manifest-relative path, answering "does this have
+// the execute bit". On Unix that is the only real evidence a file is a program, and this
+// module may not stat, so the caller supplies it. Without it the name alone decides,
+// which is how Windows works anyway (there, .exe IS the evidence).
+function pickLaunchFile(files, repoName, platform, isExec) {
   const list = (files || []).map((f) => String(f).replace(/\\/g, '/')).filter(Boolean);
   if (!list.length) return null;
   const base = (p) => p.slice(p.lastIndexOf('/') + 1);
@@ -394,7 +399,20 @@ function pickLaunchFile(files, repoName, platform) {
   // linux: an AppImage if present, else the top-level extension-less binary.
   const appimg = list.filter((p) => /\.appimage$/i.test(p)).sort((a, b) => depth(a) - depth(b) || a.length - b.length);
   if (appimg.length) return named(appimg, base) || appimg[0];
-  const bins = list.filter((p) => !/\.[a-z0-9]{1,5}$/i.test(base(p))).sort((a, b) => depth(a) - depth(b) || a.length - b.length);
+  // "No extension" is a weak signal on its own: LICENSE, README, CHANGELOG, AUTHORS and
+  // COPYING all pass it, and a tarball that carries no Linux binary at all — a Windows app
+  // tracked as portable — has nothing BUT those. notepad-plus-plus resolved to
+  // updater/LICENSE this way. The execute bit is the real evidence, so use it when the
+  // caller can supply it, and fall back to excluding the usual documents by name.
+  const DOCS = /^(license|licence|readme|changelog|changes|authors|copying|notice|install|news|todo|version|manifest|makefile|dockerfile)$/i;
+  let bins = list.filter((p) => !/\.[a-z0-9]{1,5}$/i.test(base(p)) && !DOCS.test(base(p)));
+  if (typeof isExec === 'function') {
+    const runnable = bins.filter((p) => { try { return isExec(p); } catch { return false; } });
+    // Only narrow when the check actually found something. A manifest whose modes were
+    // lost (a .zip carries none) would otherwise go from "wrong file" to "no file".
+    if (runnable.length) bins = runnable;
+  }
+  bins.sort((a, b) => depth(a) - depth(b) || a.length - b.length);
   if (!bins.length) return null;
   return named(bins, base) || bins[0];
 }

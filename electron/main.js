@@ -188,7 +188,16 @@ ipcMain.handle('app:launch', async (_e, appKey) => {
     if (!dir || !dirHasFiles(dir)) throw new Error('this app is not installed yet');
     const rec = state.load()[appKey];
     const files = (rec && rec.files) || shallowFiles(dir, 3);
-    const rel = core.pickLaunchFile(files, r.repo, process.platform);
+    // On Unix the execute bit is what separates a program from a LICENSE file sitting at
+    // the top of the same archive. core may not stat, so the check is supplied here.
+    const isExec = (rel) => {
+      try {
+        return !!(fs.statSync(path.join(dir, rel)).mode & 0o111);
+      } catch {
+        return false;
+      }
+    };
+    const rel = core.pickLaunchFile(files, r.repo, process.platform, isExec);
     if (rel) {
       const abs = path.join(dir, rel);
       if (fs.existsSync(abs)) target = abs;

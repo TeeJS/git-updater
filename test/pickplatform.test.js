@@ -299,3 +299,35 @@ test('linuxReleaseScore: release tokens, however the vendor spells them', () => 
   assert.equal(score('App-1.0-Ubuntu-26.04.deb', null), 0, 'no /etc/os-release');
   assert.equal(score('App-1.0-Ubuntu-26.04.deb', { id: 'fedora', versionId: '42' }), 0, 'different distro');
 });
+
+test('linux portable: a .zip must say Linux somewhere to count', () => {
+  // notepad-plus-plus publishes no Linux build at all. Every token in
+  // "npp.8.9.8.portable.x64.zip" is version, format or architecture — none is a platform
+  // word — so it passed the reject regex and scored as a valid Linux portable. The result
+  // was notepad++.exe in the portable folder and a reported successful install.
+  const npp = A(
+    'npp.8.9.8.Installer.x64.exe',
+    'npp.8.9.8.Installer.x64.msi',
+    'npp.8.9.8.portable.7z',
+    'npp.8.9.8.portable.x64.zip'
+  );
+  assert.throws(() => lin(npp, 'portable', 'x64', null), /no Linux portable asset/);
+  // The same release on Windows is unaffected — that zip IS the Windows portable build.
+  assert.equal(core.pickAsset(npp, 'portable', 'x64', null, 'win32').name, 'npp.8.9.8.portable.x64.zip');
+});
+
+test('linux portable: a .zip that does say Linux still counts', () => {
+  // Godot ships its Linux build as a .zip, which is why the rule is about the NAME rather
+  // than banning the format outright.
+  const godot = A('Godot_v4.5-stable_linux.x86_64.zip', 'Godot_v4.5-stable_win64.exe.zip');
+  assert.equal(lin(godot, 'portable', 'x64', null).name, 'Godot_v4.5-stable_linux.x86_64.zip');
+  // x11 is the older spelling of the same marker and stays accepted.
+  assert.equal(lin(A('Godot_v3.5_x11.64.zip'), 'portable', 'x64', null).name, 'Godot_v3.5_x11.64.zip');
+});
+
+test('linux portable: tarballs never needed a platform word and still do not', () => {
+  // .tar.gz is the Linux convention, so it qualifies on format alone — the rule added for
+  // .zip must not leak onto it.
+  assert.equal(lin(A('app-1.0-x86_64.tar.gz'), 'portable', 'x64', null).name, 'app-1.0-x86_64.tar.gz');
+  assert.equal(lin(A('app-1.0.AppImage'), 'portable', 'x64', null).name, 'app-1.0.AppImage');
+});
