@@ -154,8 +154,13 @@ const mac = {
 const linux = {
   id: 'linux',
   label: 'Linux',
+  // `sources?` is plural in the wild (OBS ships "OBS-Studio-32.2.2-Sources.tar.gz"), and a
+  // source tarball is a valid .tar.gz that unpacks into a folder — so without this it scores
+  // as a legitimate portable build and installs 5,000 files of C++ with nothing to launch.
+  // The debug-symbol artifacts alongside it (.ddeb, -dbsym, -dSYMs, -PDBs, -debuginfo) are
+  // companions of a real build, never the build.
   reject:
-    /\.(exe|msi|dmg|pkg|apk)$|(?:^|[-_.])(win(?:dows|32|64)?|darwin|mac(?:os)?|osx|android|freebsd|source)(?:[-_.0-9]|$)/i,
+    /\.(exe|msi|dmg|pkg|apk|ddeb)$|(?:^|[-_.])(win(?:dows|32|64)?|darwin|mac(?:os)?|osx|android|freebsd|sources?|dbsym|dsyms|pdbs|debuginfo)(?:[-_.0-9]|$)/i,
   ext: {
     portable: /(\.appimage|\.tar\.gz|\.tgz|\.tar\.xz|\.tar\.bz2|\.zip)$/i,
     installer: /\.(deb|rpm)$/i,
@@ -214,7 +219,54 @@ const linux = {
     else if (/\.deb$/i.test(name)) s += 1; // fresh install: .deb is the more common ship
     return s;
   },
+  releaseScore: (name, host) => linuxReleaseScore(name, host),
 };
+
+// ---------------------------------------------------------------------------
+// Distro-release preference (Linux only)
+//
+// Projects that build per-Ubuntu-release increasingly ship one package per supported
+// release in the SAME GitHub release — OBS 32.2.2 carries both an Ubuntu-24.04 and an
+// Ubuntu-26.04 .deb. Those two score identically on platform, arch and format, so the
+// tie broke on filename length, which is a coin flip between equal-length names: a
+// 26.04 machine was handed the 24.04 build. That package can install and then fail at
+// runtime on library versions, which looks like "the app is broken", not "wrong build".
+//
+// Only compared when the host distro id appears in the filename, so a package that says
+// nothing about a release keeps scoring exactly as before (0) and behaviour is unchanged
+// for every project that ships one package for all of Linux.
+//
+// Older-than-host is preferred over newer-than-host: glibc and the C++ ABI are backward
+// compatible, so a 24.04 build runs on 26.04, while a 26.04 build on 24.04 hits symbol
+// versions that do not exist yet. Among older candidates the closest one wins.
+// Returns [major, minor] from a release token in the filename, or null when the
+// filename says nothing about this distro. "Ubuntu-24.04", "ubuntu_24.04",
+// "ubuntu2404", "ubuntu-24", "opensuse-15.6".
+function releaseTokens(name, id) {
+  // The id comes from /etc/os-release and reaches a RegExp, so escape it — "opensuse-leap"
+  // is tame, but this is file content, not a literal.
+  const esc = String(id).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  // Minor is 1-2 digits: Ubuntu writes 24.04, openSUSE writes 15.6. Kept as separate
+  // integers rather than folded into a fraction, because 15.6 and 15.06 are the same
+  // release written two ways and float arithmetic would rank them apart.
+  const m = new RegExp(`(?:^|[-_.])${esc}[-_.]?(\\d{2})(?:\\.?(\\d{1,2}))?(?:[-_.]|$)`, 'i').exec(name);
+  return m ? [Number(m[1]), m[2] === undefined ? 0 : Number(m[2])] : null;
+}
+
+// host: { id, versionId } from /etc/os-release, or null when unknown/not Linux.
+function linuxReleaseScore(name, host) {
+  if (!host || !host.id || !host.versionId) return 0;
+  const hm = /^(\d+)(?:\.(\d+))?/.exec(String(host.versionId));
+  const got = releaseTokens(name, host.id);
+  if (!hm || !got) return 0;
+  const want = [Number(hm[1]), hm[2] === undefined ? 0 : Number(hm[2])];
+  // Distance in releases, counting a minor bump as a fraction of a major one. Ubuntu
+  // ships .04 and .10, so a minor difference is never more than one major step.
+  const delta = got[0] - want[0] + (got[1] - want[1]) / 100;
+  if (got[0] === want[0] && got[1] === want[1]) return 6; // exact release match wins outright
+  if (delta < 0) return 3 - Math.min(2, -delta / 2); // older: usable, closest wins
+  return -4; // newer than the host: built against libraries this machine does not have
+}
 
 // A .zip sitting beside a .dmg of the SAME name is the macOS build.
 //
@@ -251,4 +303,4 @@ function assetTable(platform) {
   return TABLES[key] || linux;
 }
 
-module.exports = { assetTable, macCompanionZips, TABLES, SETUP_TOKEN };
+module.exports = { assetTable, macCompanionZips, linuxReleaseScore, TABLES, SETUP_TOKEN };

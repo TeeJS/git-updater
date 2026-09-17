@@ -217,3 +217,85 @@ test('macCompanionZips pairs on the stem and nothing else', () => {
   assert.deepEqual([...macCompanionZips(['Foo-arm64.zip'])], [], 'a zip with no dmg at all');
   assert.deepEqual([...macCompanionZips([])], []);
 });
+
+// --- source tarballs and per-release Linux packages --------------------------
+//
+// Both bugs below were found on a real Kubuntu 26.04 machine tracking obsproject/
+// obs-studio: the entry reported "installed 32.2.2, up to date" while the disk held
+// 5,413 files of C++ source and no binary, and switching to installer then offered a
+// build for the wrong Ubuntu release.
+
+const OBS = A(
+  'OBS-Studio-32.2.2-macOS-Apple-dSYMs.tar.xz',
+  'OBS-Studio-32.2.2-macOS-Apple.dmg',
+  'OBS-Studio-32.2.2-macOS-Intel-dSYMs.tar.xz',
+  'OBS-Studio-32.2.2-macOS-Intel.dmg',
+  'OBS-Studio-32.2.2-Sources.tar.gz',
+  'OBS-Studio-32.2.2-Ubuntu-24.04-x86_64-dbsym.ddeb',
+  'OBS-Studio-32.2.2-Ubuntu-24.04-x86_64.deb',
+  'OBS-Studio-32.2.2-Ubuntu-26.04-x86_64-dbsym.ddeb',
+  'OBS-Studio-32.2.2-Ubuntu-26.04-x86_64.deb',
+  'OBS-Studio-32.2.2-Windows-arm64-PDBs.zip',
+  'OBS-Studio-32.2.2-Windows-arm64.zip',
+  'OBS-Studio-32.2.2-Windows-x64-Installer.exe',
+  'OBS-Studio-32.2.2-Windows-x64-PDBs.zip',
+  'OBS-Studio-32.2.2-Windows-x64.zip'
+);
+
+test('linux portable: a source tarball is never a portable build', () => {
+  // "Sources" is plural, which the old reject regex missed — it required source to be
+  // followed by a separator or end-of-string. A .tar.gz that unpacks into a folder
+  // otherwise scores as a perfectly good portable build.
+  assert.throws(() => lin(OBS, 'portable', 'x64', null), /only ships an installer/);
+  // Singular and bare forms stay rejected too.
+  assert.throws(() => lin(A('App-1.0-source.tar.gz'), 'portable', 'x64', null), /no Linux portable asset/);
+  assert.throws(() => lin(A('App-1.0-sources.tar.gz'), 'portable', 'x64', null), /no Linux portable asset/);
+});
+
+test('linux installer: debug-symbol companions are never the build', () => {
+  // A .ddeb/-dbsym is the symbols for a package, not the package.
+  assert.throws(
+    () => lin(A('App-1.0-Ubuntu-24.04-x86_64-dbsym.ddeb'), 'installer', 'x64', null),
+    /no Linux installer asset/
+  );
+});
+
+test('linux installer: picks the package built for THIS Ubuntu release', () => {
+  const on = (versionId) => core.pickAsset(OBS, 'installer', 'x64', null, 'linux', { id: 'ubuntu', versionId });
+  assert.equal(on('26.04').name, 'OBS-Studio-32.2.2-Ubuntu-26.04-x86_64.deb');
+  assert.equal(on('24.04').name, 'OBS-Studio-32.2.2-Ubuntu-24.04-x86_64.deb');
+  // Newer than anything published: fall back to the newest build that is still older,
+  // because glibc is backward compatible in that direction and not the other.
+  assert.equal(on('28.04').name, 'OBS-Studio-32.2.2-Ubuntu-26.04-x86_64.deb');
+  // Older than anything published: nothing here will really run, but a build is still
+  // better than an error, and the closest one is the least bad.
+  assert.equal(on('22.04').name, 'OBS-Studio-32.2.2-Ubuntu-24.04-x86_64.deb');
+});
+
+test('linux installer: an unknown host changes nothing', () => {
+  // No /etc/os-release (container, exotic distro) — scoring just drops the release term
+  // and every other project, which ships one package for all of Linux, is unaffected.
+  const plain = A('App-1.0-amd64.deb', 'App-1.0-x86_64.rpm');
+  assert.equal(core.pickAsset(plain, 'installer', 'x64', null, 'linux', null).name, 'App-1.0-amd64.deb');
+  assert.equal(
+    core.pickAsset(plain, 'installer', 'x64', null, 'linux', { id: 'ubuntu', versionId: '26.04' }).name,
+    'App-1.0-amd64.deb'
+  );
+});
+
+test('linuxReleaseScore: release tokens, however the vendor spells them', () => {
+  const { linuxReleaseScore: score } = require('../src/platform/assets');
+  const ubuntu = (v) => ({ id: 'ubuntu', versionId: v });
+  assert.equal(score('OBS-32.2.2-Ubuntu-26.04-x86_64.deb', ubuntu('26.04')), 6, 'exact');
+  assert.equal(score('App-1.0-ubuntu2404.deb', ubuntu('24.04')), 6, 'no-dot form is the same release');
+  assert.ok(score('OBS-32.2.2-Ubuntu-24.04-x86_64.deb', ubuntu('26.04')) > 0, 'older is still usable');
+  assert.ok(score('OBS-32.2.2-Ubuntu-26.04-x86_64.deb', ubuntu('24.04')) < 0, 'newer is not');
+  // 15.6 and 15.06 are one release written two ways — comparing as a float ranked them
+  // apart and cost openSUSE an exact match.
+  assert.equal(score('App-1.0-opensuse-15.6.rpm', { id: 'opensuse', versionId: '15.6' }), 6);
+  // Silent whenever there is nothing to compare, so non-Linux tables and every project
+  // shipping one package for all of Linux score exactly as they did before.
+  assert.equal(score('App-1.0-amd64.deb', ubuntu('26.04')), 0, 'no release token');
+  assert.equal(score('App-1.0-Ubuntu-26.04.deb', null), 0, 'no /etc/os-release');
+  assert.equal(score('App-1.0-Ubuntu-26.04.deb', { id: 'fedora', versionId: '42' }), 0, 'different distro');
+});

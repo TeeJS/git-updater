@@ -155,19 +155,27 @@ const { assetTable, macCompanionZips } = require('./platform/assets');
 // ALREADY installed (Windows 'msi' | 'exe', Linux 'deb' | 'rpm', or null) — strongly
 // prefer the same flavor so an update upgrades in place instead of installing a
 // duplicate side-by-side. table: from assetTable(), defaults to the running platform.
-function scoreAsset(name, type, arch, flavor, table) {
+// host: the running distro as { id, versionId } from /etc/os-release (Linux only; null
+// elsewhere or when unknown). Read by the caller — this module does no IO.
+function scoreAsset(name, type, arch, flavor, table, host) {
   const t = table || assetTable();
   if (t.reject.test(name)) return -Infinity;
   if (!(type === 'installer' ? t.ext.installer : t.ext.portable).test(name)) return -Infinity;
   // Reward naming this platform, then how well the architecture matches the running
-  // machine, then the format/flavor preferences that separate portable from installer.
-  return t.osBonus(name) + t.archScore(t.archTokens(name), arch) + t.typeScore(name, type, flavor);
+  // machine, then the format/flavor preferences that separate portable from installer,
+  // and finally the distro release when the filename names one.
+  return (
+    t.osBonus(name) +
+    t.archScore(t.archTokens(name), arch) +
+    t.typeScore(name, type, flavor) +
+    (t.releaseScore ? t.releaseScore(name, host) : 0)
+  );
 }
 
 // Returns the best-matching asset object, or throws if the release has none for the
 // platform. arch defaults to the running machine's architecture, platform to the
 // running OS ('win32' | 'darwin' | 'linux').
-function pickAsset(assets, type, arch, flavor, platform) {
+function pickAsset(assets, type, arch, flavor, platform, host) {
   const table = assetTable(platform);
   // Off macOS, drop a .zip that is the companion of a .dmg — it is the macOS bundle, and
   // nothing in its NAME says so. See macCompanionZips for why this cannot be a reject
@@ -179,7 +187,7 @@ function pickAsset(assets, type, arch, flavor, platform) {
   let best = null;
   let bestScore = -Infinity;
   for (const a of list) {
-    const sc = scoreAsset(a.name, type, a4, flavor, table);
+    const sc = scoreAsset(a.name, type, a4, flavor, table, host);
     if (sc === -Infinity) continue;
     if (sc > bestScore || (sc === bestScore && best && a.name.length < best.name.length)) {
       best = a;
@@ -190,7 +198,7 @@ function pickAsset(assets, type, arch, flavor, platform) {
     // If the OTHER package type would match, the app just isn't shipped this way —
     // point the user at the fix instead of a dead end.
     const other = type === 'installer' ? 'portable' : 'installer';
-    const otherHit = list.some((a) => scoreAsset(a.name, other, a4, null, table) !== -Infinity);
+    const otherHit = list.some((a) => scoreAsset(a.name, other, a4, null, table, host) !== -Infinity);
     if (otherHit) {
       throw new Error(
         type === 'installer'

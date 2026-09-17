@@ -8,6 +8,7 @@
 // Everything here is ASYNC: the inventory calls take seconds, and a sync version would
 // freeze the Electron main process (window paint, IPC) for that whole time.
 
+const fs = require('fs');
 const platform = require('./platform');
 const { cmpVersion } = require('./core');
 
@@ -177,8 +178,37 @@ async function closeApp(needle, opts = {}) {
   return { closed: procs.length, stillRunning: await isRunning(needle) };
 }
 
+// --- host distro --------------------------------------------------------------
+//
+// The running Linux release, for projects that ship one package per distro release
+// (OBS ships an Ubuntu-24.04 .deb and an Ubuntu-26.04 .deb in the same release).
+// core.pickAsset takes this as data so it stays IO-free. Kubuntu, Xubuntu and the rest
+// all report ID=ubuntu, which is what the package filenames say, so no flavour mapping
+// is needed. Cached: /etc/os-release cannot change while the process runs.
+let _osRelease;
+function osRelease() {
+  if (_osRelease !== undefined) return _osRelease;
+  _osRelease = null;
+  if (process.platform === 'linux') {
+    try {
+      const txt = fs.readFileSync('/etc/os-release', 'utf8');
+      const get = (k) => {
+        const m = new RegExp(`^${k}=(.*)$`, 'm').exec(txt);
+        return m ? m[1].trim().replace(/^["']|["']$/g, '') : null;
+      };
+      const id = get('ID');
+      const versionId = get('VERSION_ID');
+      if (id && versionId) _osRelease = { id, versionId };
+    } catch {
+      // No /etc/os-release (container, exotic distro) — scoring just skips the release term.
+    }
+  }
+  return _osRelease;
+}
+
 module.exports = {
   nameMatches,
+  osRelease,
   installedVersion,
   installedFlavor,
   launchTarget,

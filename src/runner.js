@@ -148,7 +148,7 @@ async function handleRepo(repo, id, st, opts) {
   const flavor = repo.type === 'installer' ? await detect.installedFlavor(repo.detect || repo.repo) : null;
   const asset = repo.asset
     ? core.matchAsset(rel.assets, repo.asset)
-    : core.pickAsset(rel.assets, repo.type, null, flavor);
+    : core.pickAsset(rel.assets, repo.type, null, flavor, null, detect.osRelease());
 
   if (opts.dryRun) {
     const verb = /\.(zip|7z|tar\.gz|tgz|tar\.xz|tar\.bz2|tar|dmg)$/i.test(asset.name) ? 'extract' : 'place';
