@@ -430,6 +430,8 @@ src/                 the engine (no UI, no shell):
   state.js           atomic state + cross-process update lock
   paths.js           per-platform config/data directories
   detect.js          installed versions/flavor + running-app check (async) — matching only
+                     (token-boundary, and Linux-strict: see the header for why `ed` is not
+                     Bedrock Panel and the `git` package is not git-updater)
   catalog.js         known-apps catalog for "Scan this PC", filtered per platform
   log.js             file log -> <config dir>/logs (Settings -> Open log)
   platform/          EVERYTHING OS-specific lives here, behind one interface:

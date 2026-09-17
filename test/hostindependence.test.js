@@ -92,6 +92,7 @@ test('tests must pass the platform explicitly, never inherit the host', () => {
     { name: 'pickAsset', index: 4 },
     { name: 'parseSystemProfiler', index: 1 },
     { name: 'matchInstalled', index: 2 },
+    { name: 'nameMatches', index: 2 },
   ];
   const bad = [];
   for (const { file, src } of testFiles()) {
@@ -129,12 +130,14 @@ test('the guard can actually see a violation', () => {
     "core.pickAsset(assets, 'installer', 'darwin');",
     "mac.parseSystemProfiler(json);",
     "matchInstalled(rows, new Set());",
+    "nameMatches('ed', 'bedrock-panel');",
   ].join('\n');
 
   assert.equal(callsTo(sample, 'pickAsset')[0].args.length, 2, 'sees a two-argument call');
   assert.ok(PLATFORMS.has(callsTo(sample, 'pickAsset')[1].args[2]), 'sees a platform in the arch slot');
   assert.equal(callsTo(sample, 'parseSystemProfiler')[0].args.length, 1);
   assert.equal(callsTo(sample, 'matchInstalled')[0].args.length, 2);
+  assert.equal(callsTo(sample, 'nameMatches')[0].args.length, 2, 'sees a platform-less name match');
 
   // ...and that it does not fire on correct calls, or the suite becomes noise.
   const ok = "core.pickAsset(assets, 'portable', 'x64', null, 'linux');";

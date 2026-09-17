@@ -14,6 +14,81 @@ const { cmpVersion } = require('./core');
 const norm = (s) => String(s || '').toLowerCase().replace(/\.(exe|app)$/, '').replace(/[^a-z0-9]/g, '');
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// --- name matching -----------------------------------------------------------
+//
+// A repo name and an inventory name are never spelled the same way: "brave-browser" is
+// "Brave" in the uninstall registry, "notepad-plus-plus" is "Notepad++", "obs-studio" is
+// "OBS Studio 32.2.2". So the match has to be loose. It was loose by raw substring, and
+// that is wrong in a way no Windows or macOS inventory could show:
+//
+//   needle "bedrock-panel" -> "bedrockpanel", which CONTAINS "ed", and dpkg has a package
+//   named `ed` (GNU ed, 1.22.4-1). Bedrock Panel reported itself installed at 1.22.4,
+//   which is above every release it has, so it read as up to date and the real update was
+//   never offered. An updater that silently declines to update is worse than one that errors.
+//
+// Two things were wrong, and both had to be fixed to clear that row.
+//
+// 1. Letters, not tokens. Matching now runs on TOKEN boundaries: one name must be the
+//    other's whole normalized form, or a contiguous RUN of its tokens. "brave" is a token
+//    of "brave-browser", "7zip" is the run 7+zip inside "7-Zip 26.02 (x64 edition)",
+//    "firefox" is a token of "Mozilla Firefox". "ed" is two letters in the middle of one
+//    token of "bedrock-panel", so it is no longer a match; neither is libtesseract5
+//    against "tesseract", a pair src/catalog.js documents for its own regexes.
+//
+// 2. Direction, on Linux. A token rule alone still matched the `git` package to the
+//    needle "git-updater" — a leading token is no proof, and nothing lexical separates
+//    git/git-updater from Brave/brave-browser. What separates them is the namespace.
+//    Windows and macOS names are HUMAN-FACING, a few hundred of them, and the extra words
+//    land on either side ("Brave" for brave-browser, "OBS Studio 32.2.2" for obs-studio),
+//    so both directions have to stay open there. A Linux name is a MACHINE identifier the
+//    upstream chose: the Brave package IS "brave-browser". So Linux accepts only the
+//    needle being the shorter side — "joplin" matches the joplin-desktop package, `git`
+//    never matches git-updater. This is the conclusion src/catalog.js reached about its
+//    regexes against the same namespace, for the same reason: 2825 rows of short machine
+//    identifiers, many of them ordinary English words (`ed`, `bc`, `dc`, `at`, `jq`, `iw`).
+//
+// A name this cannot bridge (microsoft/vscode vs the `code` package) is what the per-app
+// `detect` override is for. A missed row costs the user one manual field; a wrong row
+// costs them an update they never learn about.
+
+const tokens = (s) =>
+  String(s || '')
+    .toLowerCase()
+    .replace(/\.(exe|app)$/, '')
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean);
+
+// Every contiguous run of a name's tokens, joined: "obs-studio" -> obs, obsstudio, studio.
+function tokenRuns(name) {
+  const t = tokens(name);
+  const out = new Set();
+  for (let i = 0; i < t.length; i++) {
+    let run = '';
+    for (let j = i; j < t.length; j++) {
+      run += t[j];
+      out.add(run);
+    }
+  }
+  return out;
+}
+
+// Do these two names refer to the same app? Pure, so the whole table is unit-testable
+// from any host — which is why the platform is a parameter and not process.platform.
+// `plat`, not `platform`: the module of that name is this file's IO layer, and shadowing
+// it inside the one pure function here is how that stops being obvious.
+function nameMatches(name, needle, plat) {
+  const n = norm(name);
+  const t = norm(needle);
+  if (n.length < 2 || t.length < 2) return false;
+  if (n === t) return true;
+  // Linux: the inventory name is the upstream's own identifier, so only the needle may be
+  // the shorter side. Elsewhere the names are human-facing and either side may carry the
+  // extra words, so a run in either direction counts.
+  const needleInName = tokenRuns(name).has(t);
+  if ((plat || process.platform) === 'linux') return needleInName;
+  return needleInName || tokenRuns(needle).has(n);
+}
+
 let cache = null; // cleared after installs so fresh versions show
 function clearCache() {
   cache = null;
@@ -32,12 +107,7 @@ async function allInstalled() {
 }
 
 async function matchEntries(needle) {
-  const t = norm(needle);
-  if (t.length < 2) return [];
-  return (await allInstalled()).filter((e) => {
-    const n = norm(e.name);
-    return n.length >= 2 && (n.includes(t) || t.includes(n));
-  });
+  return (await allInstalled()).filter((e) => nameMatches(e.name, needle));
 }
 
 // Best version for an app whose inventory name matches `needle`. An app can have
@@ -61,17 +131,25 @@ async function installedFlavor(needle) {
 
 // --- running-process detection (for a proactive "close the app" warning) ------
 
-async function matchProcs(needle) {
+// Process names carry the same hazard as inventory names — /usr/bin/ed is a running
+// process too — so they go through the same token match. One extra clause: Linux `comm`
+// is truncated by the kernel at 15 characters, which chops a longer name mid-token and
+// no token rule can bridge that. A 15-character prefix of the needle is accepted as the
+// truncation it is.
+function procMatches(procName, needle) {
+  if (nameMatches(procName, needle)) return true;
+  const pn = norm(procName);
   const t = norm(needle);
-  if (t.length < 3) return [];
-  return (await platform.runningProcesses()).filter((p) => {
-    const pn = norm(p.name);
-    return pn.length >= 3 && (pn.includes(t) || t.includes(pn));
-  });
+  return pn.length >= 15 && t.startsWith(pn);
 }
 
-// Is a process whose name looks like `needle` running? Loose alphanumeric match
-// (so "notepad-plus-plus" matches "notepad++.exe"); override per app with `process`.
+async function matchProcs(needle) {
+  if (norm(needle).length < 3) return [];
+  return (await platform.runningProcesses()).filter((p) => procMatches(p.name, needle));
+}
+
+// Is a process whose name looks like `needle` running? Loose token match (so
+// "notepad-plus-plus" matches "notepad++.exe"); override per app with `process`.
 async function isRunning(needle) {
   return (await matchProcs(needle)).length > 0;
 }
@@ -87,6 +165,7 @@ async function closeApp(needle, opts = {}) {
 }
 
 module.exports = {
+  nameMatches,
   installedVersion,
   installedFlavor,
   isRunning,
