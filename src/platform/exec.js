@@ -68,4 +68,24 @@ async function run(cmd, args, opts = {}) {
   return r.code === 0 || (opts.acceptAnyExit && r.code !== null) ? r.out : '';
 }
 
-module.exports = { run, runStatus };
+// Start a program and DETACH from it. Every other helper here waits for a command to
+// finish, which is exactly wrong for launching an app: the user's editor or video mixer
+// must outlive the click that started it, and must not die when git-updater quits or
+// keep a pipe open against git-updater's stdout.
+//
+// Returns true when the process was handed to the OS, false when it could not start.
+// That is as much as can be known synchronously — an app that starts and then exits on
+// its own is indistinguishable from a successful launch, and belongs to the app.
+function spawnDetached(cmd, args) {
+  try {
+    const child = spawn(cmd, args, { detached: true, stdio: 'ignore', windowsHide: true });
+    // Without this the parent's event loop stays alive waiting on a child it does not care
+    // about, and quitting git-updater would be blocked by the app it launched.
+    child.unref();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+module.exports = { run, runStatus, spawnDetached };

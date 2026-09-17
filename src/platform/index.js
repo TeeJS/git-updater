@@ -46,6 +46,23 @@ async function verifyPayload(dir) {
   return p.verifyPayload ? p.verifyPayload(dir) : null;
 }
 
+// Optional per-platform launch resolution. Windows carries a program path in the
+// uninstall registry, so its rows arrive launchable; the Linux inventories list packages
+// rather than programs and have to go looking. null means "nothing to add".
+async function launchTargetFor(name, flavor) {
+  const p = impl();
+  return p.launchTargetFor ? p.launchTargetFor(name, flavor) : null;
+}
+
+// Optional per-platform launch. Windows and macOS hand the path to the OS shell, which
+// does the right thing with an .exe or an .app. Linux has no such single gesture: a
+// .desktop entry is a launch descriptor that xdg-open will happily open in a text editor,
+// so that platform needs a launcher of its own. false means "not handled — use the shell".
+async function launchApp(target) {
+  const p = impl();
+  return p.launchApp ? p.launchApp(target) : false;
+}
+
 function impl(platform) {
   const key = platform || process.platform;
   const make = IMPLS[key];
@@ -59,6 +76,8 @@ module.exports = {
   assetTable,
   extract,
   verifyPayload,
+  launchTargetFor,
+  launchApp,
   installedApps: (...a) => current.installedApps(...a),
   runningProcesses: (...a) => current.runningProcesses(...a),
   killProcess: (...a) => current.killProcess(...a),

@@ -12,6 +12,7 @@ const github = require('../src/github');
 const runner = require('../src/runner');
 const state = require('../src/state');
 const detect = require('../src/detect');
+const platform = require('../src/platform');
 const paths = require('../src/paths');
 const catalog = require('../src/catalog');
 const selfupdate = require('../src/selfupdate');
@@ -171,8 +172,11 @@ function shallowFiles(dir, depth = 2, prefix = '') {
 // "Open App": launch the installed program behind a tracked row.
 //  - portable  -> resolve the main file from our own install manifest + the portable dir.
 //  - installer -> the registry DisplayIcon exe, else hunt InstallLocation for it.
-// Launch is always shell.openPath (ShellExecute) — no shell spawn, no temp exec — so it
-// stays within the same EDR posture as installs and "Open folder".
+// Launch prefers shell.openPath (ShellExecute) — no shell spawn, no temp exec — so it
+// stays within the same EDR posture as installs and "Open folder". Linux is the
+// exception, and has to be: its launch target is a .desktop entry, and openPath sends
+// that to the user's association for application/x-desktop, which on KDE is the text
+// editor. The platform layer launches it properly there; see linux.launchApp.
 ipcMain.handle('app:launch', async (_e, appKey) => {
   const cfg = readConfig();
   const r = cfg.repos.find((x) => `${x.owner}/${x.repo}#${x.type}` === appKey);
@@ -200,6 +204,7 @@ ipcMain.handle('app:launch', async (_e, appKey) => {
 
   if (!target) throw new Error(`couldn't find ${r.repo}'s program to open — try Open folder`);
   log(`launchApp ${appKey} -> ${target}`);
+  if (await platform.launchApp(target)) return { ok: true, path: target };
   const err = await shell.openPath(target); // '' on success, else an OS error string
   if (err) throw new Error(err);
   return { ok: true, path: target };

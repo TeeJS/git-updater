@@ -140,7 +140,12 @@ async function launchTarget(needle) {
   if (!hits.length) return null;
   hits.sort((a, b) => cmpVersion(a.version, b.version));
   const best = hits[hits.length - 1];
-  return { path: best.path || null, location: best.location || null };
+  if (best.path || best.location) return { path: best.path || null, location: best.location || null };
+  // Nothing launchable on the row itself. Windows puts a program path in the uninstall
+  // registry, but dpkg, rpm, flatpak and snap all inventory PACKAGES, so the platform
+  // layer has to go and find the program. Asked only for the one app being opened,
+  // because it costs a subprocess.
+  return (await platform.launchTargetFor(best.name, best.flavor)) || { path: null, location: null };
 }
 
 // --- running-process detection (for a proactive "close the app" warning) ------
