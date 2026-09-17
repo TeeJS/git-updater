@@ -125,3 +125,79 @@ test('runner: an app already running is refused before anything is downloaded', 
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// A .dmg guarded by a click-through licence agreement can't be unpacked unattended.
+// Rather than dead-end, the runner hands the image to macOS (opts.openFile) so its own
+// dialog shows the licence for the user to accept, then they install by hand. The licence
+// error is identified by the `licenceAgreement` flag extractDmg sets, so this drives the
+// runner branch without needing a real hdiutil-mounted image.
+const install = require('../src/install');
+
+test('runner: a licence-agreement dmg is opened for the user to accept, not dead-ended', async () => {
+  const dir = tmp();
+  const realInstallPortable = install.installPortable;
+  install.installPortable = async () => {
+    const e = new Error('this disk image requires agreeing to a licence agreement before it can be opened');
+    e.licenceAgreement = true;
+    throw e;
+  };
+  try {
+    const opened = [];
+    await withStubs({ running: [false, false] }, async () => {
+      const { results } = await runner.run(configFor(dir), {
+        statePath: path.join(dir, 'state.json'),
+        openFile: (f) => opened.push(f),
+      });
+      assert.equal(results[0].status, 'failed');
+      assert.match(results[0].reason, /disk image opened — accept the licence/);
+      assert.equal(opened.length, 1, 'the image was handed to macOS to open');
+      assert.match(opened[0], /payload\.zip$/, 'opened the downloaded image, from a stable path');
+    });
+  } finally {
+    install.installPortable = realInstallPortable;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('runner: a licence-agreement dmg still dead-ends cleanly when there is no way to open it', async () => {
+  const dir = tmp();
+  const realInstallPortable = install.installPortable;
+  install.installPortable = async () => {
+    const e = new Error('this disk image requires agreeing to a licence agreement before it can be opened');
+    e.licenceAgreement = true;
+    throw e;
+  };
+  try {
+    await withStubs({ running: [false, false] }, async () => {
+      // No openFile in opts (e.g. a headless run): the original licence error stands.
+      const { results } = await runner.run(configFor(dir), { statePath: path.join(dir, 'state.json') });
+      assert.equal(results[0].status, 'failed');
+      assert.match(results[0].reason, /requires agreeing to a licence agreement/);
+    });
+  } finally {
+    install.installPortable = realInstallPortable;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// A portable entry for an app the user installed by hand (found in the OS inventory, not in
+// git-updater's folder). At the latest version it must read as CURRENT — not as "not
+// installed", and not as a broken managed install to redo, which the empty folder would
+// otherwise trigger. This is the Deskflow case: a dmg with a licence gate can only be
+// installed by hand, so it never lands in the portable folder.
+test('runner: a hand-installed portable (OS inventory) at latest reads as current, not a reinstall', async () => {
+  const dir = tmp();
+  const realInstalledVersion = detect.installedVersion;
+  detect.installedVersion = async () => '2.0.0'; // present in the OS inventory, matches latest
+  try {
+    // Deliberately DO NOT create dir/widget: git-updater manages no copy, its folder is empty.
+    await withStubs({ running: [false] }, async () => {
+      const { results } = await runner.run(configFor(dir), { statePath: path.join(dir, 'state.json') });
+      assert.equal(results[0].status, 'current', results[0].reason);
+      assert.match(String(results[0].from), /2\.0\.0/, 'reports the OS-detected version as installed');
+    });
+  } finally {
+    detect.installedVersion = realInstalledVersion;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

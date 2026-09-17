@@ -130,6 +130,7 @@ async function handleRepo(repo, id, st, opts) {
   // Compare against the ACTUAL installed version, not just our update history:
   // installer -> uninstall-registry DisplayVersion; portable -> our install manifest.
   let installed = null;
+  let externallyInstalled = false; // portable app found in the OS inventory, not one we manage
   if (repo.type === 'installer') {
     try {
       installed = await detect.installedVersion(repo.detect || repo.repo);
@@ -143,6 +144,25 @@ async function handleRepo(repo, id, st, opts) {
     }
   } else {
     installed = prev.version || null;
+    // No git-updater-managed record: fall back to the OS inventory. The user may have
+    // installed this app by hand (e.g. dragged a dmg into /Applications) — it then reads as
+    // installed even though git-updater does not own the copy. For an SLA-guarded dmg like
+    // Deskflow's, which cannot be unpacked unattended, this is the ONLY way it ever shows
+    // installed. Aligned to the tag scheme like the installer path above.
+    if (!installed) {
+      let detected = null;
+      try {
+        detected = await detect.installedVersion(repo.detect || repo.repo);
+      } catch {}
+      if (detected) {
+        installed = detected;
+        externallyInstalled = true;
+        if (core.cmpVersion(latest, installed) < 0) {
+          const aligned = core.alignInstalledVersion(installed, latest);
+          if (aligned) installed = aligned;
+        }
+      }
+    }
   }
   const baseline = installed || prev.tag || '';
   const tracked = installed || prev.tag; // do we believe it's installed at all?
@@ -154,8 +174,11 @@ async function handleRepo(repo, id, st, opts) {
   if (!isNew && !/^\d/.test(core.normTag(latest)) && prev.tag && core.normTag(latest) !== core.normTag(prev.tag)) {
     isNew = true;
   }
-  // Portable recorded as installed but its folder is gone/empty -> reinstall.
-  if (!isNew && !opts.force && tracked && repo.type === 'portable' && repo.install && !dirHasFiles(repo.install.dir)) {
+  // Portable recorded as installed but its folder is gone/empty -> reinstall. Skipped when
+  // the version came from the OS inventory rather than our own manifest: an externally
+  // installed app (e.g. Deskflow in /Applications) is genuinely present, just not in our
+  // folder, so it is up to date, not a broken install to redo.
+  if (!isNew && !opts.force && tracked && repo.type === 'portable' && repo.install && !externallyInstalled && !dirHasFiles(repo.install.dir)) {
     isNew = true;
   }
 
@@ -297,7 +320,28 @@ async function handleRepo(repo, id, st, opts) {
         return { ...base, status: 'failed', reason: `${repo.repo} is running — close it, then Retry` };
       }
       // Transactional dir swap: stale files vanish with the old dir, user files carry over.
-      files = await install.installPortable(file, repo.install, prev.files);
+      try {
+        files = await install.installPortable(file, repo.install, prev.files);
+      } catch (e) {
+        // A .dmg gated by a click-through licence agreement cannot be unpacked unattended,
+        // and git-updater will not agree to a licence for the user (see extractDmg). Rather
+        // than dead-end, hand the image to macOS so ITS OWN dialog shows the licence — the
+        // legal act stays with the human — and the user installs the app by hand from the
+        // mounted image. Mirrors the interactive-installer fallback above. Copy the image
+        // out of the tmp dir first so it survives the cleanup in `finally`.
+        if (e.licenceAgreement && opts.openFile) {
+          const keep = path.join(stageBase, asset.name);
+          fs.copyFileSync(file, keep);
+          log(`  -> opening disk image for licence acceptance: ${keep}`);
+          opts.openFile(keep);
+          return {
+            ...base,
+            status: 'failed',
+            reason: 'disk image opened — accept the licence, then install the app by hand from it',
+          };
+        }
+        throw e;
+      }
     }
 
     st[key] = {

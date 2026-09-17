@@ -135,7 +135,24 @@ ipcMain.handle('installed:get', async () => {
     } else {
       const dir = portableDir(cfg, r);
       const rec = stt[key];
-      out[key] = { current: (rec && rec.version) || null, present: dirHasFiles(dir) };
+      let current = (rec && rec.version) || null;
+      let present = dirHasFiles(dir);
+      // Neither a managed copy nor a git-updater record: fall back to the OS inventory. The
+      // user may have installed the app by hand (e.g. dragged a dmg into /Applications) — it
+      // then reads as installed though git-updater does not own the copy. For an SLA-guarded
+      // dmg like Deskflow's, which cannot be unpacked unattended, this is the ONLY way it
+      // ever shows as present.
+      if (!present && !current) {
+        let v = null;
+        try {
+          v = await detect.installedVersion(r.detect || r.repo);
+        } catch {}
+        if (v) {
+          current = v;
+          present = true;
+        }
+      }
+      out[key] = { current, present };
     }
   }
   return out;
@@ -183,9 +200,10 @@ ipcMain.handle('app:launch', async (_e, appKey) => {
   if (!r) throw new Error('app not found');
   let target = null;
 
-  if (r.type === 'portable') {
-    const dir = portableDir(cfg, r);
-    if (!dir || !dirHasFiles(dir)) throw new Error('this app is not installed yet');
+  const portDir = r.type === 'portable' ? portableDir(cfg, r) : null;
+  if (portDir && dirHasFiles(portDir)) {
+    // A copy git-updater manages: launch it from our own manifest + the portable dir.
+    const dir = portDir;
     const rec = state.load()[appKey];
     const files = (rec && rec.files) || shallowFiles(dir, 3);
     // On Unix the execute bit is what separates a program from a LICENSE file sitting at
@@ -203,6 +221,9 @@ ipcMain.handle('app:launch', async (_e, appKey) => {
       if (fs.existsSync(abs)) target = abs;
     }
   } else {
+    // An installer entry, OR a portable entry with no managed copy — the app was installed
+    // by hand (found in the OS inventory, e.g. Deskflow in /Applications). Either way, launch
+    // it from the OS's own record.
     const t = await detect.launchTarget(r.detect || r.repo);
     if (t && t.path && fs.existsSync(t.path)) target = t.path;
     if (!target && t && t.location && fs.existsSync(t.location)) {

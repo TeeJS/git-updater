@@ -288,7 +288,14 @@ async function extractDmg(dmgPath, destDir) {
       // to — our stdin is the null device, so the prompt reads EOF and it declines. That
       // reason is true and useless to a user. Ask the image whether it has an agreement and
       // say so instead. Measured in the wild on deskflow 1.26.0, whose image carries GPL v2.
-      throw new Error(mountFailure(attach, await hasLicenceAgreement(dmgPath)));
+      const hasLic = await hasLicenceAgreement(dmgPath);
+      const err = new Error(mountFailure(attach, hasLic));
+      // Flag the licence case so the caller can hand the image to macOS's OWN dialog for the
+      // user to accept (open <dmg>), instead of dead-ending. git-updater still never agrees
+      // to a licence on the user's behalf — the flag routes to an interactive open, not to
+      // `yes | hdiutil attach`.
+      if (hasLic) err.licenceAgreement = true;
+      throw err;
     }
     let names;
     try {
