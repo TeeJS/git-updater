@@ -339,31 +339,35 @@ ipcMain.handle('pick-folder', async () => {
   });
   return { path: r.canceled || !r.filePaths.length ? '' : r.filePaths[0] };
 });
-// A check can discover that an app typed as an installer publishes no installer, and
-// correct it to portable (see retypeIfNoInstaller in src/runner.js). The runner only
+// A check can discover that an app is typed as something the project does not publish,
+// in either direction (see retypeIfUnavailable in src/runner.js). The runner only
 // decides; persisting belongs here, because config.json is the main process's to own.
 // Never silent: the renderer reports what changed and why, and it is logged.
 function applyRetypes(results) {
-  const changes = (results || []).filter((r) => r.retyped && r.retyped.to === 'portable');
+  const changes = (results || []).filter((r) => r.retyped && (r.retyped.to === 'portable' || r.retyped.to === 'installer'));
   if (!changes.length) return;
   const cfg = readConfig();
-  const hits = [];
+  const hits = { portable: [], installer: [] };
   for (const r of changes) {
     const m = /^([^/]+)\/([^/]+)#(.+)$/.exec(r.id || '');
     if (!m) continue;
     const [, owner, repo, type] = m;
-    // If the user already tracks this repo as portable, correcting would create a
-    // duplicate entry. Leave the installer entry alone and let them untrack it.
-    if (cfg.repos.some((x) => x.owner === owner && x.repo === repo && x.type === 'portable')) continue;
+    const to = r.retyped.to;
+    // If the user already tracks this repo as the target type, correcting would create a
+    // duplicate entry. Leave the miscast one alone and let them untrack it.
+    if (cfg.repos.some((x) => x.owner === owner && x.repo === repo && x.type === to)) continue;
     const entry = cfg.repos.find((x) => x.owner === owner && x.repo === repo && x.type === type);
     if (!entry) continue;
-    entry.type = 'portable';
-    entry.install = { ...(entry.install || {}), dir: r.retyped.dir };
-    hits.push(`${owner}/${repo}`);
+    entry.type = to;
+    // Portable needs a folder to unpack into. Installer does not, but the folder is kept
+    // rather than dropped so switching back by hand does not lose the chosen location.
+    if (to === 'portable') entry.install = { ...(entry.install || {}), dir: r.retyped.dir };
+    hits[to].push(`${owner}/${repo}`);
   }
-  if (!hits.length) return;
+  if (!hits.portable.length && !hits.installer.length) return;
   saveConfigFile(cfg);
-  log(`retyped to portable (no installer published): ${hits.join(', ')}`);
+  if (hits.portable.length) log(`retyped to portable (no installer published): ${hits.portable.join(', ')}`);
+  if (hits.installer.length) log(`retyped to installer (no portable build published): ${hits.installer.join(', ')}`);
   if (win && !win.isDestroyed()) win.webContents.send('config-changed');
 }
 

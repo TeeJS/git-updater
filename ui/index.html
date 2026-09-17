@@ -554,28 +554,33 @@ async function closeAndRetry(r, key) {
 async function checkApps(keys) {
   if (busy) return;
   busy = true; keys.forEach((k) => (st[k] = { ...(st[k] || {}), ph: 'checking' })); renderRepos();
-  const retyped = []; // apps the check switched to Portable — must be reported, not silent
+  const retyped = { portable: [], installer: [] }; // type corrections — reported, never silent
   try {
     for (const k of keys) {
       const { results } = await window.api.check({ only: k });
       const r = results.find((x) => (x.id || x.repo) === k) || results[0];
       if (r) {
         const s = st[k] || {};
-        if (r.retyped) retyped.push(k.split('#')[0]);
+        if (r.retyped && retyped[r.retyped.to]) retyped[r.retyped.to].push(k.split('#')[0]);
         if (r.status === 'failed') st[k] = { ...s, ph: 'failed', reason: r.reason };
         else st[k] = { ...s, ph: r.status === 'current' ? 'current' : 'available', from: r.from || s.from, to: r.to, present: s.present };
       }
       renderRepos();
     }
-    // Say what changed AND what it means: for an app the system package manager already
-    // installed, a portable copy sits beside it rather than replacing it, and the user
-    // can only decide whether they want that if we tell them.
-    msg(
-      retyped.length
-        ? `Check complete. ${retyped.join(', ')} switched to Portable — ${retyped.length > 1 ? 'these publish' : 'this publishes'} no installer, so the portable copy installs alongside any existing one.`
-        : 'Check complete.',
-      'ok'
-    );
+    // Say what changed AND what it means. Going portable, a copy sits beside whatever the
+    // system package manager already installed rather than replacing it. Going installer,
+    // updates stop landing in the portable folder and start asking for authorization.
+    // Either way the user can only decide whether they want it if we tell them.
+    const parts = [];
+    if (retyped.portable.length)
+      parts.push(
+        `${retyped.portable.join(', ')} switched to Portable — ${retyped.portable.length > 1 ? 'these publish' : 'this publishes'} no installer, so the portable copy installs alongside any existing one.`
+      );
+    if (retyped.installer.length)
+      parts.push(
+        `${retyped.installer.join(', ')} switched to Installer — ${retyped.installer.length > 1 ? 'these publish' : 'this publishes'} no portable build, so updates install system-wide and will ask for authorization.`
+      );
+    msg(parts.length ? `Check complete. ${parts.join(' ')}` : 'Check complete.', 'ok');
   } catch (e) { keys.forEach((k) => (st[k] = { ...(st[k] || {}), ph: 'failed', reason: clean(e) })); msg(clean(e), 'bad'); }
   finally { busy = false; renderRepos(); }
 }

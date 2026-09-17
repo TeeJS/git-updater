@@ -336,7 +336,10 @@ function buildSummary(results) {
     if (r.status === 'updated') {
       lines.push(`  ✓ ${r.repo}  ${r.from || '—'} → ${r.to}${r.note ? '  (' + r.note + ')' : ''}`);
     } else if (r.status === 'current') {
-      lines.push(`  · ${r.repo}  ${r.to} (already current)`);
+      // A type correction lands here whenever the app turns out to be installed already,
+      // which is the common case for one the user tracked with the wrong type. Dropping
+      // the note would make the CLI the one path where that change happens silently.
+      lines.push(`  · ${r.repo}  ${r.to} (already current)${r.note ? '  (' + r.note + ')' : ''}`);
     } else {
       lines.push(`  ✗ ${r.repo}  ${r.reason}`);
     }

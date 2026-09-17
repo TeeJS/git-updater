@@ -177,3 +177,18 @@ test('cmpVersion: the shapes that already worked still work', () => {
   assert.equal(core.alignInstalledVersion('5.5.3.20260724', '5.5.3'), '5.5.3');
   assert.equal(core.alignInstalledVersion('152.1.94.117', '1.94.117'), '1.94.117');
 });
+
+test('summary: a type correction is reported on a current row, not swallowed', () => {
+  // Correcting an entry's type usually reveals the app was installed all along, so the
+  // disclosure lands on a "current" row. That was the one path where it went unsaid.
+  const { text } = core.buildSummary([
+    { repo: 'obsproject/obs-studio', status: 'current', to: '32.2.2', note: 'switched to Installer — ...' },
+  ]);
+  assert.match(text, /already current/);
+  assert.match(text, /switched to Installer/);
+});
+
+test('summary: a current row with nothing to disclose stays clean', () => {
+  const { text } = core.buildSummary([{ repo: 'acme/widget', status: 'current', to: '1.2.3' }]);
+  assert.equal(text.split('\n')[1], '  · acme/widget  1.2.3 (already current)');
+});

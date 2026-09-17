@@ -21,41 +21,68 @@ const isWin = process.platform === 'win32';
 const displayId = (repo) => `${repo.owner}/${repo.repo}`;
 const appKey = (repo) => `${repo.owner}/${repo.repo}#${repo.type}`;
 
-// "Scan this PC" adds every discovered app as an installer. On Linux that is wrong for
-// most repos: of the catalog entries with Linux identifiers, 20 of 40 publish only a
-// portable archive and 3 publish no binary at all, so an installer entry fails on every
-// check. The first check already holds the release payload, so the correction costs
-// nothing here — deciding it when the user ticks the app would cost one API call each,
-// against an anonymous budget of 60 an hour that this app already exhausts in practice.
+// A tracked entry can name a package type the project does not publish, and then every
+// check fails — or worse, quietly installs the wrong thing. Both directions happen:
 //
-// The correction is REPORTED, never silent. It changes an entry the user did not type by
-// hand, and for a package-managed app the portable copy installs ALONGSIDE the existing
-// one rather than replacing it, which the user has to be told so they can untrack it if
-// that is not what they wanted.
+//   installer -> portable  "Scan this PC" adds every discovered app as an installer. On
+//                          Linux that is wrong for most repos: of the catalog entries
+//                          with Linux identifiers, 20 of 40 publish only a portable
+//                          archive and 3 publish no binary at all.
+//   portable  -> installer Projects that ship a distro package and no Linux archive.
+//                          obsproject/obs-studio publishes Ubuntu .debs, macOS .dmgs and
+//                          Windows .zips — the only Linux-shaped .tar.gz in the release
+//                          is the SOURCE tarball, which is why this direction was found
+//                          the hard way: the entry sat on "installed, up to date" over a
+//                          directory of C++ that had never been built.
+//
+// The first check already holds the release payload, so the correction costs nothing
+// here — deciding it when the user ticks the app would cost one API call each, against
+// an anonymous budget of 60 an hour that this app already exhausts in practice.
+//
+// The correction is REPORTED, never silent, and each direction has its own consequence
+// to disclose. Switching to portable installs ALONGSIDE a package-managed copy rather
+// than replacing it. Switching to installer is the bigger change of the two: it writes
+// system-wide instead of into the portable folder, and it needs authorization, so the
+// user has to be told before an update asks for their password out of nowhere.
 //
 // Mutates `repo` in place and returns the disclosure, or null when nothing changed.
 // `platform` defaults to the running OS; it is explicit so the whole decision table is
 // testable from any host rather than only the one the suite happens to run on.
-function retypeIfNoInstaller(repo, rel, portableRoot, platform) {
-  if (repo.type !== 'installer' || repo.asset) return null;
+function retypeIfUnavailable(repo, rel, portableRoot, platform) {
+  // A hand-pinned asset pattern means the user has already said exactly what they want.
+  if (repo.asset) return null;
+  if (repo.type !== 'installer' && repo.type !== 'portable') return null;
+  const to = repo.type === 'installer' ? 'portable' : 'installer';
   try {
-    core.pickAsset(rel.assets, 'installer', null, null, platform);
-    return null; // it does publish a package — leave the entry alone
+    core.pickAsset(rel.assets, repo.type, null, null, platform);
+    return null; // the project does publish this type — leave the entry alone
   } catch (e) {
-    // Only this specific case. "no <platform> installer asset" means the release has
-    // nothing usable at all, which stays an error the user should see.
-    if (!/only ships portable builds/.test(e.message)) return null;
+    // Only the specific "ships the OTHER type" case. "no <platform> <type> asset" means
+    // the release has nothing usable at all, which stays an error the user should see.
+    if (!/only ships (portable builds|an installer)/.test(e.message)) return null;
   }
-  const dir = (repo.install && repo.install.dir) || (portableRoot && core.resolvePortableDir(portableRoot, repo.repo));
-  if (!dir) return null; // no portable folder set — the existing clear error stands
   const from = repo.type;
-  repo.type = 'portable';
-  repo.install = { ...(repo.install || {}), dir };
+  if (to === 'portable') {
+    const dir =
+      (repo.install && repo.install.dir) || (portableRoot && core.resolvePortableDir(portableRoot, repo.repo));
+    if (!dir) return null; // no portable folder set — the existing clear error stands
+    repo.type = 'portable';
+    repo.install = { ...(repo.install || {}), dir };
+    return {
+      from,
+      to,
+      dir,
+      note: 'switched to Portable — this app publishes no installer, so the portable copy installs alongside any existing one',
+    };
+  }
+  // install.dir is kept rather than dropped: it is unused while the entry is an
+  // installer, and it means switching back by hand does not lose the chosen folder.
+  repo.type = 'installer';
   return {
     from,
-    to: 'portable',
-    dir,
-    note: 'switched to Portable — this app publishes no installer, so the portable copy installs alongside any existing one',
+    to,
+    dir: (repo.install && repo.install.dir) || null,
+    note: 'switched to Installer — this app publishes no portable build for this platform, so updates install system-wide and will ask for authorization',
   };
 }
 
@@ -95,7 +122,7 @@ async function handleRepo(repo, id, st, opts) {
   // and changing what gets installed mid-run is worse than the clear error it replaces.
   // It has to happen ahead of the comparison below, or an entry whose installed version
   // already matches the latest tag returns "current" and is never corrected at all.
-  const retyped = opts.mode === 'check' ? retypeIfNoInstaller(repo, rel, opts.portableRoot) : null;
+  const retyped = opts.mode === 'check' ? retypeIfUnavailable(repo, rel, opts.portableRoot) : null;
 
   const latest = rel.tag_name;
   const prev = st[key] || {};
@@ -290,4 +317,5 @@ async function handleRepo(repo, id, st, opts) {
   }
 }
 
-module.exports = { run, retypeIfNoInstaller };
+// retypeIfNoInstaller: former name, kept so the vendored drop-in keeps working.
+module.exports = { run, retypeIfUnavailable, retypeIfNoInstaller: retypeIfUnavailable };
