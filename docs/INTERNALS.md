@@ -368,6 +368,15 @@ users never see betas. On, it considers the newest release including prereleases
 so the update path can be exercised via betas without cutting a stable release. Release-side
 mechanics are in [RELEASING.md](RELEASING.md).
 
+### Check on open
+
+`config.checkOnOpen` (a Settings checkbox, **off by default**) runs the "Check all" path
+once, after the first window render: `selfCheck()` for git-updater itself plus
+`checkApps()` for every tracked app. It is a pure convenience trigger — check-only, no
+auto-update or auto-install, so the app keeps its "no network at startup unless asked"
+posture. The `booted` flag in the UI script makes it a one-shot per app start: `load()`
+re-runs on config changes (scan window adds, folder save) and those must not re-trigger it.
+
 ## Checking a change actually works
 
 The cross-platform port closed fourteen defects. Twelve would have shipped something that

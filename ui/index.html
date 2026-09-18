@@ -248,6 +248,11 @@
         <label class="scan-label"><input type="checkbox" id="selfPreRel"> Update git-updater to beta (pre-release) versions</label>
       </div>
       <p class="hint">Off by default: git-updater updates itself only to stable releases. This is separate from the per-app beta setting.</p>
+      <div class="row" style="margin-top:.6rem">
+        <span style="color:var(--muted);font-size:.9rem;min-width:8rem">Automatically</span>
+        <label class="scan-label"><input type="checkbox" id="checkOnOpen"> Check for updates when git-updater opens</label>
+      </div>
+      <p class="hint">Off by default: git-updater stays on-demand. On, opening the window checks every tracked app — it never updates or installs anything automatically.</p>
       <p class="hint">git-updater <span id="appVersion"></span></p>
     </div>
   </details>
@@ -258,6 +263,7 @@ let config = { portableRoot: '', repos: [] };
 const st = {};       // appKey -> { ph, pct, from(current), to(available), reason, present }
 const selected = new Set();
 let busy = false;
+let booted = false; // first window load done — guards the check-on-open from config reloads
 
 const $ = (id) => document.getElementById(id);
 const keyOf = (r) => `${r.owner}/${r.repo}#${r.type}`;
@@ -429,6 +435,7 @@ async function load() {
   if (!config.repos) config.repos = [];
   $('portableRoot').value = config.portableRoot || '';
   $('selfPreRel').checked = !!config.selfUpdatePrerelease;
+  $('checkOnOpen').checked = !!config.checkOnOpen;
   config.repos.forEach((r) => { st[keyOf(r)] = { ph: 'loading' }; }); // show rows instantly
   renderRepos();
   await refreshInstalled(); // slower registry/manifest detection
@@ -440,10 +447,22 @@ async function load() {
   if (lastApply && !lastApply.ok) {
     msg(`Updated to ${lastApply.expectVersion} but is currently running ${lastApply.actualVersion} — check the log.`, 'bad');
   }
+  if (!booted) {
+    booted = true;
+    // Check on open: one-shot after the first render. load() re-runs on config changes
+    // (scan window, folder save), which must not re-trigger it; the button stays the
+    // manual path, so this runs the exact same code as "Check all".
+    if (config.checkOnOpen && config.repos.length) {
+      msg('Checking for updates…', 'info');
+      selfCheck();
+      checkApps(config.repos.map(keyOf));
+    }
+  }
 }
 
 $('saveRoot').onclick = () => saveConfig().then(() => { msg('Saved.', 'ok'); refreshInstalled().then(renderRepos); });
 $('selfPreRel').onchange = () => { config.selfUpdatePrerelease = $('selfPreRel').checked; saveConfig().then(() => msg('Saved.', 'ok')); };
+$('checkOnOpen').onchange = () => { config.checkOnOpen = $('checkOnOpen').checked; saveConfig().then(() => msg('Saved.', 'ok')); };
 $('browse').onclick = async () => {
   try { const { path } = await window.api.pickFolder(); if (path) { $('portableRoot').value = path; await saveConfig(); msg('Saved.', 'ok'); refreshInstalled().then(renderRepos); } }
   catch (e) { msg(clean(e), 'bad'); }
