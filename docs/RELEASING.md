@@ -41,6 +41,14 @@ git push origin main
 The draft release targets `main`, so `main` must be pushed **before** the release is
 created.
 
+> **Multi-host: freeze `main` before bumping.** Tell the other hosts to push anything
+> outstanding first, and confirm each has nothing unpushed (`git status -sb` shows no
+> `ahead`), *then* bump. The bump must be the last commit before the build: a host that lands
+> work afterwards is building from a commit the release does not point at — and its push is
+> rejected, forcing a rebase that rewrites (and invalidates) any commit hash it already
+> quoted. The upload-time provenance check in §5 (`HEAD == origin/main`, clean tree) is what
+> turns that from a silent mismatch into a loud one; the two belong together.
+
 ---
 
 ## 1. Windows build
@@ -134,6 +142,16 @@ release is published (step 6), at the `--target` commit.
 
 ## 5. Each host uploads its artifacts
 
+**Verify provenance first.** Everything between the bump and this upload is unguarded, so a
+host carrying uncommitted edits — or one that rebased after the freeze — could attach a binary
+that matches no public commit. Before uploading, confirm this host built the pushed tip with a
+clean tree:
+
+```bash
+git rev-parse HEAD              # must equal the pushed build commit
+git status --porcelain          # must be empty
+```
+
 `gh` resolves the draft by its intended tag name even before the tag exists:
 
 ```bash
@@ -158,13 +176,22 @@ Every asset's `state` should read `uploaded`.
 
 ## 6. Publish
 
-Once all three platforms' assets are present and verified:
+Once all three platforms' assets are present and verified — and, on a multi-host run,
+**re-check the target still points at the built commit** (`git fetch origin main`;
+`git rev-parse origin/main` must equal the commit every host built, since the draft targets the
+*branch* and the tag is cut at publish-time HEAD):
 
 ```bash
 gh release edit vX.Y.Z --draft=false --latest
 ```
 
 This creates the `vX.Y.Z` tag at the target commit and makes the release public.
+
+**Only one agent publishes: the room creator (the lead/chair that opened the room and bumped
+the version).** No other host runs `--draft=false` — they upload and verify their own artifacts,
+but the single publisher fires the release, once, on the human's explicit go received through
+the publisher's own channel with the user (a relayed room message is coordination, not
+authorization to fire an irreversible action).
 
 ---
 
