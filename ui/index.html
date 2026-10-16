@@ -34,10 +34,10 @@
            border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px;
            margin-bottom: 1rem; box-shadow: 0 8px 24px -18px #000; }
   .row { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
-  input[type=text] { font: 400 14px var(--mono); padding: .5rem .65rem; border-radius: 8px; color: var(--text);
+  input[type=text], input[type=password] { font: 400 14px var(--mono); padding: .5rem .65rem; border-radius: 8px; color: var(--text);
     background: #0d1117; border: 1px solid var(--border); }
-  input[type=text]:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(227,161,60,.18); }
-  input[type=text]::placeholder { color: var(--faint); }
+  input[type=text]:focus, input[type=password]:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(227,161,60,.18); }
+  input[type=text]::placeholder, input[type=password]::placeholder { color: var(--faint); }
   input[type=checkbox] { width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; }
   button { font: 600 13.5px var(--sans); cursor: pointer; border-radius: 8px; padding: .46rem .78rem;
            border: 1px solid var(--border); background: #21262d; color: var(--text);
@@ -255,6 +255,13 @@
         <button id="saveRoot">Save</button>
       </div>
       <p class="hint">Portable apps unzip into <code>&lt;folder&gt;/&lt;repo&gt;</code>.</p>
+      <div class="row" style="margin-top:.6rem">
+        <span style="color:var(--muted);font-size:.9rem;min-width:8rem">GitHub token</span>
+        <input type="password" id="ghToken" placeholder="github_pat_… or ghp_…" autocomplete="off" spellcheck="false" style="flex:1;min-width:12rem">
+        <button id="saveToken">Save</button>
+        <button id="clearToken" style="display:none">Remove</button>
+      </div>
+      <p class="hint" id="tokenHint">Optional. Without one GitHub allows 60 requests an hour per network; with one, 5,000. A fine-grained token with <b>Public repositories (read-only)</b> access and no other permissions is enough. Stored encrypted on this computer, never in config.json.</p>
       <div class="row" style="margin-top:.6rem">
         <span style="color:var(--muted);font-size:.9rem;min-width:8rem">Advanced</span>
         <button id="editJson">Edit config.json</button>
@@ -620,6 +627,38 @@ async function load() {
   }
 }
 
+// GitHub token: the renderer only ever sends a new token in; status comes back as
+// saved/not-saved plus the quota, never the token itself.
+const TOKEN_HELP = $('tokenHint').innerHTML;
+async function refreshToken() {
+  try {
+    const { saved, unreadable, env, quota } = await window.api.tokenStatus();
+    $('clearToken').style.display = saved || unreadable ? '' : 'none';
+    $('ghToken').placeholder = saved ? 'Saved — paste a new token to replace it' : 'github_pat_… or ghp_…';
+    const q = quota && !quota.error && quota.limit ? ` ${quota.remaining}/${quota.limit} requests left this hour.` : '';
+    if (saved) $('tokenHint').textContent = `Token saved.${q}`;
+    else if (unreadable) $('tokenHint').textContent = `The saved token could not be read on this computer and is not being used — paste it again.${q}`;
+    else if (env) $('tokenHint').textContent = `Using the GITHUB_TOKEN environment variable.${q}`;
+    else $('tokenHint').innerHTML = TOKEN_HELP + (q ? ` Now:${q}` : '');
+  } catch {}
+}
+$('saveToken').onclick = async () => {
+  const t = $('ghToken').value.trim();
+  if (!t) return msg('Paste a GitHub token first.', 'bad');
+  $('saveToken').disabled = true;
+  msg('Checking token with GitHub…', 'info');
+  try { await window.api.setToken(t); $('ghToken').value = ''; msg('Token saved.', 'ok'); await refreshToken(); }
+  catch (e) { msg(`Token not saved — ${clean(e)}`, 'bad'); }
+  finally { $('saveToken').disabled = false; }
+};
+$('ghToken').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('saveToken').click(); });
+$('clearToken').onclick = async () => {
+  if (!confirm('Remove the saved GitHub token?')) return;
+  try { await window.api.clearToken(); msg('Token removed.', 'ok'); await refreshToken(); } catch (e) { msg(clean(e), 'bad'); }
+};
+// Quota is fetched when Settings is opened (the /rate_limit call is free) — not at startup.
+$('settings').addEventListener('toggle', () => { if ($('settings').open) refreshToken(); });
+
 $('saveRoot').onclick = () => saveConfig().then(() => { msg('Saved.', 'ok'); refreshInstalled().then(renderRepos); });
 $('selfPreRel').onchange = () => { config.selfUpdatePrerelease = $('selfPreRel').checked; saveConfig().then(() => msg('Saved.', 'ok')); };
 $('checkOnOpen').onchange = () => { config.checkOnOpen = $('checkOnOpen').checked; saveConfig().then(() => msg('Saved.', 'ok')); };
@@ -748,6 +787,7 @@ async function checkApps(keys) {
   if (busy) return;
   busy = true; keys.forEach((k) => (st[k] = { ...(st[k] || {}), ph: 'checking' })); renderRepos();
   const retyped = { portable: [], installer: [] }; // type corrections — reported, never silent
+  let stopped = null; // rate-limit / bad-token reason that ended the run early
   try {
     for (const k of keys) {
       const { results } = await window.api.check({ only: k });
@@ -759,6 +799,13 @@ async function checkApps(keys) {
         else st[k] = { ...s, ph: r.status === 'current' ? 'current' : 'available', from: r.from || s.from, to: r.to, present: s.present };
       }
       renderRepos();
+      // Rate-limited (or a bad token): every remaining call would fail the same way and
+      // only burn more of the quota. Stop here and say why once.
+      if (r && r.stopRun) {
+        keys.slice(keys.indexOf(k) + 1).forEach((x) => (st[x] = { ...(st[x] || {}), ph: 'failed', reason: r.reason }));
+        stopped = r.reason;
+        break;
+      }
     }
     // Say what changed AND what it means. Going portable, a copy sits beside whatever the
     // system package manager already installed rather than replacing it. Going installer,
@@ -773,7 +820,8 @@ async function checkApps(keys) {
       parts.push(
         `${retyped.installer.join(', ')} switched to Installer — ${retyped.installer.length > 1 ? 'these publish' : 'this publishes'} no portable build, so updates install system-wide and will ask for authorization.`
       );
-    msg(parts.length ? `Check complete. ${parts.join(' ')}` : 'Check complete.', 'ok');
+    if (stopped) msg(parts.length ? `${stopped} ${parts.join(' ')}` : stopped, 'bad');
+    else msg(parts.length ? `Check complete. ${parts.join(' ')}` : 'Check complete.', 'ok');
   } catch (e) { keys.forEach((k) => (st[k] = { ...(st[k] || {}), ph: 'failed', reason: clean(e) })); msg(clean(e), 'bad'); }
   finally { busy = false; renderRepos(); }
 }
@@ -805,6 +853,11 @@ async function runBatch(keys, force, autoClose = false) {
         watchInstall(k, s.from, wasInstall, closed ? () => reopen(k) : undefined);
       }
       else { st[k] = { ...s, ph: 'failed', reason: r.reason }; failed++; }
+      if (r && r.stopRun) { // same as checkApps: the rest would only fail the same way
+        keys.slice(keys.indexOf(k) + 1).forEach((x) => { st[x] = { ...(st[x] || {}), ph: 'failed', reason: r.reason }; failed++; });
+        renderRepos();
+        break;
+      }
     } catch (e) { st[k] = { ...(st[k] || {}), ph: 'failed', reason: clean(e) }; failed++; }
     finally { if (closed && !installerPending) await reopen(k); }
     renderRepos();

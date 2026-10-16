@@ -12,13 +12,21 @@ const API = 'https://api.github.com';
 const UA = 'release-watcher';
 const MAX_BYTES = 500 * 1024 * 1024; // 500 MB download cap
 
-function apiHeaders() {
+// Unauthenticated API calls get 60/hour per IP address — shared with every other tool and
+// machine behind the same public IP (a corporate VPN egress, a household NAT). A token raises
+// that to 5,000/hour for the account. The GUI sets one from Settings (setToken); the headless
+// CLI falls back to GITHUB_TOKEN. Sent to api.github.com only, never to asset downloads.
+let _token = null;
+function setToken(t) { _token = typeof t === 'string' && t.trim() ? t.trim() : null; }
+function currentToken() { return _token || process.env.GITHUB_TOKEN || null; }
+
+function apiHeaders(token = currentToken()) {
   const h = {
     'User-Agent': UA,
     Accept: 'application/vnd.github+json',
     'X-GitHub-Api-Version': '2022-11-28',
   };
-  if (process.env.GITHUB_TOKEN) h.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
+  if (token) h.Authorization = `Bearer ${token}`;
   return h;
 }
 
@@ -99,12 +107,31 @@ async function withNetRetry(fn, url) {
   throw describeNetworkError(lastErr, url);
 }
 
-async function ghJson(url) {
-  const res = await withNetRetry(() => doFetch(url, { headers: apiHeaders() }), url);
-  if (res.status === 403 && res.headers.get('x-ratelimit-remaining') === '0') {
-    const reset = Number(res.headers.get('x-ratelimit-reset') || 0);
-    const when = reset ? new Date(reset * 1000).toLocaleTimeString() : 'later';
-    const e = new Error(`GitHub rate limit hit (resets ~${when}). Set GITHUB_TOKEN to raise the limit.`);
+async function ghJson(url, token) {
+  const res = await withNetRetry(() => doFetch(url, { headers: apiHeaders(token) }), url);
+  const authed = !!(token || currentToken());
+  if (res.status === 401 && authed) {
+    const where = token || _token ? 'replace or remove it in Settings' : 'check the GITHUB_TOKEN environment variable';
+    const e = new Error(`GitHub rejected the access token (expired or revoked?) — ${where}.`);
+    e.status = 401;
+    e.badToken = true;
+    throw e;
+  }
+  // Primary limit: quota exhausted (remaining 0, resets at x-ratelimit-reset). Secondary limit:
+  // too many requests too fast — 429, or 403 with retry-after, while quota is still left.
+  const retryAfter = Number(res.headers.get('retry-after') || 0);
+  const primary = res.headers.get('x-ratelimit-remaining') === '0';
+  if ((res.status === 403 || res.status === 429) && (primary || retryAfter || res.status === 429)) {
+    let msg;
+    if (primary) {
+      const reset = Number(res.headers.get('x-ratelimit-reset') || 0);
+      const when = reset ? new Date(reset * 1000).toLocaleTimeString() : 'later';
+      const hint = authed ? '' : ' Add a GitHub access token in Settings (or set GITHUB_TOKEN) to raise the limit from 60 to 5,000 an hour.';
+      msg = `GitHub rate limit hit (resets ~${when}).${hint}`;
+    } else {
+      msg = `GitHub is throttling requests — wait ${retryAfter ? `${retryAfter}s` : 'a minute'} and try again.`;
+    }
+    const e = new Error(msg);
     e.rateLimited = true;
     throw e;
   }
@@ -165,6 +192,14 @@ async function getLatestRelease(owner, repo, opts = {}) {
     }
     throw e;
   }
+}
+
+// Current core API quota. /rate_limit itself does not count against the limit. Pass a token
+// to test a candidate before saving it; omitted, it reports whatever the app is using now.
+async function rateLimit(token) {
+  const body = await ghJson(`${API}/rate_limit`, token);
+  const core = (body && body.resources && body.resources.core) || (body && body.rate) || {};
+  return { limit: core.limit, remaining: core.remaining, reset: core.reset };
 }
 
 async function listAssets(owner, repo, opts = {}) {
@@ -256,4 +291,4 @@ function verifyDigest(filePath, digest) {
   return { verified: true };
 }
 
-module.exports = { getLatestRelease, listAssets, downloadAsset, verifyDigest, fetchChecksumFromRelease, setFetch };
+module.exports = { getLatestRelease, listAssets, downloadAsset, verifyDigest, fetchChecksumFromRelease, setFetch, setToken, rateLimit };

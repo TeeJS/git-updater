@@ -4,7 +4,7 @@
 // the renderer talks to the engine over IPC (no socket), the engine runs in-process
 // (no shell, no self-elevation), and closing the window exits everything (on-demand).
 
-const { app, BrowserWindow, ipcMain, dialog, shell, screen, net } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, screen, net, safeStorage } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const core = require('../src/core');
@@ -89,6 +89,33 @@ function saveConfigFile(cfg) {
   const tmp = `${CONFIG_PATH}.tmp`;
   fs.writeFileSync(tmp, JSON.stringify(cfg, null, 2));
   fs.renameSync(tmp, CONFIG_PATH);
+}
+
+// GitHub access token (Settings). Kept out of config.json on purpose: that file is roamed,
+// backed up on every save (*.bak), opened in an editor from Settings and round-tripped
+// through the renderer. The token lives in its own file, encrypted with the OS credential
+// store (DPAPI / Keychain / libsecret) via safeStorage, and never crosses the IPC bridge.
+const TOKEN_PATH = path.join(DATA_DIR, 'github-token.bin');
+
+let tokenInUse = false; // a saved token was actually decrypted and handed to the engine
+function loadToken() {
+  try {
+    if (!fs.existsSync(TOKEN_PATH) || !safeStorage.isEncryptionAvailable()) return null;
+    return safeStorage.decryptString(fs.readFileSync(TOKEN_PATH)) || null;
+  } catch (e) {
+    log(`github token: could not read saved token: ${e && e.message ? e.message : e}`);
+    return null;
+  }
+}
+function saveToken(token) {
+  if (!safeStorage.isEncryptionAvailable()) {
+    throw new Error("this system has no secure credential store to keep the token in — set the GITHUB_TOKEN environment variable instead");
+  }
+  fs.mkdirSync(path.dirname(TOKEN_PATH), { recursive: true });
+  fs.writeFileSync(TOKEN_PATH, safeStorage.encryptString(token), { mode: 0o600 });
+}
+function clearToken() {
+  try { fs.rmSync(TOKEN_PATH, { force: true }); } catch {}
 }
 
 let win;
@@ -392,6 +419,37 @@ ipcMain.handle('selfupdate:openRelease', () =>
 );
 ipcMain.handle('app:version', () => app.getVersion());
 
+// Token status for Settings: whether one is saved, plus the live quota. Never the token itself.
+// `unreadable`: the file exists but could not be decrypted (OS credential key changed), so
+// requests are going out without it — Settings must say so rather than claim it is saved.
+ipcMain.handle('token:status', async () => {
+  const saved = tokenInUse;
+  const unreadable = !saved && fs.existsSync(TOKEN_PATH);
+  const env = !saved && !!process.env.GITHUB_TOKEN;
+  let quota = null;
+  try { quota = await github.rateLimit(); } catch (e) { quota = { error: e.message }; }
+  return { saved, unreadable, env, quota };
+});
+// Test the token against GitHub before keeping it, so a typo is caught here rather than as
+// a wall of failed checks later.
+ipcMain.handle('token:set', async (_e, token) => {
+  const t = typeof token === 'string' ? token.trim() : '';
+  if (!t) throw new Error('paste a token first');
+  const quota = await github.rateLimit(t);
+  saveToken(t);
+  github.setToken(t);
+  tokenInUse = true;
+  log(`github token saved (limit ${quota.limit}/h)`);
+  return { ok: true, quota };
+});
+ipcMain.handle('token:clear', () => {
+  clearToken();
+  github.setToken(null);
+  tokenInUse = false;
+  log('github token removed');
+  return { ok: true };
+});
+
 ipcMain.handle('pick-folder', async () => {
   const r = await dialog.showOpenDialog(win, {
     title: 'Select the portable apps folder',
@@ -519,6 +577,9 @@ ipcMain.handle('selfupdate:apply', async (e) => {
     // one the browser already trusts — is honored here too. Node's own fetch ignores that store
     // and fails with UNABLE_TO_GET_ISSUER_CERT_LOCALLY on such networks.
     github.setFetch((url, init) => net.fetch(url, init));
+    const savedToken = loadToken(); // safeStorage is only usable once the app is ready
+    github.setToken(savedToken);
+    tokenInUse = !!savedToken;
     migrateConfig();
     if (app.isPackaged) selfupdate.cleanupLeftovers(ROOT, app.getVersion()).catch(() => {});
     createWindow();
