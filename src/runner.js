@@ -357,7 +357,11 @@ async function handleRepo(repo, id, st, opts) {
     log(`OK ${key}: installed ${core.normTag(latest)}`);
     return { ...base, status: 'updated', note: v && v.note };
   } finally {
-    fs.rmSync(tmp, { recursive: true, force: true });
+    try {
+      await fs.promises.rm(tmp, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+    } catch (e) {
+      log(`WARN ${key}: could not remove staging folder ${tmp} (${e.code || e.message})`);
+    }
   }
 }
 

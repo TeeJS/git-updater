@@ -113,6 +113,45 @@ test('runner: an app that stays closed throughout is updated normally', async ()
   }
 });
 
+test('runner: failed staging cleanup does not replace a successful install', async () => {
+  const dir = tmp();
+  const statePath = path.join(dir, 'state.json');
+  const realRm = fs.promises.rm;
+  fs.promises.rm = async (_path, options) => {
+    assert.equal(options.maxRetries, 5);
+    assert.equal(options.retryDelay, 200);
+    const e = new Error('locked'); e.code = 'EPERM'; throw e;
+  };
+  try {
+    await withStubs({ running: [false, false] }, async () => {
+      const { results } = await runner.run(configFor(dir), { statePath });
+      assert.equal(results[0].status, 'updated', results[0].reason);
+      assert.equal(JSON.parse(fs.readFileSync(statePath, 'utf8'))['acme/widget#portable'].version, '2.0.0');
+    });
+  } finally {
+    fs.promises.rm = realRm;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('runner: failed staging cleanup preserves the original install error', async () => {
+  const dir = tmp();
+  const realRm = fs.promises.rm;
+  fs.promises.rm = async () => { const e = new Error('locked'); e.code = 'EPERM'; throw e; };
+  try {
+    await withStubs({ running: [false] }, async () => {
+      github.downloadAsset = async () => { throw new Error('original download failure'); };
+      const { results } = await runner.run(configFor(dir), { statePath: path.join(dir, 'state.json') });
+      assert.equal(results[0].status, 'failed');
+      assert.match(results[0].reason, /original download failure/);
+      assert.doesNotMatch(results[0].reason, /locked|EPERM/);
+    });
+  } finally {
+    fs.promises.rm = realRm;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('runner: an app already running is refused before anything is downloaded', async () => {
   const dir = tmp();
   try {
