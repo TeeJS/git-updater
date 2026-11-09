@@ -135,6 +135,7 @@ test('runner: state records distinguish initial install from later update', asyn
       assert.equal(JSON.parse(fs.readFileSync(statePath, 'utf8'))['acme/widget#portable'].lastAction, 'updated');
     });
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
 
 test('runner: failed staging cleanup does not replace a successful install', async () => {
   const dir = tmp();
