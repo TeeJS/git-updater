@@ -253,6 +253,11 @@
         <label class="scan-label"><input type="checkbox" id="checkOnOpen"> Check for updates when git-updater opens</label>
       </div>
       <p class="hint">Off by default: git-updater stays on-demand. On, opening the window checks every tracked app — it never updates or installs anything automatically.</p>
+      <div class="row" style="margin-top:.6rem">
+        <span style="color:var(--muted);font-size:.9rem;min-width:8rem">Update all</span>
+        <label class="scan-label"><input type="checkbox" id="autoCloseReopen"> Automatically close apps and re-open when complete</label>
+      </div>
+      <p class="hint">Off by default. When Update all runs, close running apps gracefully and re-open those it closed after each update completes. Apps that do not close are skipped.</p>
       <p class="hint">git-updater <span id="appVersion"></span></p>
     </div>
   </details>
@@ -436,6 +441,7 @@ async function load() {
   $('portableRoot').value = config.portableRoot || '';
   $('selfPreRel').checked = !!config.selfUpdatePrerelease;
   $('checkOnOpen').checked = !!config.checkOnOpen;
+  $('autoCloseReopen').checked = !!config.autoCloseReopen;
   config.repos.forEach((r) => { st[keyOf(r)] = { ph: 'loading' }; }); // show rows instantly
   renderRepos();
   await refreshInstalled(); // slower registry/manifest detection
@@ -463,6 +469,7 @@ async function load() {
 $('saveRoot').onclick = () => saveConfig().then(() => { msg('Saved.', 'ok'); refreshInstalled().then(renderRepos); });
 $('selfPreRel').onchange = () => { config.selfUpdatePrerelease = $('selfPreRel').checked; saveConfig().then(() => msg('Saved.', 'ok')); };
 $('checkOnOpen').onchange = () => { config.checkOnOpen = $('checkOnOpen').checked; saveConfig().then(() => msg('Saved.', 'ok')); };
+$('autoCloseReopen').onchange = () => { config.autoCloseReopen = $('autoCloseReopen').checked; saveConfig().then(() => msg('Saved.', 'ok')); };
 $('browse').onclick = async () => {
   try { const { path } = await window.api.pickFolder(); if (path) { $('portableRoot').value = path; await saveConfig(); msg('Saved.', 'ok'); refreshInstalled().then(renderRepos); } }
   catch (e) { msg(clean(e), 'bad'); }
@@ -535,11 +542,14 @@ async function removeRepo(r) {
 
 // After opening an interactive installer, watch the registry until the installed
 // version changes, then refresh that row automatically (10-minute timeout).
-async function watchInstall(key, fromVersion) {
+async function watchInstall(key, fromVersion, onComplete) {
   const deadline = Date.now() + 10 * 60 * 1000;
   while (Date.now() < deadline) {
     await new Promise((r) => setTimeout(r, 5000));
-    if (st[key]?.ph !== 'waiting') return; // user did something else with this row
+    if (st[key]?.ph !== 'waiting') {
+      if (onComplete) msg(`${key.split('#')[0]} left the installer wait state — completion was not confirmed, so it was not re-opened.`, 'bad');
+      return;
+    }
     try {
       const inst = await window.api.getInstalled();
       const cur = inst[key]?.current;
@@ -547,24 +557,27 @@ async function watchInstall(key, fromVersion) {
         st[key] = { ...st[key], from: cur, present: true };
         if (!busy) await checkApps([key]); // confirms Up to date / sets final state
         else { st[key].ph = 'installed'; renderRepos(); }
+        if (onComplete) await onComplete();
         return;
       }
     } catch {}
   }
-  if (st[key]?.ph === 'waiting') { st[key].ph = 'failed'; st[key].reason = 'installer not finished — Retry when done'; renderRepos(); }
+  if (st[key]?.ph === 'waiting') { st[key].ph = 'failed'; st[key].reason = onComplete ? 'installer completion not detected — app was not re-opened' : 'installer not finished — Retry when done'; renderRepos(); }
 }
 
 // Close the running app (graceful first, force on a second confirm), then retry the update.
 async function closeAndRetry(r, key) {
   if (busy) return;
-  if (!confirm(`Close ${r.repo} and update it? Unsaved work in ${r.repo} may be lost.`)) return;
-  msg(`Closing ${r.repo}…`, 'info');
   try {
-    let res = await window.api.closeApp(key, false);
-    if (res.stillRunning && confirm(`${r.repo} did not close. Force-close it? Unsaved work WILL be lost.`)) {
-      res = await window.api.closeApp(key, true);
+    if (await window.api.isAppRunning(key)) {
+      if (!confirm(`Close ${r.repo} and update it? Unsaved work in ${r.repo} may be lost.`)) return;
+      msg(`Closing ${r.repo}…`, 'info');
+      let res = await window.api.closeApp(key, false);
+      if (res.stillRunning && confirm(`${r.repo} did not close. Force-close it? Unsaved work WILL be lost.`)) {
+        res = await window.api.closeApp(key, true);
+      }
+      if (res.stillRunning) return msg(`${r.repo} is still running — close it manually, then Retry.`, 'bad');
     }
-    if (res.stillRunning) return msg(`${r.repo} is still running — close it manually, then Retry.`, 'bad');
   } catch (e) { return msg(clean(e), 'bad'); }
   runBatch([key]);
 }
@@ -604,23 +617,35 @@ async function checkApps(keys) {
   finally { busy = false; renderRepos(); }
 }
 
-async function runBatch(keys, force) {
+async function runBatch(keys, force, autoClose = false) {
   if (busy || !keys.length) return;
   busy = true;
   keys.forEach((k) => (st[k] = { ...(st[k] || {}), ph: 'queued' })); renderRepos();
   let done = 0, installed = 0, failed = 0;
+  const reopenErrors = [];
+  async function reopen(k) {
+    try { await window.api.openApp(k); }
+    catch (e) { reopenErrors.push(`${k.split('#')[0]}: ${clean(e)}`); msg(`Could not re-open ${k.split('#')[0]}: ${clean(e)}`, 'bad'); }
+  }
   for (const k of keys) {
     const wasInstall = !(st[k] && st[k].present); // fresh install vs update, for the right wording
+    let closed = false, installerPending = false;
     try {
-      const { results } = await window.api.update({ only: k, force: !!force });
+      const { results } = await window.api.update({ only: k, force: !!force, autoClose });
       const r = results.find((x) => (x.id || x.repo) === k) || results[0];
+      closed = !!r?.closed;
       const s = st[k] || {};
       if (!r) { st[k] = { ...s, ph: 'failed', reason: 'no result' }; failed++; }
       else if (r.status === 'updated') { st[k] = { ...s, ph: wasInstall ? 'installed' : 'updated', from: r.to, to: r.to, present: true }; wasInstall ? installed++ : done++; }
       else if (r.status === 'current') { st[k] = { ...s, ph: 'current', to: r.to }; }
-      else if (/installer window opened/.test(r.reason || '')) { st[k] = { ...s, ph: 'waiting', to: r.to }; watchInstall(k, s.from); }
+      else if (/installer window opened/.test(r.reason || '')) {
+        st[k] = { ...s, ph: 'waiting', to: r.to };
+        installerPending = true;
+        watchInstall(k, s.from, closed ? () => reopen(k) : undefined);
+      }
       else { st[k] = { ...s, ph: 'failed', reason: r.reason }; failed++; }
     } catch (e) { st[k] = { ...(st[k] || {}), ph: 'failed', reason: clean(e) }; failed++; }
+    finally { if (closed && !installerPending) await reopen(k); }
     renderRepos();
   }
   busy = false; renderRepos();
@@ -630,7 +655,8 @@ async function runBatch(keys, force) {
   if (installed) parts.push(`${installed} installed`);
   if (waiting) parts.push(`${waiting} waiting for its installer window`);
   if (failed) parts.push(`${failed} failed`);
-  msg(parts.length ? parts.join(', ') + '.' : 'Nothing to update.', failed ? 'bad' : 'ok');
+  if (reopenErrors.length) parts.push(`${reopenErrors.length} could not be re-opened: ${reopenErrors.join('; ')}`);
+  msg(parts.length ? parts.join(', ') + '.' : 'Nothing to update.', failed || reopenErrors.length ? 'bad' : 'ok');
 }
 
 window.api.onProgress(({ id, phase, pct }) => {
@@ -714,7 +740,7 @@ $('selfupDismiss').onclick = () => {
 };
 
 $('checkAll').onclick = () => { selfCheck(); checkApps(config.repos.map(keyOf)); };
-$('updateAll').onclick = () => runBatch(config.repos.map(keyOf));
+$('updateAll').onclick = () => runBatch(config.repos.map(keyOf), false, !!config.autoCloseReopen);
 $('updateSel').onclick = () => runBatch([...selected]);
 $('selAll').onchange = (e) => { selected.clear(); if (e.target.checked) config.repos.forEach((r) => selected.add(keyOf(r))); renderRepos(); };
 
