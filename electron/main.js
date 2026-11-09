@@ -171,7 +171,9 @@ ipcMain.handle('installed:record-completion', async (_e, { appKey, fromVersion, 
   const stt = state.load();
   const installedAt = new Date().toISOString();
   const lastAction = wasInstall ? 'installed' : 'updated';
-  stt[appKey] = { ...(stt[appKey] || {}), repo: `${r.owner}/${r.repo}`, type: r.type, tag: version, version, installedAt, lastAction };
+  // An interactive install supplies status provenance, not a release tag. The registry
+  // may use a different version scheme; treating it as a tag can block a later reinstall.
+  stt[appKey] = { ...(stt[appKey] || {}), repo: `${r.owner}/${r.repo}`, type: r.type, installedAt, lastAction };
   state.save(stt);
   return { installedAt, lastAction };
 });
