@@ -110,6 +110,9 @@
   .row-actions { display: flex; justify-content: flex-end; gap: 6px; white-space: nowrap; }
 
   .table-header > span { font: 600 .68rem var(--mono); letter-spacing: .07em; text-transform: uppercase; color: var(--faint); padding-bottom: .5rem; }
+  .table-header .sort-button { display: block; width: 100%; min-height: 24px; padding: 0; border: 0; background: none; color: inherit; font: inherit; letter-spacing: inherit; text-align: left; text-transform: inherit; cursor: pointer; }
+  .table-header .sort-button:hover, .table-header .sort-button:focus-visible { color: var(--text); }
+  .sort-arrow { margin-left: .2rem; }
   .app-row { padding: .5rem 0; border-top: 1px solid var(--border); }
   .app-name { font: 500 14px var(--mono); }
   .status { display: inline-flex; align-items: center; gap: .4rem; font-size: .88rem; }
@@ -189,7 +192,11 @@
     <div class="table-wrapper">
       <div class="table-header">
         <span><input type="checkbox" id="selAll" title="Select all"></span>
-        <span>App</span><span class="type-cell">Type</span><span>Current</span><span>Available</span><span>Status</span><span></span>
+        <span role="columnheader" data-sort="app"><button class="sort-button" type="button">App<span class="sort-arrow" aria-hidden="true"></span></button></span>
+        <span class="type-cell" role="columnheader" data-sort="type"><button class="sort-button" type="button">Type<span class="sort-arrow" aria-hidden="true"></span></button></span>
+        <span role="columnheader" data-sort="current"><button class="sort-button" type="button">Current<span class="sort-arrow" aria-hidden="true"></span></button></span>
+        <span role="columnheader" data-sort="available"><button class="sort-button" type="button">Available<span class="sort-arrow" aria-hidden="true"></span></button></span>
+        <span role="columnheader" data-sort="status"><button class="sort-button" type="button">Status<span class="sort-arrow" aria-hidden="true"></span></button></span><span></span>
       </div>
       <div id="rows"></div>
     </div>
@@ -264,6 +271,7 @@ const st = {};       // appKey -> { ph, pct, from(current), to(available), reaso
 const selected = new Set();
 let busy = false;
 let booted = false; // first window load done — guards the check-on-open from config reloads
+let displayOrder = null; // preserve row positions while a check or update is running
 
 const $ = (id) => document.getElementById(id);
 const keyOf = (r) => `${r.owner}/${r.repo}#${r.type}`;
@@ -310,11 +318,53 @@ function primaryAction(s) {
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
 const cell = (node, cls) => { const td = document.createElement('td'); if (cls) td.className = cls; if (node) td.appendChild(node); return td; };
 
+function sortedRepos() {
+  const repos = [...config.repos];
+  if (busy && displayOrder) {
+    const rank = new Map(displayOrder.map((key, i) => [key, i]));
+    return repos.sort((a, b) => (rank.get(keyOf(a)) ?? Infinity) - (rank.get(keyOf(b)) ?? Infinity));
+  }
+  const col = config.sortColumn;
+  const direction = config.sortDirection === 'desc' ? -1 : 1;
+  if (['app', 'type', 'current', 'available', 'status'].includes(col)) {
+    repos.sort((a, b) => {
+      const sa = st[keyOf(a)] || {}, sb = st[keyOf(b)] || {};
+      let result;
+      if (col === 'app') result = `${a.owner}/${a.repo}`.localeCompare(`${b.owner}/${b.repo}`);
+      else if (col === 'type') result = a.type.localeCompare(b.type);
+      else if (col === 'current' || col === 'available') result = window.api.cmpVersion(col === 'current' ? sa.from : sa.to, col === 'current' ? sb.from : sb.to);
+      else result = statusView(sa).text.localeCompare(statusView(sb).text);
+      return direction * result || `${a.owner}/${a.repo}`.localeCompare(`${b.owner}/${b.repo}`);
+    });
+  }
+  displayOrder = repos.map(keyOf);
+  return repos;
+}
+
+function renderSortHeaders() {
+  document.querySelectorAll('.table-header [data-sort]').forEach((header) => {
+    const active = header.dataset.sort === config.sortColumn;
+    header.setAttribute('aria-sort', active ? (config.sortDirection === 'desc' ? 'descending' : 'ascending') : 'none');
+    header.querySelector('.sort-arrow').textContent = active ? (config.sortDirection === 'desc' ? ' ↓' : ' ↑') : '';
+  });
+}
+document.querySelectorAll('.table-header [data-sort]').forEach((header) => {
+  header.querySelector('button').onclick = async () => {
+    if (busy) return;
+    const col = header.dataset.sort;
+    config.sortDirection = config.sortColumn === col && config.sortDirection !== 'desc' ? 'desc' : 'asc';
+    config.sortColumn = col;
+    renderRepos();
+    await saveConfig();
+  };
+});
+
 function renderRepos() {
   const tb = $('rows');
   tb.innerHTML = '';
   $('empty').style.display = config.repos.length ? 'none' : '';
-  config.repos.forEach((r) => {
+  renderSortHeaders();
+  sortedRepos().forEach((r) => {
     const key = keyOf(r);
     const s = st[key] || (st[key] = { ph: 'idle' });
     const row = el('div', 'app-row'); // 7 grid children, same template as the header
