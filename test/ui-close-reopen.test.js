@@ -39,19 +39,17 @@ test('Update all closes and reopens only running apps, including after update fa
     msg: () => {},
     clean: String,
     window: { api: {
-      isAppRunning: async () => { calls.push('running'); return true; },
-      closeApp: async (_, force) => { calls.push(['close', force]); return { closed: 1, stillRunning: false }; },
-      update: async () => { calls.push('update'); return { results: [{ status: 'failed', reason: 'download failed' }] }; },
+      update: async (body) => { calls.push(['update', body.autoClose]); return { results: [{ status: 'failed', reason: 'download failed', closed: true }] }; },
       openApp: async () => { calls.push('reopen'); },
     } },
   };
   vm.runInNewContext(sourceBetween('async function runBatch(', 'window.api.onProgress('), context);
   await context.runBatch([key], false, true);
-  assert.deepEqual(calls, ['running', ['close', false], 'update', 'reopen']);
+  assert.deepEqual(calls, [['update', true], 'reopen']);
   assert.equal(context.st[key].ph, 'failed');
 });
 
-test('Update all skips an app that refuses graceful close', async () => {
+test('Update all does not reopen an app when the runner could not close it', async () => {
   const key = 'owner/Example#installer';
   let updates = 0;
   const context = {
@@ -61,15 +59,13 @@ test('Update all skips an app that refuses graceful close', async () => {
     msg: () => {},
     clean: String,
     window: { api: {
-      isAppRunning: async () => true,
-      closeApp: async (_, force) => { assert.equal(force, false); return { closed: 0, stillRunning: true }; },
-      update: async () => { updates++; },
+      update: async () => { updates++; return { results: [{ status: 'failed', reason: 'app did not close gracefully', closed: false }] }; },
       openApp: async () => { throw new Error('unexpected reopen'); },
     } },
   };
   vm.runInNewContext(sourceBetween('async function runBatch(', 'window.api.onProgress('), context);
   await context.runBatch([key], false, true);
-  assert.equal(updates, 0);
+  assert.equal(updates, 1);
   assert.match(context.st[key].reason, /did not close gracefully/);
 });
 
@@ -85,9 +81,7 @@ test('interactive installer reopens only after completion callback', async () =>
     clean: String,
     watchInstall: (_key, _from, callback) => { completion = callback; },
     window: { api: {
-      isAppRunning: async () => true,
-      closeApp: async () => ({ closed: 1, stillRunning: false }),
-      update: async () => ({ results: [{ status: 'failed', reason: 'installer window opened' }] }),
+      update: async () => ({ results: [{ status: 'failed', reason: 'installer window opened', closed: true }] }),
       openApp: async () => { reopened++; },
     } },
   };

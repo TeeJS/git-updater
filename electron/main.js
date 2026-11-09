@@ -314,7 +314,7 @@ ipcMain.handle('scan:add', (_e, items) => {
   if (scanWin && !scanWin.isDestroyed()) scanWin.close();
   return { added };
 });
-// Close a tracked app's running processes (graceful; force on request).
+// Running check and close for a tracked app.
 ipcMain.handle('app:is-running', async (_e, appKey) => {
   const r = readConfig().repos.find((x) => `${x.owner}/${x.repo}#${x.type}` === appKey);
   if (!r) throw new Error('app not found');
@@ -429,7 +429,7 @@ ipcMain.handle('update', async (e, body = {}) => {
     // Stream per-app progress to the renderer as it happens.
     const onProgress = (id, phase, pct) => e.sender.send('update:progress', { id, phase, pct });
     const openFile = (f) => shell.openPath(f); // ShellExecute: an installer's UAC manifest works
-    return await runner.run(config, { only: body.only, force: !!body.force, dryRun: !!body.dryRun, onProgress, openFile });
+    return await runner.run(config, { only: body.only, force: !!body.force, dryRun: !!body.dryRun, autoClose: !!body.autoClose, onProgress, openFile });
   } finally {
     state.releaseLock(lock);
     updating = false;

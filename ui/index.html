@@ -546,7 +546,10 @@ async function watchInstall(key, fromVersion, onComplete) {
   const deadline = Date.now() + 10 * 60 * 1000;
   while (Date.now() < deadline) {
     await new Promise((r) => setTimeout(r, 5000));
-    if (st[key]?.ph !== 'waiting') return; // user did something else with this row
+    if (st[key]?.ph !== 'waiting') {
+      if (onComplete) msg(`${key.split('#')[0]} left the installer wait state — completion was not confirmed, so it was not re-opened.`, 'bad');
+      return;
+    }
     try {
       const inst = await window.api.getInstalled();
       const cur = inst[key]?.current;
@@ -626,32 +629,23 @@ async function runBatch(keys, force, autoClose = false) {
   }
   for (const k of keys) {
     const wasInstall = !(st[k] && st[k].present); // fresh install vs update, for the right wording
-    let closed = false, waiting = false;
+    let closed = false, installerPending = false;
     try {
-      if (autoClose && await window.api.isAppRunning(k)) {
-        const result = await window.api.closeApp(k, false);
-        if (result.stillRunning) {
-          st[k] = { ...(st[k] || {}), ph: 'failed', reason: 'app did not close gracefully — close it manually, then Retry' };
-          failed++;
-          renderRepos();
-          continue;
-        }
-        closed = result.closed > 0;
-      }
-      const { results } = await window.api.update({ only: k, force: !!force });
+      const { results } = await window.api.update({ only: k, force: !!force, autoClose });
       const r = results.find((x) => (x.id || x.repo) === k) || results[0];
+      closed = !!r?.closed;
       const s = st[k] || {};
       if (!r) { st[k] = { ...s, ph: 'failed', reason: 'no result' }; failed++; }
       else if (r.status === 'updated') { st[k] = { ...s, ph: wasInstall ? 'installed' : 'updated', from: r.to, to: r.to, present: true }; wasInstall ? installed++ : done++; }
       else if (r.status === 'current') { st[k] = { ...s, ph: 'current', to: r.to }; }
       else if (/installer window opened/.test(r.reason || '')) {
         st[k] = { ...s, ph: 'waiting', to: r.to };
-        waiting = true;
+        installerPending = true;
         watchInstall(k, s.from, closed ? () => reopen(k) : undefined);
       }
       else { st[k] = { ...s, ph: 'failed', reason: r.reason }; failed++; }
     } catch (e) { st[k] = { ...(st[k] || {}), ph: 'failed', reason: clean(e) }; failed++; }
-    finally { if (closed && !waiting) await reopen(k); }
+    finally { if (closed && !installerPending) await reopen(k); }
     renderRepos();
   }
   busy = false; renderRepos();
