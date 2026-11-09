@@ -120,6 +120,14 @@ async function installedVersion(needle) {
   return hits.map((h) => h.version).sort(cmpVersion).pop();
 }
 
+// Date of the highest-versioned matching OS install, when its inventory provides one.
+async function installedDate(needle) {
+  const hits = await matchEntries(needle);
+  if (!hits.length) return null;
+  hits.sort((a, b) => cmpVersion(a.version, b.version));
+  return hits[hits.length - 1].installDate || null;
+}
+
 // How is the app currently installed — 'msi'/'exe' on Windows, 'deb'/'rpm'/'flatpak'/
 // 'snap' on Linux, 'app' on macOS? null when not installed. Used to pick the SAME
 // package format on update, so a second copy never lands beside the first.
@@ -215,6 +223,7 @@ module.exports = {
   nameMatches,
   osRelease,
   installedVersion,
+  installedDate,
   installedFlavor,
   launchTarget,
   isRunning,

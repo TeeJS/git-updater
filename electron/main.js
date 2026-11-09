@@ -126,15 +126,17 @@ ipcMain.handle('installed:get', async () => {
   const out = {};
   for (const r of cfg.repos) {
     const key = `${r.owner}/${r.repo}#${r.type}`;
+    const rec = stt[key] || {};
     if (r.type === 'installer') {
       let v = null;
       try {
         v = await detect.installedVersion(r.detect || r.repo);
       } catch {}
-      out[key] = { current: v, present: !!v };
+      let date = rec.installedAt || null;
+      if (!date && v) try { date = await detect.installedDate(r.detect || r.repo); } catch {}
+      out[key] = { current: v, present: !!v, date: v ? date : null, lastAction: rec.lastAction || 'installed' };
     } else {
       const dir = portableDir(cfg, r);
-      const rec = stt[key];
       let current = (rec && rec.version) || null;
       let present = dirHasFiles(dir);
       // Neither a managed copy nor a git-updater record: fall back to the OS inventory. The
@@ -152,10 +154,26 @@ ipcMain.handle('installed:get', async () => {
           present = true;
         }
       }
-      out[key] = { current, present };
+      let date = rec.installedAt || null;
+      if (!date && present) try { date = await detect.installedDate(r.detect || r.repo); } catch {}
+      out[key] = { current, present, date: present ? date : null, lastAction: rec.lastAction || 'installed' };
     }
   }
   return out;
+});
+// The renderer calls this only after an interactive installer changes the OS version.
+ipcMain.handle('installed:record-completion', async (_e, { appKey, fromVersion, wasInstall }) => {
+  const r = readConfig().repos.find((x) => `${x.owner}/${x.repo}#${x.type}` === appKey);
+  if (!r || r.type !== 'installer') throw new Error('installer app not found');
+  detect.clearCache();
+  const version = await detect.installedVersion(r.detect || r.repo);
+  if (!version || version === fromVersion) throw new Error('installer completion not detected');
+  const stt = state.load();
+  const installedAt = new Date().toISOString();
+  const lastAction = wasInstall ? 'installed' : 'updated';
+  stt[appKey] = { ...(stt[appKey] || {}), repo: `${r.owner}/${r.repo}`, type: r.type, tag: version, version, installedAt, lastAction };
+  state.save(stt);
+  return { installedAt, lastAction };
 });
 ipcMain.handle('folder:open', (_e, appKey) => {
   const cfg = readConfig();

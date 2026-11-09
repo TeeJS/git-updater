@@ -110,6 +110,9 @@
   .row-actions { display: flex; justify-content: flex-end; gap: 6px; white-space: nowrap; }
 
   .table-header > span { font: 600 .68rem var(--mono); letter-spacing: .07em; text-transform: uppercase; color: var(--faint); padding-bottom: .5rem; }
+  .table-header .sort-button { display: block; width: 100%; min-height: 24px; padding: 0; border: 0; background: none; color: inherit; font: inherit; letter-spacing: inherit; text-align: left; text-transform: inherit; cursor: pointer; }
+  .table-header .sort-button:hover, .table-header .sort-button:focus-visible { color: var(--text); }
+  .sort-arrow { margin-left: .2rem; }
   .app-row { padding: .5rem 0; border-top: 1px solid var(--border); }
   .app-name { font: 500 14px var(--mono); }
   .status { display: inline-flex; align-items: center; gap: .4rem; font-size: .88rem; }
@@ -189,7 +192,11 @@
     <div class="table-wrapper">
       <div class="table-header">
         <span><input type="checkbox" id="selAll" title="Select all"></span>
-        <span>App</span><span class="type-cell">Type</span><span>Current</span><span>Available</span><span>Status</span><span></span>
+        <span role="columnheader" data-sort="app"><button class="sort-button" type="button">App<span class="sort-arrow" aria-hidden="true"></span></button></span>
+        <span class="type-cell" role="columnheader" data-sort="type"><button class="sort-button" type="button">Type<span class="sort-arrow" aria-hidden="true"></span></button></span>
+        <span role="columnheader" data-sort="current"><button class="sort-button" type="button">Current<span class="sort-arrow" aria-hidden="true"></span></button></span>
+        <span role="columnheader" data-sort="available"><button class="sort-button" type="button">Available<span class="sort-arrow" aria-hidden="true"></span></button></span>
+        <span role="columnheader" data-sort="status"><button class="sort-button" type="button">Status<span class="sort-arrow" aria-hidden="true"></span></button></span><span></span>
       </div>
       <div id="rows"></div>
     </div>
@@ -249,6 +256,10 @@
       </div>
       <p class="hint">Off by default: git-updater updates itself only to stable releases. This is separate from the per-app beta setting.</p>
       <div class="row" style="margin-top:.6rem">
+        <span style="color:var(--muted);font-size:.9rem;min-width:8rem">Date format</span>
+        <select id="dateFormat" aria-label="Status date format"><option value="MM/DD">MM/DD</option><option value="DD/MM">DD/MM</option></select>
+      </div>
+      <div class="row" style="margin-top:.6rem">
         <span style="color:var(--muted);font-size:.9rem;min-width:8rem">Automatically</span>
         <label class="scan-label"><input type="checkbox" id="checkOnOpen"> Check for updates when git-updater opens</label>
       </div>
@@ -264,11 +275,60 @@
 </div>
 
 <script>
+// Browser copy of core.cmpVersion. Kept in sync by the parity test in ui-sort.test.js.
+(function () {
+  const normTag = (t) => {
+    const s = String(t == null ? '' : t).trim();
+    return /\d/.test(s) ? s.replace(/^[^0-9]*(?=[0-9])/, '') : s;
+  };
+  const nums = (s) => s.split('.').map((x) => parseInt(x, 10) || 0);
+  function splitVer(t) {
+    let s = normTag(t);
+    const plus = s.indexOf('+');
+    if (plus >= 0) s = s.slice(0, plus);
+    s = s.replace(/\s*\([^)]*\)\s*$/, '');
+    const m = s.match(/^(\d+(?:\.\d+)*)(?:-(.*))?$/);
+    if (m) return { nums: nums(m[1]), pre: m[2] || '' };
+    const lead = s.match(/^(\d+(?:\.\d+)*)/);
+    return lead ? { nums: nums(lead[1]), pre: '' } : { nums: [0], pre: '' };
+  }
+  function cmpNums(a, b) {
+    for (let i = 0; i < Math.max(a.length, b.length); i++) {
+      const x = a[i] || 0, y = b[i] || 0;
+      if (x < y) return -1;
+      if (x > y) return 1;
+    }
+    return 0;
+  }
+  function naturalCmp(a, b) {
+    const ax = a.match(/\d+|\D+/g) || [], bx = b.match(/\d+|\D+/g) || [];
+    for (let i = 0; i < Math.max(ax.length, bx.length); i++) {
+      const as = ax[i], bs = bx[i];
+      if (as === undefined) return -1;
+      if (bs === undefined) return 1;
+      if (/^\d+$/.test(as) && /^\d+$/.test(bs)) {
+        const d = parseInt(as, 10) - parseInt(bs, 10);
+        if (d) return d < 0 ? -1 : 1;
+      } else if (as !== bs) return as < bs ? -1 : 1;
+    }
+    return 0;
+  }
+  window.compareVersions = (a, b) => {
+    const va = splitVer(a), vb = splitVer(b);
+    const c = cmpNums(va.nums, vb.nums);
+    if (c !== 0) return c;
+    if (va.pre && !vb.pre) return -1;
+    if (!va.pre && vb.pre) return 1;
+    if (va.pre === vb.pre) return 0;
+    return naturalCmp(va.pre, vb.pre);
+  };
+})();
 let config = { portableRoot: '', repos: [] };
 const st = {};       // appKey -> { ph, pct, from(current), to(available), reason, present }
 const selected = new Set();
 let busy = false;
 let booted = false; // first window load done — guards the check-on-open from config reloads
+let displayOrder = null; // preserve row positions while a check or update is running
 
 const $ = (id) => document.getElementById(id);
 const keyOf = (r) => `${r.owner}/${r.repo}#${r.type}`;
@@ -287,6 +347,29 @@ function parseRepo(s) {
   return null;
 }
 
+function statusDate(s) {
+  const time = Date.parse(s.date || '');
+  return Number.isFinite(time) ? time : null;
+}
+function formatStatusDate(date, format) {
+  const time = Date.parse(date || '');
+  if (!Number.isFinite(time)) return '';
+  // Registry dates are calendar days; timestamps are instants shown in local time.
+  const calendar = /^\d{4}-\d{2}-\d{2}$/.test(date);
+  const d = new Date(time);
+  const mm = calendar ? date.slice(5, 7) : String(d.getMonth() + 1).padStart(2, '0');
+  const dd = calendar ? date.slice(8, 10) : String(d.getDate()).padStart(2, '0');
+  return format === 'DD/MM' ? `${dd}/${mm}` : `${mm}/${dd}`;
+}
+function datedStatus(s) {
+  const verb = s.lastAction === 'updated' ? 'Updated' : 'Installed';
+  const date = formatStatusDate(s.date, config.dateFormat);
+  return { text: date ? `${verb} ${date}` : verb, cls: 'c-ok' };
+}
+function statusGroup(s) {
+  if (['current', 'installed', 'updated'].includes(s.ph)) return s.ph === 'updated' || (s.ph === 'current' && s.lastAction === 'updated') ? 'Updated' : 'Installed';
+  return statusView(s).text;
+}
 function statusView(s) {
   switch (s.ph) {
     case 'loading': return { text: 'Loading…', cls: 'c-work' };
@@ -296,10 +379,10 @@ function statusView(s) {
     case 'verifying': return { text: 'Verifying SHA-256', cls: 'c-work' };
     case 'installing': return { text: 'Installing…', cls: 'c-work' };
     case 'waiting': return { text: 'Waiting for installer…', cls: 'c-work' };
-    case 'current': return { text: 'Up to date', cls: 'c-ok' };
+    case 'current': return datedStatus(s);
     case 'available': return s.present ? { text: 'Update available', cls: 'c-up' } : { text: 'Available to install', cls: 'c-up' };
-    case 'installed': return { text: 'Installed', cls: 'c-ok' };
-    case 'updated': return { text: 'Updated', cls: 'c-ok' };
+    case 'installed': return datedStatus({ ...s, lastAction: 'installed' });
+    case 'updated': return datedStatus({ ...s, lastAction: 'updated' });
     case 'failed': return { text: s.reason || 'Failed', cls: 'c-bad' };
     default: return s.present ? { text: 'Not checked', cls: 'c-muted' } : { text: 'Not installed', cls: 'c-warn' };
   }
@@ -315,11 +398,68 @@ function primaryAction(s) {
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
 const cell = (node, cls) => { const td = document.createElement('td'); if (cls) td.className = cls; if (node) td.appendChild(node); return td; };
 
+function sortedRepos() {
+  const repos = [...config.repos];
+  if (busy && displayOrder) {
+    const rank = new Map(displayOrder.map((key, i) => [key, i]));
+    return repos.sort((a, b) => (rank.get(keyOf(a)) ?? Infinity) - (rank.get(keyOf(b)) ?? Infinity));
+  }
+  const col = config.sortColumn;
+  const direction = config.sortDirection === 'desc' ? -1 : 1;
+  if (['app', 'type', 'current', 'available', 'status'].includes(col)) {
+    repos.sort((a, b) => {
+      const sa = st[keyOf(a)] || {}, sb = st[keyOf(b)] || {};
+      let result;
+      if (col === 'app') result = `${a.owner}/${a.repo}`.localeCompare(`${b.owner}/${b.repo}`);
+      else if (col === 'type') result = a.type.localeCompare(b.type);
+      else if (col === 'current' || col === 'available') {
+        const va = col === 'current' ? sa.from : sa.to, vb = col === 'current' ? sb.from : sb.to;
+        if (!va && vb) return 1;
+        if (!vb && va) return -1;
+        result = window.compareVersions(va, vb);
+      }
+      else {
+        result = statusGroup(sa).localeCompare(statusGroup(sb));
+        if (result) return direction * result;
+        const dated = ['current', 'installed', 'updated'];
+        const da = dated.includes(sa.ph) ? statusDate(sa) : null;
+        const db = dated.includes(sb.ph) ? statusDate(sb) : null;
+        if (da == null && db != null) return 1;
+        if (db == null && da != null) return -1;
+        if (da != null && db != null && da !== db) return direction * (da - db);
+        result = 0;
+      }
+      return direction * result || `${a.owner}/${a.repo}`.localeCompare(`${b.owner}/${b.repo}`);
+    });
+  }
+  displayOrder = repos.map(keyOf);
+  return repos;
+}
+
+function renderSortHeaders() {
+  document.querySelectorAll('.table-header [data-sort]').forEach((header) => {
+    const active = header.dataset.sort === config.sortColumn;
+    header.setAttribute('aria-sort', active ? (config.sortDirection === 'desc' ? 'descending' : 'ascending') : 'none');
+    header.querySelector('.sort-arrow').textContent = active ? (config.sortDirection === 'desc' ? ' ↓' : ' ↑') : '';
+  });
+}
+document.querySelectorAll('.table-header [data-sort]').forEach((header) => {
+  header.querySelector('button').onclick = async () => {
+    if (busy) return;
+    const col = header.dataset.sort;
+    config.sortDirection = config.sortColumn === col && config.sortDirection !== 'desc' ? 'desc' : 'asc';
+    config.sortColumn = col;
+    renderRepos();
+    await saveConfig();
+  };
+});
+
 function renderRepos() {
   const tb = $('rows');
   tb.innerHTML = '';
   $('empty').style.display = config.repos.length ? 'none' : '';
-  config.repos.forEach((r) => {
+  renderSortHeaders();
+  sortedRepos().forEach((r) => {
     const key = keyOf(r);
     const s = st[key] || (st[key] = { ph: 'idle' });
     const row = el('div', 'app-row'); // 7 grid children, same template as the header
@@ -431,7 +571,7 @@ async function saveConfig() {
 async function refreshInstalled() {
   try {
     const inst = await window.api.getInstalled();
-    config.repos.forEach((r) => { const k = keyOf(r); const i = inst[k]; const s = (st[k] = st[k] || { ph: 'idle' }); if (i) { s.from = i.current || null; s.present = !!i.present; } });
+    config.repos.forEach((r) => { const k = keyOf(r); const i = inst[k]; const s = (st[k] = st[k] || { ph: 'idle' }); if (i) { s.from = i.current || null; s.present = !!i.present; s.date = i.date || null; s.lastAction = i.lastAction || 'installed'; } });
   } catch {}
 }
 async function load() {
@@ -442,6 +582,7 @@ async function load() {
   $('selfPreRel').checked = !!config.selfUpdatePrerelease;
   $('checkOnOpen').checked = !!config.checkOnOpen;
   $('autoCloseReopen').checked = !!config.autoCloseReopen;
+  $('dateFormat').value = config.dateFormat === 'DD/MM' ? 'DD/MM' : 'MM/DD';
   config.repos.forEach((r) => { st[keyOf(r)] = { ph: 'loading' }; }); // show rows instantly
   renderRepos();
   await refreshInstalled(); // slower registry/manifest detection
@@ -470,6 +611,7 @@ $('saveRoot').onclick = () => saveConfig().then(() => { msg('Saved.', 'ok'); ref
 $('selfPreRel').onchange = () => { config.selfUpdatePrerelease = $('selfPreRel').checked; saveConfig().then(() => msg('Saved.', 'ok')); };
 $('checkOnOpen').onchange = () => { config.checkOnOpen = $('checkOnOpen').checked; saveConfig().then(() => msg('Saved.', 'ok')); };
 $('autoCloseReopen').onchange = () => { config.autoCloseReopen = $('autoCloseReopen').checked; saveConfig().then(() => msg('Saved.', 'ok')); };
+$('dateFormat').onchange = () => { config.dateFormat = $('dateFormat').value; renderRepos(); saveConfig().then(() => msg('Saved.', 'ok')); };
 $('browse').onclick = async () => {
   try { const { path } = await window.api.pickFolder(); if (path) { $('portableRoot').value = path; await saveConfig(); msg('Saved.', 'ok'); refreshInstalled().then(renderRepos); } }
   catch (e) { msg(clean(e), 'bad'); }
@@ -542,7 +684,7 @@ async function removeRepo(r) {
 
 // After opening an interactive installer, watch the registry until the installed
 // version changes, then refresh that row automatically (10-minute timeout).
-async function watchInstall(key, fromVersion, onComplete) {
+async function watchInstall(key, fromVersion, wasInstall, onComplete) {
   const deadline = Date.now() + 10 * 60 * 1000;
   while (Date.now() < deadline) {
     await new Promise((r) => setTimeout(r, 5000));
@@ -554,7 +696,13 @@ async function watchInstall(key, fromVersion, onComplete) {
       const inst = await window.api.getInstalled();
       const cur = inst[key]?.current;
       if (cur && cur !== fromVersion) {
-        st[key] = { ...st[key], from: cur, present: true };
+        // The runner may still be saving another row in this batch. Record only after it
+        // releases its state lock, so a later runner save cannot overwrite this entry.
+        while (busy) await new Promise((r) => setTimeout(r, 250));
+        let recorded;
+        try { recorded = await window.api.recordInstall(key, fromVersion, wasInstall); }
+        catch (e) { msg(`Installer finished, but its date could not be saved: ${clean(e)}`, 'bad'); }
+        st[key] = { ...st[key], from: cur, present: true, date: recorded?.installedAt || inst[key]?.date || null, lastAction: recorded?.lastAction || inst[key]?.lastAction || 'installed' };
         if (!busy) await checkApps([key]); // confirms Up to date / sets final state
         else { st[key].ph = 'installed'; renderRepos(); }
         if (onComplete) await onComplete();
@@ -636,12 +784,12 @@ async function runBatch(keys, force, autoClose = false) {
       closed = !!r?.closed;
       const s = st[k] || {};
       if (!r) { st[k] = { ...s, ph: 'failed', reason: 'no result' }; failed++; }
-      else if (r.status === 'updated') { st[k] = { ...s, ph: wasInstall ? 'installed' : 'updated', from: r.to, to: r.to, present: true }; wasInstall ? installed++ : done++; }
+      else if (r.status === 'updated') { st[k] = { ...s, ph: wasInstall ? 'installed' : 'updated', from: r.to, to: r.to, present: true, date: r.installedAt || new Date().toISOString(), lastAction: r.lastAction || (wasInstall ? 'installed' : 'updated') }; wasInstall ? installed++ : done++; }
       else if (r.status === 'current') { st[k] = { ...s, ph: 'current', to: r.to }; }
       else if (/installer window opened/.test(r.reason || '')) {
         st[k] = { ...s, ph: 'waiting', to: r.to };
         installerPending = true;
-        watchInstall(k, s.from, closed ? () => reopen(k) : undefined);
+        watchInstall(k, s.from, wasInstall, closed ? () => reopen(k) : undefined);
       }
       else { st[k] = { ...s, ph: 'failed', reason: r.reason }; failed++; }
     } catch (e) { st[k] = { ...(st[k] || {}), ph: 'failed', reason: clean(e) }; failed++; }

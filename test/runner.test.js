@@ -116,6 +116,27 @@ test('runner: an app that stays closed throughout is updated normally', async ()
   }
 });
 
+test('runner: state records distinguish initial install from later update', async () => {
+  const dir = tmp();
+  const statePath = path.join(dir, 'state.json');
+  try {
+    await withStubs({ running: [false, false] }, async () => {
+      const { results } = await runner.run(configFor(dir), { statePath });
+      assert.equal(results[0].lastAction, 'installed');
+      assert.equal(JSON.parse(fs.readFileSync(statePath, 'utf8'))['acme/widget#portable'].lastAction, 'installed');
+    });
+    const previous = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+    previous['acme/widget#portable'].version = '1.0.0';
+    previous['acme/widget#portable'].tag = 'v1.0.0';
+    fs.writeFileSync(statePath, JSON.stringify(previous));
+    await withStubs({ running: [false, false] }, async () => {
+      const { results } = await runner.run(configFor(dir), { statePath });
+      assert.equal(results[0].lastAction, 'updated');
+      assert.equal(JSON.parse(fs.readFileSync(statePath, 'utf8'))['acme/widget#portable'].lastAction, 'updated');
+    });
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 test('runner: an app already running is refused before anything is downloaded', async () => {
   const dir = tmp();
   try {

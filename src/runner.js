@@ -371,18 +371,21 @@ async function handleRepo(repo, id, st, opts) {
       }
     }
 
+    const installedAt = new Date().toISOString();
+    const lastAction = tracked ? 'updated' : 'installed';
     st[key] = {
       repo: id,
       type: repo.type,
       tag: latest,
       version: core.normTag(latest),
       assetName: asset.name,
-      installedAt: new Date().toISOString(),
+      installedAt,
+      lastAction,
       ...(files ? { files } : {}),
     };
     state.save(st, opts.statePath);
     log(`OK ${key}: installed ${core.normTag(latest)}`);
-    return { ...base, status: 'updated', note: v && v.note };
+    return { ...base, status: 'updated', installedAt, lastAction, note: v && v.note };
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

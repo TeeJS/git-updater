@@ -79,7 +79,7 @@ test('interactive installer reopens only after completion callback', async () =>
     renderRepos: () => {},
     msg: () => {},
     clean: String,
-    watchInstall: (_key, _from, callback) => { completion = callback; },
+    watchInstall: (_key, _from, _wasInstall, callback) => { completion = callback; },
     window: { api: {
       update: async () => ({ results: [{ status: 'failed', reason: 'installer window opened', closed: true }] }),
       openApp: async () => { reopened++; },
