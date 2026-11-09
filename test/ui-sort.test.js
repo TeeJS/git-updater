@@ -6,10 +6,9 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const core = require('../src/core');
-const browser = { window: {} };
-vm.runInNewContext(fs.readFileSync(path.join(__dirname, '..', 'ui', 'version-sort.js'), 'utf8'), browser);
-
 const html = fs.readFileSync(path.join(__dirname, '..', 'ui', 'index.html'), 'utf8');
+const browser = { window: {} };
+vm.runInNewContext(html.slice(html.indexOf('// Browser copy of core.cmpVersion'), html.indexOf('let config =')), browser);
 const start = html.indexOf('function sortedRepos()');
 const end = html.indexOf('function renderSortHeaders()', start);
 assert.ok(start > 0 && end > start);
