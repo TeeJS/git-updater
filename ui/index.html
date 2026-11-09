@@ -95,7 +95,7 @@
       66px              /* type */
       94px              /* current */
       94px              /* available */
-      130px             /* status */
+      170px             /* status */
       100px;            /* actions */
     column-gap: 10px;
     align-items: center;
@@ -120,7 +120,7 @@
   /* Narrow card: hide the Type column (container query on the card, not the viewport). */
   @container (max-width: 720px) {
     .table-header,
-    .app-row { grid-template-columns: 24px minmax(0, 1fr) 88px 88px 120px 100px; column-gap: 8px; }
+    .app-row { grid-template-columns: 24px minmax(0, 1fr) 88px 88px 160px 100px; column-gap: 8px; }
     /* .badge sets display later in the cascade; child selector out-specifies it */
     .table-header > .type-cell, .app-row > .type-cell { display: none; }
   }
