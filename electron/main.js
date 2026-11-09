@@ -126,15 +126,17 @@ ipcMain.handle('installed:get', async () => {
   const out = {};
   for (const r of cfg.repos) {
     const key = `${r.owner}/${r.repo}#${r.type}`;
+    const rec = stt[key] || {};
     if (r.type === 'installer') {
       let v = null;
       try {
         v = await detect.installedVersion(r.detect || r.repo);
       } catch {}
-      out[key] = { current: v, present: !!v };
+      let date = rec.installedAt || null;
+      if (!date && v) try { date = await detect.installedDate(r.detect || r.repo); } catch {}
+      out[key] = { current: v, present: !!v, date: v ? date : null, lastAction: rec.lastAction || 'installed' };
     } else {
       const dir = portableDir(cfg, r);
-      const rec = stt[key];
       let current = (rec && rec.version) || null;
       let present = dirHasFiles(dir);
       // Neither a managed copy nor a git-updater record: fall back to the OS inventory. The
@@ -152,10 +154,28 @@ ipcMain.handle('installed:get', async () => {
           present = true;
         }
       }
-      out[key] = { current, present };
+      let date = rec.installedAt || null;
+      if (!date && present) try { date = await detect.installedDate(r.detect || r.repo); } catch {}
+      out[key] = { current, present, date: present ? date : null, lastAction: rec.lastAction || 'installed' };
     }
   }
   return out;
+});
+// The renderer calls this only after an interactive installer changes the OS version.
+ipcMain.handle('installed:record-completion', async (_e, { appKey, fromVersion, wasInstall }) => {
+  const r = readConfig().repos.find((x) => `${x.owner}/${x.repo}#${x.type}` === appKey);
+  if (!r || r.type !== 'installer') throw new Error('installer app not found');
+  detect.clearCache();
+  const version = await detect.installedVersion(r.detect || r.repo);
+  if (!version || version === fromVersion) throw new Error('installer completion not detected');
+  const stt = state.load();
+  const installedAt = new Date().toISOString();
+  const lastAction = wasInstall ? 'installed' : 'updated';
+  // An interactive install supplies status provenance, not a release tag. The registry
+  // may use a different version scheme; treating it as a tag can block a later reinstall.
+  stt[appKey] = { ...(stt[appKey] || {}), repo: `${r.owner}/${r.repo}`, type: r.type, installedAt, lastAction };
+  state.save(stt);
+  return { installedAt, lastAction };
 });
 ipcMain.handle('folder:open', (_e, appKey) => {
   const cfg = readConfig();
@@ -314,7 +334,12 @@ ipcMain.handle('scan:add', (_e, items) => {
   if (scanWin && !scanWin.isDestroyed()) scanWin.close();
   return { added };
 });
-// Close a tracked app's running processes (graceful; force on request).
+// Running check and close for a tracked app.
+ipcMain.handle('app:is-running', async (_e, appKey) => {
+  const r = readConfig().repos.find((x) => `${x.owner}/${x.repo}#${x.type}` === appKey);
+  if (!r) throw new Error('app not found');
+  return detect.isRunning(r.process || r.repo);
+});
 ipcMain.handle('app:close', async (_e, { appKey, force }) => {
   const r = readConfig().repos.find((x) => `${x.owner}/${x.repo}#${x.type}` === appKey);
   if (!r) throw new Error('app not found');
@@ -424,7 +449,7 @@ ipcMain.handle('update', async (e, body = {}) => {
     // Stream per-app progress to the renderer as it happens.
     const onProgress = (id, phase, pct) => e.sender.send('update:progress', { id, phase, pct });
     const openFile = (f) => shell.openPath(f); // ShellExecute: an installer's UAC manifest works
-    return await runner.run(config, { only: body.only, force: !!body.force, dryRun: !!body.dryRun, onProgress, openFile });
+    return await runner.run(config, { only: body.only, force: !!body.force, dryRun: !!body.dryRun, autoClose: !!body.autoClose, onProgress, openFile });
   } finally {
     state.releaseLock(lock);
     updating = false;

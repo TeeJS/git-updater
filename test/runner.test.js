@@ -29,13 +29,14 @@ const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'gu-runner-'));
 
 // `running` is consulted per call, so a test can say "idle at download time, launched by
 // install time" — which is the race the second check exists for.
-async function withStubs({ running }, fn) {
+async function withStubs({ running, closeApp }, fn) {
   const real = {
     getLatestRelease: github.getLatestRelease,
     downloadAsset: github.downloadAsset,
     verifyDigest: github.verifyDigest,
     fetchChecksumFromRelease: github.fetchChecksumFromRelease,
     isRunning: detect.isRunning,
+    closeApp: detect.closeApp,
     clearCache: detect.clearCache,
   };
   let call = 0;
@@ -52,6 +53,7 @@ async function withStubs({ running }, fn) {
   github.fetchChecksumFromRelease = async () => null;
   detect.clearCache = () => {};
   detect.isRunning = async () => running[Math.min(call++, running.length - 1)];
+  if (closeApp) detect.closeApp = closeApp;
   try {
     return await fn(() => call);
   } finally {
@@ -62,6 +64,7 @@ async function withStubs({ running }, fn) {
       fetchChecksumFromRelease: real.fetchChecksumFromRelease,
     });
     detect.isRunning = real.isRunning;
+    detect.closeApp = real.closeApp;
     detect.clearCache = real.clearCache;
   }
 }
@@ -113,6 +116,66 @@ test('runner: an app that stays closed throughout is updated normally', async ()
   }
 });
 
+test('runner: state records distinguish initial install from later update', async () => {
+  const dir = tmp();
+  const statePath = path.join(dir, 'state.json');
+  try {
+    await withStubs({ running: [false, false] }, async () => {
+      const { results } = await runner.run(configFor(dir), { statePath });
+      assert.equal(results[0].lastAction, 'installed');
+      assert.equal(JSON.parse(fs.readFileSync(statePath, 'utf8'))['acme/widget#portable'].lastAction, 'installed');
+    });
+    const previous = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+    previous['acme/widget#portable'].version = '1.0.0';
+    previous['acme/widget#portable'].tag = 'v1.0.0';
+    fs.writeFileSync(statePath, JSON.stringify(previous));
+    await withStubs({ running: [false, false] }, async () => {
+      const { results } = await runner.run(configFor(dir), { statePath });
+      assert.equal(results[0].lastAction, 'updated');
+      assert.equal(JSON.parse(fs.readFileSync(statePath, 'utf8'))['acme/widget#portable'].lastAction, 'updated');
+    });
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('runner: failed staging cleanup does not replace a successful install', async () => {
+  const dir = tmp();
+  const statePath = path.join(dir, 'state.json');
+  const realRm = fs.promises.rm;
+  fs.promises.rm = async (_path, options) => {
+    assert.equal(options.maxRetries, 5);
+    assert.equal(options.retryDelay, 200);
+    const e = new Error('locked'); e.code = 'EPERM'; throw e;
+  };
+  try {
+    await withStubs({ running: [false, false] }, async () => {
+      const { results } = await runner.run(configFor(dir), { statePath });
+      assert.equal(results[0].status, 'updated', results[0].reason);
+      assert.equal(JSON.parse(fs.readFileSync(statePath, 'utf8'))['acme/widget#portable'].version, '2.0.0');
+    });
+  } finally {
+    fs.promises.rm = realRm;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('runner: failed staging cleanup preserves the original install error', async () => {
+  const dir = tmp();
+  const realRm = fs.promises.rm;
+  fs.promises.rm = async () => { const e = new Error('locked'); e.code = 'EPERM'; throw e; };
+  try {
+    await withStubs({ running: [false] }, async () => {
+      github.downloadAsset = async () => { throw new Error('original download failure'); };
+      const { results } = await runner.run(configFor(dir), { statePath: path.join(dir, 'state.json') });
+      assert.equal(results[0].status, 'failed');
+      assert.match(results[0].reason, /original download failure/);
+      assert.doesNotMatch(results[0].reason, /locked|EPERM/);
+    });
+  } finally {
+    fs.promises.rm = realRm;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('runner: an app already running is refused before anything is downloaded', async () => {
   const dir = tmp();
   try {
@@ -124,6 +187,47 @@ test('runner: an app already running is refused before anything is downloaded', 
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('runner: auto-close closes a running app only when an update exists', async () => {
+  const dir = tmp();
+  try {
+    const statePath = path.join(dir, 'state.json');
+    const dest = path.join(dir, 'widget');
+    fs.mkdirSync(dest, { recursive: true });
+    fs.writeFileSync(path.join(dest, 'app.txt'), 'v2');
+    fs.writeFileSync(statePath, JSON.stringify({ 'acme/widget#portable': { version: '2.0.0', tag: 'v2.0.0', files: ['app.txt'] } }));
+    await withStubs({ running: [true], closeApp: async () => { throw new Error('closed an up-to-date app'); } }, async (calls) => {
+      const { results } = await runner.run(configFor(dir), { statePath, autoClose: true });
+      assert.equal(results[0].status, 'current');
+      assert.equal(results[0].closed, undefined);
+      assert.equal(calls(), 0);
+    });
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('runner: auto-close marks an app closed before installing an update', async () => {
+  const dir = tmp();
+  try {
+    let closes = 0;
+    await withStubs({ running: [true, false], closeApp: async () => { closes++; return { closed: 1, stillRunning: false }; } }, async () => {
+      const { results } = await runner.run(configFor(dir), { statePath: path.join(dir, 'state.json'), autoClose: true });
+      assert.equal(results[0].status, 'updated', results[0].reason);
+      assert.equal(results[0].closed, true);
+      assert.equal(closes, 1);
+    });
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('runner: app exiting before close does not block update or trigger reopen', async () => {
+  const dir = tmp();
+  try {
+    await withStubs({ running: [true, false], closeApp: async () => ({ closed: 0, stillRunning: false }) }, async () => {
+      const { results } = await runner.run(configFor(dir), { statePath: path.join(dir, 'state.json'), autoClose: true });
+      assert.equal(results[0].status, 'updated', results[0].reason);
+      assert.equal(results[0].closed, undefined);
+    });
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
 // A .dmg guarded by a click-through licence agreement can't be unpacked unattended.

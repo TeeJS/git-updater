@@ -32,4 +32,6 @@ contextBridge.exposeInMainWorld('api', {
   selfUpdateOpenRelease: () => ipcRenderer.invoke('selfupdate:openRelease'),
   getVersion: () => ipcRenderer.invoke('app:version'),
   getPlatform: () => ipcRenderer.invoke('app:platform'),
+  isAppRunning: (appKey) => ipcRenderer.invoke('app:is-running', appKey),
+  recordInstall: (appKey, fromVersion, wasInstall) => ipcRenderer.invoke('installed:record-completion', { appKey, fromVersion, wasInstall }),
 });

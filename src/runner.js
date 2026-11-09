@@ -94,10 +94,13 @@ async function run(config, opts = {}) {
   for (const repo of config.repos) {
     const id = displayId(repo);
     if (only && id.toLowerCase() !== only && appKey(repo).toLowerCase() !== only) continue;
+    let closed = false;
+    const markClosed = () => { closed = true; };
     try {
-      results.push(await handleRepo(repo, id, st, { ...opts, portableRoot: config.portableRoot }));
+      const result = await handleRepo(repo, id, st, { ...opts, portableRoot: config.portableRoot, markClosed });
+      results.push(closed ? { ...result, closed: true } : result);
     } catch (e) {
-      results.push({ repo: id, id: appKey(repo), status: 'failed', reason: e.message });
+      results.push({ repo: id, id: appKey(repo), status: 'failed', reason: e.message, ...(closed ? { closed: true } : {}) });
       log(`FAIL ${appKey(repo)}: ${e.message}`);
       if (e.rateLimited) break; // no point hammering a rate-limited API
     }
@@ -212,8 +215,20 @@ async function handleRepo(repo, id, st, opts) {
   // Proactive check: a running app blocks both installers (in-use files) and portable
   // swaps (locked files). Tell the user up front instead of failing mid-download.
   if (await detect.isRunning(repo.process || repo.repo)) {
-    log(`SKIP ${key}: ${repo.repo} is running`);
-    return { ...base, status: 'failed', reason: `${repo.repo} is running — close it, then Retry` };
+    if (opts.autoClose) {
+      const result = await detect.closeApp(repo.process || repo.repo);
+      if (result.stillRunning) {
+        log(`SKIP ${key}: auto-close could not stop ${repo.repo}`);
+        return { ...base, status: 'failed', reason: `${repo.repo} did not close gracefully — close it manually, then Retry` };
+      }
+      if (result.closed > 0) {
+        opts.markClosed();
+        log(`AUTO-CLOSE ${key}: closed ${result.closed} process(es) before update`);
+      }
+    } else {
+      log(`SKIP ${key}: ${repo.repo} is running`);
+      return { ...base, status: 'failed', reason: `${repo.repo} is running — close it, then Retry` };
+    }
   }
 
   log(`update ${key}: installed=${installed || '(none)'} -> latest=${core.normTag(latest)}, asset=${asset.name}`);
@@ -316,8 +331,20 @@ async function handleRepo(repo, id, st, opts) {
       // has managed to provoke a failure from that mismatch. Unprovoked is not safe:
       // whatever the app loads next comes from a version it did not start with.
       if (await detect.isRunning(repo.process || repo.repo)) {
-        log(`SKIP ${key}: ${repo.repo} started during the download`);
-        return { ...base, status: 'failed', reason: `${repo.repo} is running — close it, then Retry` };
+        if (opts.autoClose) {
+          const result = await detect.closeApp(repo.process || repo.repo);
+          if (result.stillRunning) {
+            log(`SKIP ${key}: auto-close could not stop ${repo.repo} before swap`);
+            return { ...base, status: 'failed', reason: `${repo.repo} did not close gracefully — close it manually, then Retry` };
+          }
+          if (result.closed > 0) {
+            opts.markClosed();
+            log(`AUTO-CLOSE ${key}: closed ${result.closed} process(es) before swap`);
+          }
+        } else {
+          log(`SKIP ${key}: ${repo.repo} started during the download`);
+          return { ...base, status: 'failed', reason: `${repo.repo} is running — close it, then Retry` };
+        }
       }
       // Transactional dir swap: stale files vanish with the old dir, user files carry over.
       try {
@@ -344,20 +371,27 @@ async function handleRepo(repo, id, st, opts) {
       }
     }
 
+    const installedAt = new Date().toISOString();
+    const lastAction = tracked ? 'updated' : 'installed';
     st[key] = {
       repo: id,
       type: repo.type,
       tag: latest,
       version: core.normTag(latest),
       assetName: asset.name,
-      installedAt: new Date().toISOString(),
+      installedAt,
+      lastAction,
       ...(files ? { files } : {}),
     };
     state.save(st, opts.statePath);
     log(`OK ${key}: installed ${core.normTag(latest)}`);
-    return { ...base, status: 'updated', note: v && v.note };
+    return { ...base, status: 'updated', installedAt, lastAction, note: v && v.note };
   } finally {
-    fs.rmSync(tmp, { recursive: true, force: true });
+    try {
+      await fs.promises.rm(tmp, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+    } catch (e) {
+      log(`WARN ${key}: could not remove staging folder ${tmp} (${e.code || e.message})`);
+    }
   }
 }
 
