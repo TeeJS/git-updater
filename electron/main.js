@@ -126,15 +126,17 @@ ipcMain.handle('installed:get', async () => {
   const out = {};
   for (const r of cfg.repos) {
     const key = `${r.owner}/${r.repo}#${r.type}`;
+    const rec = stt[key] || {};
     if (r.type === 'installer') {
       let v = null;
       try {
         v = await detect.installedVersion(r.detect || r.repo);
       } catch {}
-      out[key] = { current: v, present: !!v };
+      let date = rec.installedAt || null;
+      if (!date && v) try { date = await detect.installedDate(r.detect || r.repo); } catch {}
+      out[key] = { current: v, present: !!v, date: v ? date : null, lastAction: rec.lastAction || 'installed' };
     } else {
       const dir = portableDir(cfg, r);
-      const rec = stt[key];
       let current = (rec && rec.version) || null;
       let present = dirHasFiles(dir);
       // Neither a managed copy nor a git-updater record: fall back to the OS inventory. The
@@ -152,7 +154,9 @@ ipcMain.handle('installed:get', async () => {
           present = true;
         }
       }
-      out[key] = { current, present };
+      let date = rec.installedAt || null;
+      if (!date && present) try { date = await detect.installedDate(r.detect || r.repo); } catch {}
+      out[key] = { current, present, date: present ? date : null, lastAction: rec.lastAction || 'installed' };
     }
   }
   return out;

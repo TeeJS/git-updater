@@ -256,6 +256,10 @@
       </div>
       <p class="hint">Off by default: git-updater updates itself only to stable releases. This is separate from the per-app beta setting.</p>
       <div class="row" style="margin-top:.6rem">
+        <span style="color:var(--muted);font-size:.9rem;min-width:8rem">Date format</span>
+        <select id="dateFormat" aria-label="Status date format"><option value="MM/DD">MM/DD</option><option value="DD/MM">DD/MM</option></select>
+      </div>
+      <div class="row" style="margin-top:.6rem">
         <span style="color:var(--muted);font-size:.9rem;min-width:8rem">Automatically</span>
         <label class="scan-label"><input type="checkbox" id="checkOnOpen"> Check for updates when git-updater opens</label>
       </div>
@@ -290,6 +294,23 @@ function parseRepo(s) {
   return null;
 }
 
+function statusDate(s) {
+  const time = Date.parse(s.date || '');
+  return Number.isFinite(time) ? time : null;
+}
+function formatStatusDate(date, format) {
+  const time = Date.parse(date || '');
+  if (!Number.isFinite(time)) return '';
+  const d = new Date(time);
+  const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(d.getUTCDate()).padStart(2, '0');
+  return format === 'DD/MM' ? `${dd}/${mm}` : `${mm}/${dd}`;
+}
+function datedStatus(s) {
+  const verb = s.lastAction === 'updated' ? 'Updated' : 'Installed';
+  const date = formatStatusDate(s.date, config.dateFormat);
+  return { text: date ? `${verb} ${date}` : verb, cls: 'c-ok' };
+}
 function statusView(s) {
   switch (s.ph) {
     case 'loading': return { text: 'Loading…', cls: 'c-work' };
@@ -299,10 +320,10 @@ function statusView(s) {
     case 'verifying': return { text: 'Verifying SHA-256', cls: 'c-work' };
     case 'installing': return { text: 'Installing…', cls: 'c-work' };
     case 'waiting': return { text: 'Waiting for installer…', cls: 'c-work' };
-    case 'current': return { text: 'Up to date', cls: 'c-ok' };
+    case 'current': return datedStatus(s);
     case 'available': return s.present ? { text: 'Update available', cls: 'c-up' } : { text: 'Available to install', cls: 'c-up' };
-    case 'installed': return { text: 'Installed', cls: 'c-ok' };
-    case 'updated': return { text: 'Updated', cls: 'c-ok' };
+    case 'installed': return datedStatus({ ...s, lastAction: 'installed' });
+    case 'updated': return datedStatus({ ...s, lastAction: 'updated' });
     case 'failed': return { text: s.reason || 'Failed', cls: 'c-bad' };
     default: return s.present ? { text: 'Not checked', cls: 'c-muted' } : { text: 'Not installed', cls: 'c-warn' };
   }
@@ -333,7 +354,13 @@ function sortedRepos() {
       if (col === 'app') result = `${a.owner}/${a.repo}`.localeCompare(`${b.owner}/${b.repo}`);
       else if (col === 'type') result = a.type.localeCompare(b.type);
       else if (col === 'current' || col === 'available') result = window.api.cmpVersion(col === 'current' ? sa.from : sa.to, col === 'current' ? sb.from : sb.to);
-      else result = statusView(sa).text.localeCompare(statusView(sb).text);
+      else {
+        const da = statusDate(sa), db = statusDate(sb);
+        if (da == null && db != null) return 1;
+        if (db == null && da != null) return -1;
+        if (da != null && db != null && da !== db) return direction * (da - db);
+        result = statusView(sa).text.localeCompare(statusView(sb).text);
+      }
       return direction * result || `${a.owner}/${a.repo}`.localeCompare(`${b.owner}/${b.repo}`);
     });
   }
@@ -476,7 +503,7 @@ async function saveConfig() {
 async function refreshInstalled() {
   try {
     const inst = await window.api.getInstalled();
-    config.repos.forEach((r) => { const k = keyOf(r); const i = inst[k]; const s = (st[k] = st[k] || { ph: 'idle' }); if (i) { s.from = i.current || null; s.present = !!i.present; } });
+    config.repos.forEach((r) => { const k = keyOf(r); const i = inst[k]; const s = (st[k] = st[k] || { ph: 'idle' }); if (i) { s.from = i.current || null; s.present = !!i.present; s.date = i.date || null; s.lastAction = i.lastAction || 'installed'; } });
   } catch {}
 }
 async function load() {
@@ -486,6 +513,7 @@ async function load() {
   $('portableRoot').value = config.portableRoot || '';
   $('selfPreRel').checked = !!config.selfUpdatePrerelease;
   $('checkOnOpen').checked = !!config.checkOnOpen;
+  $('dateFormat').value = config.dateFormat === 'DD/MM' ? 'DD/MM' : 'MM/DD';
   config.repos.forEach((r) => { st[keyOf(r)] = { ph: 'loading' }; }); // show rows instantly
   renderRepos();
   await refreshInstalled(); // slower registry/manifest detection
@@ -513,6 +541,7 @@ async function load() {
 $('saveRoot').onclick = () => saveConfig().then(() => { msg('Saved.', 'ok'); refreshInstalled().then(renderRepos); });
 $('selfPreRel').onchange = () => { config.selfUpdatePrerelease = $('selfPreRel').checked; saveConfig().then(() => msg('Saved.', 'ok')); };
 $('checkOnOpen').onchange = () => { config.checkOnOpen = $('checkOnOpen').checked; saveConfig().then(() => msg('Saved.', 'ok')); };
+$('dateFormat').onchange = () => { config.dateFormat = $('dateFormat').value; renderRepos(); saveConfig().then(() => msg('Saved.', 'ok')); };
 $('browse').onclick = async () => {
   try { const { path } = await window.api.pickFolder(); if (path) { $('portableRoot').value = path; await saveConfig(); msg('Saved.', 'ok'); refreshInstalled().then(renderRepos); } }
   catch (e) { msg(clean(e), 'bad'); }
@@ -594,7 +623,7 @@ async function watchInstall(key, fromVersion) {
       const inst = await window.api.getInstalled();
       const cur = inst[key]?.current;
       if (cur && cur !== fromVersion) {
-        st[key] = { ...st[key], from: cur, present: true };
+        st[key] = { ...st[key], from: cur, present: true, date: inst[key]?.date || null, lastAction: inst[key]?.lastAction || 'installed' };
         if (!busy) await checkApps([key]); // confirms Up to date / sets final state
         else { st[key].ph = 'installed'; renderRepos(); }
         return;
@@ -666,7 +695,7 @@ async function runBatch(keys, force) {
       const r = results.find((x) => (x.id || x.repo) === k) || results[0];
       const s = st[k] || {};
       if (!r) { st[k] = { ...s, ph: 'failed', reason: 'no result' }; failed++; }
-      else if (r.status === 'updated') { st[k] = { ...s, ph: wasInstall ? 'installed' : 'updated', from: r.to, to: r.to, present: true }; wasInstall ? installed++ : done++; }
+      else if (r.status === 'updated') { st[k] = { ...s, ph: wasInstall ? 'installed' : 'updated', from: r.to, to: r.to, present: true, date: r.installedAt || new Date().toISOString(), lastAction: r.lastAction || (wasInstall ? 'installed' : 'updated') }; wasInstall ? installed++ : done++; }
       else if (r.status === 'current') { st[k] = { ...s, ph: 'current', to: r.to }; }
       else if (/installer window opened/.test(r.reason || '')) { st[k] = { ...s, ph: 'waiting', to: r.to }; watchInstall(k, s.from); }
       else { st[k] = { ...s, ph: 'failed', reason: r.reason }; failed++; }

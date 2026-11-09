@@ -44,6 +44,13 @@ test('win: MsiExec in the uninstall string means the msi flavor', () => {
   assert.equal(b.flavor, 'exe'); // ...and this one must stay on exe
 });
 
+test('win: parses and validates the registry install date', () => {
+  const withDate = REG_OUT.replace('    DisplayVersion    REG_SZ    26.02', '    DisplayVersion    REG_SZ    26.02\r\n    InstallDate    REG_SZ    20261231');
+  assert.equal(win.parseHive(withDate)[0].installDate, '2026-12-31');
+  const invalid = withDate.replace('20261231', '20261340');
+  assert.equal(win.parseHive(invalid)[0].installDate, undefined);
+});
+
 test('win: parses tasklist csv', () => {
   const out = '"notepad++.exe","1234","Console","1","12,345 K"\r\n"ShareX.exe","99","Console","1","1 K"\r\n';
   assert.deepEqual(win.parseTasklist(out), [
