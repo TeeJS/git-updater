@@ -161,6 +161,20 @@ ipcMain.handle('installed:get', async () => {
   }
   return out;
 });
+// The renderer calls this only after an interactive installer changes the OS version.
+ipcMain.handle('installed:record-completion', async (_e, { appKey, fromVersion, wasInstall }) => {
+  const r = readConfig().repos.find((x) => `${x.owner}/${x.repo}#${x.type}` === appKey);
+  if (!r || r.type !== 'installer') throw new Error('installer app not found');
+  detect.clearCache();
+  const version = await detect.installedVersion(r.detect || r.repo);
+  if (!version || version === fromVersion) throw new Error('installer completion not detected');
+  const stt = state.load();
+  const installedAt = new Date().toISOString();
+  const lastAction = wasInstall ? 'installed' : 'updated';
+  stt[appKey] = { ...(stt[appKey] || {}), repo: `${r.owner}/${r.repo}`, type: r.type, tag: version, version, installedAt, lastAction };
+  state.save(stt);
+  return { installedAt, lastAction };
+});
 ipcMain.handle('folder:open', (_e, appKey) => {
   const cfg = readConfig();
   const r = cfg.repos.find((x) => `${x.owner}/${x.repo}#${x.type}` === appKey);

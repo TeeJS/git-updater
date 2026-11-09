@@ -302,15 +302,21 @@ function statusDate(s) {
 function formatStatusDate(date, format) {
   const time = Date.parse(date || '');
   if (!Number.isFinite(time)) return '';
+  // Registry dates are calendar days; timestamps are instants shown in local time.
+  const calendar = /^\d{4}-\d{2}-\d{2}$/.test(date);
   const d = new Date(time);
-  const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
-  const dd = String(d.getUTCDate()).padStart(2, '0');
+  const mm = calendar ? date.slice(5, 7) : String(d.getMonth() + 1).padStart(2, '0');
+  const dd = calendar ? date.slice(8, 10) : String(d.getDate()).padStart(2, '0');
   return format === 'DD/MM' ? `${dd}/${mm}` : `${mm}/${dd}`;
 }
 function datedStatus(s) {
   const verb = s.lastAction === 'updated' ? 'Updated' : 'Installed';
   const date = formatStatusDate(s.date, config.dateFormat);
   return { text: date ? `${verb} ${date}` : verb, cls: 'c-ok' };
+}
+function statusGroup(s) {
+  if (['current', 'installed', 'updated'].includes(s.ph)) return s.ph === 'updated' || (s.ph === 'current' && s.lastAction === 'updated') ? 'Updated' : 'Installed';
+  return statusView(s).text;
 }
 function statusView(s) {
   switch (s.ph) {
@@ -361,11 +367,15 @@ function sortedRepos() {
         result = window.compareVersions(va, vb);
       }
       else {
-        const da = statusDate(sa), db = statusDate(sb);
+        result = statusGroup(sa).localeCompare(statusGroup(sb));
+        if (result) return direction * result;
+        const dated = ['current', 'installed', 'updated'];
+        const da = dated.includes(sa.ph) ? statusDate(sa) : null;
+        const db = dated.includes(sb.ph) ? statusDate(sb) : null;
         if (da == null && db != null) return 1;
         if (db == null && da != null) return -1;
         if (da != null && db != null && da !== db) return direction * (da - db);
-        result = statusView(sa).text.localeCompare(statusView(sb).text);
+        result = 0;
       }
       return direction * result || `${a.owner}/${a.repo}`.localeCompare(`${b.owner}/${b.repo}`);
     });
@@ -620,7 +630,7 @@ async function removeRepo(r) {
 
 // After opening an interactive installer, watch the registry until the installed
 // version changes, then refresh that row automatically (10-minute timeout).
-async function watchInstall(key, fromVersion) {
+async function watchInstall(key, fromVersion, wasInstall) {
   const deadline = Date.now() + 10 * 60 * 1000;
   while (Date.now() < deadline) {
     await new Promise((r) => setTimeout(r, 5000));
@@ -629,7 +639,10 @@ async function watchInstall(key, fromVersion) {
       const inst = await window.api.getInstalled();
       const cur = inst[key]?.current;
       if (cur && cur !== fromVersion) {
-        st[key] = { ...st[key], from: cur, present: true, date: inst[key]?.date || null, lastAction: inst[key]?.lastAction || 'installed' };
+        let recorded;
+        try { recorded = await window.api.recordInstall(key, fromVersion, wasInstall); }
+        catch (e) { msg(`Installer finished, but its date could not be saved: ${clean(e)}`, 'bad'); }
+        st[key] = { ...st[key], from: cur, present: true, date: recorded?.installedAt || inst[key]?.date || null, lastAction: recorded?.lastAction || inst[key]?.lastAction || 'installed' };
         if (!busy) await checkApps([key]); // confirms Up to date / sets final state
         else { st[key].ph = 'installed'; renderRepos(); }
         return;
@@ -703,7 +716,7 @@ async function runBatch(keys, force) {
       if (!r) { st[k] = { ...s, ph: 'failed', reason: 'no result' }; failed++; }
       else if (r.status === 'updated') { st[k] = { ...s, ph: wasInstall ? 'installed' : 'updated', from: r.to, to: r.to, present: true, date: r.installedAt || new Date().toISOString(), lastAction: r.lastAction || (wasInstall ? 'installed' : 'updated') }; wasInstall ? installed++ : done++; }
       else if (r.status === 'current') { st[k] = { ...s, ph: 'current', to: r.to }; }
-      else if (/installer window opened/.test(r.reason || '')) { st[k] = { ...s, ph: 'waiting', to: r.to }; watchInstall(k, s.from); }
+      else if (/installer window opened/.test(r.reason || '')) { st[k] = { ...s, ph: 'waiting', to: r.to }; watchInstall(k, s.from, wasInstall); }
       else { st[k] = { ...s, ph: 'failed', reason: r.reason }; failed++; }
     } catch (e) { st[k] = { ...(st[k] || {}), ph: 'failed', reason: clean(e) }; failed++; }
     renderRepos();

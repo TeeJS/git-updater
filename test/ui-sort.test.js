@@ -49,6 +49,7 @@ test('status dates format both ways and old records remain Installed', () => {
   const context = { config: { dateFormat: 'MM/DD' } };
   vm.runInNewContext(dateSource, context);
   assert.equal(context.datedStatus({ date: '2026-12-31T23:30:00.000Z' }).text, 'Installed 12/31');
+  assert.equal(context.datedStatus({ date: new Date(2026, 10, 9, 18).toISOString(), lastAction: 'updated' }).text, 'Updated 11/09');
   assert.equal(context.datedStatus({ date: '2026-12-31', lastAction: 'updated' }).text, 'Updated 12/31');
   context.config.dateFormat = 'DD/MM';
   assert.equal(context.datedStatus({ date: '2026-12-31' }).text, 'Installed 31/12');
@@ -68,6 +69,21 @@ test('status sort compares full dates across years, with undated rows last', () 
   assert.deepEqual(Array.from(context.sortedRepos(), (r) => r.repo), ['later', 'dated', 'undated']);
 });
 
+test('status sort groups labels before comparing displayed dates', () => {
+  const available = { owner: 'x', repo: 'available', type: 'portable' };
+  const installed = { owner: 'x', repo: 'installed', type: 'portable' };
+  const failed = { owner: 'x', repo: 'failed', type: 'portable' };
+  const config = { repos: [installed, failed, available], sortColumn: 'status', sortDirection: 'asc', dateFormat: 'MM/DD' };
+  const st = {
+    [keyOf(available)]: { ph: 'available', present: true, date: '2025-01-01' },
+    [keyOf(installed)]: { ph: 'current', present: true, date: '2026-12-31' },
+    [keyOf(failed)]: { ph: 'failed', reason: 'Failed', date: '2024-01-01' },
+  };
+  const context = { config, st, busy: false, displayOrder: null, keyOf, window: browser.window };
+  vm.runInNewContext(dateSource + source, context);
+  assert.deepEqual(Array.from(context.sortedRepos(), (r) => r.repo), ['failed', 'installed', 'available']);
+});
+
 test('browser version comparator matches core version precedence', () => {
   const versions = ['', 'v1.2', '1.2.0', '1.10', '1.2.3-rc2', '1.2.3-rc10', '1.2.3', 'Zoom 7.1.5 (84650)', 'release/v2.6.2', '3.0+build5', '1.2.3 build 9'];
   for (const a of versions) for (const b of versions) {
@@ -83,4 +99,32 @@ test('missing versions stay at the bottom in either direction', () => {
   assert.equal(context.sortedRepos()[0].repo, 'newer');
   config.sortDirection = 'desc';
   assert.equal(context.sortedRepos()[0].repo, 'newer');
+});
+
+test('interactive installer completion records Updated provenance', async () => {
+  const a = html.indexOf('async function watchInstall(');
+  const b = html.indexOf('// Close the running app', a);
+  const key = 'x/app#installer';
+  const calls = [];
+  const context = {
+    st: { [key]: { ph: 'waiting', present: true } },
+    busy: false,
+    setTimeout: (fn) => fn(),
+    checkApps: async () => { calls.push('check'); },
+    renderRepos: () => {},
+    msg: () => {},
+    clean: String,
+    window: { api: {
+      getInstalled: async () => ({ [key]: { current: '2.0.0' } }),
+      recordInstall: async (_key, from, wasInstall) => {
+        calls.push([from, wasInstall]);
+        return { installedAt: '2026-11-09T20:00:00Z', lastAction: 'updated' };
+      },
+    } },
+  };
+  vm.runInNewContext(html.slice(a, b), context);
+  await context.watchInstall(key, '1.0.0', false);
+  assert.equal(context.st[key].lastAction, 'updated');
+  assert.equal(context.st[key].date, '2026-11-09T20:00:00Z');
+  assert.deepEqual(calls, [['1.0.0', false], 'check']);
 });
