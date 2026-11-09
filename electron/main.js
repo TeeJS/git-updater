@@ -315,6 +315,11 @@ ipcMain.handle('scan:add', (_e, items) => {
   return { added };
 });
 // Close a tracked app's running processes (graceful; force on request).
+ipcMain.handle('app:is-running', async (_e, appKey) => {
+  const r = readConfig().repos.find((x) => `${x.owner}/${x.repo}#${x.type}` === appKey);
+  if (!r) throw new Error('app not found');
+  return detect.isRunning(r.process || r.repo);
+});
 ipcMain.handle('app:close', async (_e, { appKey, force }) => {
   const r = readConfig().repos.find((x) => `${x.owner}/${x.repo}#${x.type}` === appKey);
   if (!r) throw new Error('app not found');
