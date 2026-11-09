@@ -3,7 +3,6 @@
 // The ONLY thing the renderer can reach — a narrow, typed IPC surface. No Node,
 // no ipcRenderer, no filesystem exposed to the page.
 const { contextBridge, ipcRenderer } = require('electron');
-const { cmpVersion } = require('../src/core');
 
 contextBridge.exposeInMainWorld('api', {
   getConfig: () => ipcRenderer.invoke('config:get'),
@@ -33,5 +32,4 @@ contextBridge.exposeInMainWorld('api', {
   selfUpdateOpenRelease: () => ipcRenderer.invoke('selfupdate:openRelease'),
   getVersion: () => ipcRenderer.invoke('app:version'),
   getPlatform: () => ipcRenderer.invoke('app:platform'),
-  cmpVersion,
 });

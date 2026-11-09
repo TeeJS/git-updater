@@ -269,6 +269,7 @@
   </details>
 </div>
 
+<script src="version-sort.js"></script>
 <script>
 let config = { portableRoot: '', repos: [] };
 const st = {};       // appKey -> { ph, pct, from(current), to(available), reason, present }
@@ -353,7 +354,12 @@ function sortedRepos() {
       let result;
       if (col === 'app') result = `${a.owner}/${a.repo}`.localeCompare(`${b.owner}/${b.repo}`);
       else if (col === 'type') result = a.type.localeCompare(b.type);
-      else if (col === 'current' || col === 'available') result = window.api.cmpVersion(col === 'current' ? sa.from : sa.to, col === 'current' ? sb.from : sb.to);
+      else if (col === 'current' || col === 'available') {
+        const va = col === 'current' ? sa.from : sa.to, vb = col === 'current' ? sb.from : sb.to;
+        if (!va && vb) return 1;
+        if (!vb && va) return -1;
+        result = window.compareVersions(va, vb);
+      }
       else {
         const da = statusDate(sa), db = statusDate(sb);
         if (da == null && db != null) return 1;

@@ -6,6 +6,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const core = require('../src/core');
+const browser = { window: {} };
+vm.runInNewContext(fs.readFileSync(path.join(__dirname, '..', 'ui', 'version-sort.js'), 'utf8'), browser);
 
 const html = fs.readFileSync(path.join(__dirname, '..', 'ui', 'index.html'), 'utf8');
 const start = html.indexOf('function sortedRepos()');
@@ -22,7 +24,7 @@ const keyOf = (r) => `${r.owner}/${r.repo}#${r.type}`;
 test('version sort uses version precedence and leaves saved config order intact', () => {
   const config = { repos: [...repos], sortColumn: 'current', sortDirection: 'asc' };
   const st = { [keyOf(repos[0])]: { from: '1.10' }, [keyOf(repos[1])]: { from: '1.2' } };
-  const context = { config, st, busy: false, displayOrder: null, keyOf, window: { api: { cmpVersion: core.cmpVersion } }, statusView: () => ({ text: '' }) };
+  const context = { config, st, busy: false, displayOrder: null, keyOf, window: browser.window, statusView: () => ({ text: '' }) };
   vm.runInNewContext(source, context);
   assert.equal(context.sortedRepos()[0].repo, 'newer');
   assert.deepEqual(config.repos.map((r) => r.repo), ['older', 'newer']);
@@ -33,7 +35,7 @@ test('version sort uses version precedence and leaves saved config order intact'
 
 test('rows keep their displayed order while busy', () => {
   const config = { repos: [...repos], sortColumn: 'app', sortDirection: 'asc' };
-  const context = { config, st: {}, busy: false, displayOrder: null, keyOf, window: { api: { cmpVersion: core.cmpVersion } }, statusView: () => ({ text: '' }) };
+  const context = { config, st: {}, busy: false, displayOrder: null, keyOf, window: browser.window, statusView: () => ({ text: '' }) };
   vm.runInNewContext(source, context);
   assert.deepEqual(Array.from(context.sortedRepos(), (r) => r.repo), ['newer', 'older']);
   context.busy = true;
@@ -59,9 +61,26 @@ test('status sort compares full dates across years, with undated rows last', () 
   const undated = { owner: 'x', repo: 'undated', type: 'portable' };
   const config = { repos: [dated, undated, later], sortColumn: 'status', sortDirection: 'asc', dateFormat: 'MM/DD' };
   const st = { [keyOf(dated)]: { ph: 'current', date: '2026-12-31' }, [keyOf(later)]: { ph: 'current', date: '2027-01-02' }, [keyOf(undated)]: { ph: 'current' } };
-  const context = { config, st, busy: false, displayOrder: null, keyOf, window: { api: { cmpVersion: core.cmpVersion } } };
+  const context = { config, st, busy: false, displayOrder: null, keyOf, window: browser.window };
   vm.runInNewContext(dateSource + source, context);
   assert.deepEqual(Array.from(context.sortedRepos(), (r) => r.repo), ['dated', 'later', 'undated']);
   config.sortDirection = 'desc';
   assert.deepEqual(Array.from(context.sortedRepos(), (r) => r.repo), ['later', 'dated', 'undated']);
+});
+
+test('browser version comparator matches core version precedence', () => {
+  const versions = ['', 'v1.2', '1.2.0', '1.10', '1.2.3-rc2', '1.2.3-rc10', '1.2.3', 'Zoom 7.1.5 (84650)', 'release/v2.6.2', '3.0+build5', '1.2.3 build 9'];
+  for (const a of versions) for (const b of versions) {
+    assert.equal(Math.sign(browser.window.compareVersions(a, b)), Math.sign(core.cmpVersion(a, b)), `${a} versus ${b}`);
+  }
+});
+
+test('missing versions stay at the bottom in either direction', () => {
+  const config = { repos: [...repos], sortColumn: 'current', sortDirection: 'asc' };
+  const st = { [keyOf(repos[0])]: { from: null }, [keyOf(repos[1])]: { from: '1.0' } };
+  const context = { config, st, busy: false, displayOrder: null, keyOf, window: browser.window, statusView: () => ({ text: '' }) };
+  vm.runInNewContext(source, context);
+  assert.equal(context.sortedRepos()[0].repo, 'newer');
+  config.sortDirection = 'desc';
+  assert.equal(context.sortedRepos()[0].repo, 'newer');
 });
