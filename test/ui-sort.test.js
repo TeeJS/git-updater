@@ -105,10 +105,11 @@ test('interactive installer completion records Updated provenance', async () => 
   const b = html.indexOf('// Close the running app', a);
   const key = 'x/app#installer';
   const calls = [];
+  let waits = 0;
   const context = {
     st: { [key]: { ph: 'waiting', present: true } },
-    busy: false,
-    setTimeout: (fn) => fn(),
+    busy: true,
+    setTimeout: (fn) => { waits++; if (waits > 1) context.busy = false; fn(); },
     checkApps: async () => { calls.push('check'); },
     renderRepos: () => {},
     msg: () => {},
@@ -116,6 +117,7 @@ test('interactive installer completion records Updated provenance', async () => 
     window: { api: {
       getInstalled: async () => ({ [key]: { current: '2.0.0' } }),
       recordInstall: async (_key, from, wasInstall) => {
+        assert.equal(context.busy, false, 'recording waits for the batch to release state');
         calls.push([from, wasInstall]);
         return { installedAt: '2026-11-09T20:00:00Z', lastAction: 'updated' };
       },
@@ -126,4 +128,5 @@ test('interactive installer completion records Updated provenance', async () => 
   assert.equal(context.st[key].lastAction, 'updated');
   assert.equal(context.st[key].date, '2026-11-09T20:00:00Z');
   assert.deepEqual(calls, [['1.0.0', false], 'check']);
+  assert.equal(waits, 2);
 });

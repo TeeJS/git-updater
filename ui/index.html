@@ -686,6 +686,9 @@ async function watchInstall(key, fromVersion, wasInstall) {
       const inst = await window.api.getInstalled();
       const cur = inst[key]?.current;
       if (cur && cur !== fromVersion) {
+        // The runner may still be saving another row in this batch. Record only after it
+        // releases its state lock, so a later runner save cannot overwrite this entry.
+        while (busy) await new Promise((r) => setTimeout(r, 250));
         let recorded;
         try { recorded = await window.api.recordInstall(key, fromVersion, wasInstall); }
         catch (e) { msg(`Installer finished, but its date could not be saved: ${clean(e)}`, 'bad'); }
