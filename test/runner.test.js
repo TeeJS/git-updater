@@ -159,6 +159,17 @@ test('runner: auto-close marks an app closed before installing an update', async
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+test('runner: app exiting before close does not block update or trigger reopen', async () => {
+  const dir = tmp();
+  try {
+    await withStubs({ running: [true, false], closeApp: async () => ({ closed: 0, stillRunning: false }) }, async () => {
+      const { results } = await runner.run(configFor(dir), { statePath: path.join(dir, 'state.json'), autoClose: true });
+      assert.equal(results[0].status, 'updated', results[0].reason);
+      assert.equal(results[0].closed, undefined);
+    });
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 // A .dmg guarded by a click-through licence agreement can't be unpacked unattended.
 // Rather than dead-end, the runner hands the image to macOS (opts.openFile) so its own
 // dialog shows the licence for the user to accept, then they install by hand. The licence

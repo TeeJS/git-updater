@@ -217,8 +217,14 @@ async function handleRepo(repo, id, st, opts) {
   if (await detect.isRunning(repo.process || repo.repo)) {
     if (opts.autoClose) {
       const result = await detect.closeApp(repo.process || repo.repo);
-      if (!result.stillRunning && result.closed > 0) opts.markClosed();
-      else return { ...base, status: 'failed', reason: `${repo.repo} did not close gracefully — close it manually, then Retry` };
+      if (result.stillRunning) {
+        log(`SKIP ${key}: auto-close could not stop ${repo.repo}`);
+        return { ...base, status: 'failed', reason: `${repo.repo} did not close gracefully — close it manually, then Retry` };
+      }
+      if (result.closed > 0) {
+        opts.markClosed();
+        log(`AUTO-CLOSE ${key}: closed ${result.closed} process(es) before update`);
+      }
     } else {
       log(`SKIP ${key}: ${repo.repo} is running`);
       return { ...base, status: 'failed', reason: `${repo.repo} is running — close it, then Retry` };
@@ -327,8 +333,14 @@ async function handleRepo(repo, id, st, opts) {
       if (await detect.isRunning(repo.process || repo.repo)) {
         if (opts.autoClose) {
           const result = await detect.closeApp(repo.process || repo.repo);
-          if (!result.stillRunning && result.closed > 0) opts.markClosed();
-          else return { ...base, status: 'failed', reason: `${repo.repo} did not close gracefully — close it manually, then Retry` };
+          if (result.stillRunning) {
+            log(`SKIP ${key}: auto-close could not stop ${repo.repo} before swap`);
+            return { ...base, status: 'failed', reason: `${repo.repo} did not close gracefully — close it manually, then Retry` };
+          }
+          if (result.closed > 0) {
+            opts.markClosed();
+            log(`AUTO-CLOSE ${key}: closed ${result.closed} process(es) before swap`);
+          }
         } else {
           log(`SKIP ${key}: ${repo.repo} started during the download`);
           return { ...base, status: 'failed', reason: `${repo.repo} is running — close it, then Retry` };
