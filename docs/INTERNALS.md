@@ -391,6 +391,21 @@ auto-update or auto-install, so the app keeps its "no network at startup unless 
 posture. The `booted` flag in the UI script makes it a one-shot per app start: `load()`
 re-runs on config changes (scan window adds, folder save) and those must not re-trigger it.
 
+### The Settings screen
+
+Settings is its own screen, not a collapsed box under the list: a **Settings** button at the top
+right of the list's header opens it, and **Back** or **Esc** returns (Esc is ignored while a
+dropdown has focus, where it closes the dropdown). It is one scrolling page grouped under
+headings: Apps and display, Updating, GitHub, Advanced. Both screens stay mounted and
+`showScreen()` (a small pure-ish block in `ui/index.html`) just toggles `hidden`, so the search,
+filters, selection and scroll position of the list are exactly as you left them. The single
+status line (`#msg`: "Saved.", errors) is moved into whichever screen is showing, so a change made
+in Settings reports its result there. Opening Settings fetches the GitHub quota once per visit.
+Adding a portable app with no portable folder set opens Settings and focuses that field.
+`test/ui-settings.test.js` guards which controls live on which screen, that every id the script
+looks up exists, and runs `showScreen()` against a fake page. New settings (the background and
+schedule groups planned in `PROJECT-background-mode.md`) are added as more groups in this screen.
+
 ### Search and filters
 
 The search box and the Type / Status dropdowns above the list narrow what is shown; a row has to
