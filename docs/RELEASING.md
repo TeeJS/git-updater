@@ -26,7 +26,7 @@ Each build's signing hook **degrades gracefully**: with no credentials it produc
 *unsigned* artifact rather than failing — except macOS, where the guard (below) fails the
 build on purpose, because an unnotarized mac app will not launch at all.
 
-## Release from GitHub Actions (written, not yet proven)
+## Release from GitHub Actions
 
 [`.github/workflows/release.yml`](../.github/workflows/release.yml) does everything below on
 GitHub's own runners: it builds and signs all three platforms (macOS Developer ID +
@@ -35,8 +35,10 @@ notarization on `macos-latest`, Windows Azure Artifact Signing through OIDC on
 ten files. **It never publishes.** It is adapted from `TeeJS/faction-wars-editor`, where the
 same design is proven.
 
-**Status: no dry run has passed yet.** Until one has, cut releases with the per-host steps
-below, which remain the fallback afterwards too.
+**Status:** a dry run passed on 2026-11-12 ([run 43308151736](https://github.com/TeeJS/git-updater/actions/runs/43308151736)):
+both Windows exes `Valid` (CN=Thomas Schmitz), the Mac app and disk image notarized, all four
+Linux files built. A dry run skips the draft step, so that step is proven only by the first
+tag release, `v0.2.7-beta.3`. The per-host steps below remain the fallback.
 
 - **Dry run** (builds and signs, creates nothing): once the workflow is on `main`,
   `gh workflow run release.yml -f dry_run=true`. Read the proof lines in the logs: the Windows
@@ -60,8 +62,8 @@ below, which remain the fallback afterwards too.
   - An Azure federated credential on the `github-actions-code-signing` app whose subject is
     `repo:TeeJS@4136437/git-updater@1349272327:environment:release` (GitHub presents the
     ID-based form; a name-only subject fails with `AADSTS700213`).
-- **Unproven part:** Linux arm64 is built on the x64 runner. If a dry run shows it failing,
-  move arm64 to an `ubuntu-24.04-arm` job.
+- **Linux arm64** is built on the x64 runner; the dry run built both arm64 files. CI does not
+  run them on arm64 hardware.
 
 ---
 
