@@ -100,9 +100,9 @@ async function run(config, opts = {}) {
       const result = await handleRepo(repo, id, st, { ...opts, portableRoot: config.portableRoot, markClosed });
       results.push(closed ? { ...result, closed: true } : result);
     } catch (e) {
-      results.push({ repo: id, id: appKey(repo), status: 'failed', reason: e.message, ...(closed ? { closed: true } : {}) });
+      results.push({ repo: id, id: appKey(repo), status: 'failed', reason: e.message, stopRun: !!e.rateLimited || !!e.badToken, ...(closed ? { closed: true } : {}) });
       log(`FAIL ${appKey(repo)}: ${e.message}`);
-      if (e.rateLimited) break; // no point hammering a rate-limited API
+      if (e.rateLimited || e.badToken) break; // every later call would fail the same way and burn more quota
     }
   }
   return { results, summary: core.buildSummary(results) };
