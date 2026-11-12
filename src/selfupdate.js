@@ -222,7 +222,7 @@ async function prepareUpdate(root, currentVersion, onProgress = () => {}, opts =
   const file = path.join(downloadDir, asset.name);
 
   onProgress('downloading', 0);
-  await github.downloadAsset(asset.browser_download_url, file, (pct) => onProgress('downloading', pct));
+  await github.downloadAsset(asset.browser_download_url, file, (pct) => onProgress('downloading', pct), opts.maxBytes);
 
   onProgress('verifying');
   let digest = asset.digest;

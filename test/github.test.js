@@ -3,6 +3,10 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
 const github = require('../src/github');
+const crypto = require('node:crypto');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 
 // Minimal Response-ish stub for the rate-limit branch.
 function stubFetch(headers) {
@@ -232,6 +236,60 @@ test('verifyDigest: skips with a note when no digest', () => {
   const r = github.verifyDigest('/any/path', undefined);
   assert.ok(r.skipped);
   assert.match(r.note, /skipped/);
+});
+
+// The file is hashed in 1 MiB chunks. A file that is not a whole number of chunks, and spans
+// several, must hash exactly as the one-shot digest does, and a wrong digest must still fail.
+test('verifyDigest: hashes a multi-chunk file in pieces and gets the same answer', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gu-digest-'));
+  try {
+    const file = path.join(dir, 'big.bin');
+    const data = Buffer.alloc(3 * 1024 * 1024 + 17, 0xab);
+    data[1024 * 1024] = 1; // make the chunks differ
+    fs.writeFileSync(file, data);
+    const sha256 = crypto.createHash('sha256').update(data).digest('hex');
+    assert.deepEqual(github.verifyDigest(file, `sha256:${sha256}`), { verified: true });
+    assert.throws(() => github.verifyDigest(file, `sha256:${'0'.repeat(64)}`), /checksum mismatch/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// Ported from EstusFlask/git-updater-background (flash201524), commit 4d89769.
+test('downloadAsset enforces the configured cap while streaming and accepts unlimited mode', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gu-download-limit-'));
+  const realFetch = global.fetch;
+  global.fetch = async () => ({
+    ok: true,
+    headers: { get: () => null },
+    body: new ReadableStream({ start(controller) {
+      controller.enqueue(Uint8Array.from([1, 2, 3, 4]));
+      controller.close();
+    } }),
+  });
+  try {
+    const file = path.join(dir, 'asset.bin');
+    await assert.rejects(() => github.downloadAsset('https://example.invalid/asset', file, null, 3), (e) => {
+      assert.match(e.message, /size cap 3/);
+      assert.match(e.message, /downloadLimitMiB/, 'the message says where to raise it');
+      return true;
+    });
+    await github.downloadAsset('https://example.invalid/asset', file, null, null);
+    assert.deepEqual([...fs.readFileSync(file)], [1, 2, 3, 4]);
+  } finally {
+    global.fetch = realFetch;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('downloadAsset refuses a download whose declared size is over the cap before reading it', async () => {
+  const realFetch = global.fetch;
+  global.fetch = async () => ({ ok: true, headers: { get: (h) => (h === 'content-length' ? '1000' : null) }, body: null });
+  try {
+    await assert.rejects(() => github.downloadAsset('https://example.invalid/asset', 'unused', null, 999), /asset too large: 1000 bytes \(cap 999\)/);
+  } finally {
+    global.fetch = realFetch;
+  }
 });
 
 // A token set from Settings is sent to the API (and only to the API).

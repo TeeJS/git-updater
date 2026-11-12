@@ -365,23 +365,51 @@ async function installPortable(archivePath, install, prevManifest) {
 // Detect an installer's technology from its bytes (far safer than assuming every
 // .exe is NSIS). Falls back to null when unrecognized, which the caller turns into
 // "open the installer's own window" rather than guessing silent switches.
+//
+// Reads the file in 1 MiB chunks instead of all at once, so a multi-GiB installer (the
+// download cap is configurable) never has to fit in memory. The format magic lives in the
+// first bytes; the Inno / NSIS marker strings can be anywhere, so those are searched across
+// every chunk, with the last few bytes of each carried into the next so a marker split by a
+// chunk boundary is still found. Inno wins over NSIS wherever each appears, as before.
+// Hand-ported from EstusFlask/git-updater-background (flash201524), commit 4d89769.
 function detectInstallerKind(filePath) {
   if (/\.msi$/i.test(filePath)) return 'msi';
-  let buf;
+  let fd;
   try {
-    buf = fs.readFileSync(filePath);
+    fd = fs.openSync(filePath, 'r');
   } catch {
     return null;
   }
-  const magic = (s) => buf.subarray(0, s.length).toString('latin1') === s;
-  if (buf.length > 8 && buf[0] === 0xd0 && buf[1] === 0xcf && buf[2] === 0x11 && buf[3] === 0xe0) return 'msi'; // OLE compound = MSI
-  if (magic('xar!')) return 'pkg'; // macOS flat package is a xar archive
-  if (magic('!<arch>')) return 'deb'; // .deb is an ar archive
-  if (buf.length > 4 && buf[0] === 0xed && buf[1] === 0xab && buf[2] === 0xee && buf[3] === 0xdb) return 'rpm';
-  // These two scan the whole file, so they come last.
-  if (buf.indexOf(Buffer.from('Inno Setup')) !== -1) return 'inno';
-  if (buf.indexOf(Buffer.from('Nullsoft')) !== -1) return 'nsis';
-  return null;
+  try {
+    const INNO = Buffer.from('Inno Setup');
+    const NSIS = Buffer.from('Nullsoft');
+    const overlap = INNO.length - 1; // the longest marker, minus one byte
+    const chunk = Buffer.allocUnsafe(1024 * 1024);
+    let carry = Buffer.alloc(0);
+    let first = true;
+    let sawNsis = false;
+    let count;
+    while ((count = fs.readSync(fd, chunk, 0, chunk.length, null)) > 0) {
+      const head = chunk.subarray(0, count);
+      if (first) {
+        first = false;
+        const magic = (s) => head.subarray(0, s.length).toString('latin1') === s;
+        if (count > 8 && head[0] === 0xd0 && head[1] === 0xcf && head[2] === 0x11 && head[3] === 0xe0) return 'msi'; // OLE compound = MSI
+        if (magic('xar!')) return 'pkg'; // macOS flat package is a xar archive
+        if (magic('!<arch>')) return 'deb'; // .deb is an ar archive
+        if (count > 4 && head[0] === 0xed && head[1] === 0xab && head[2] === 0xee && head[3] === 0xdb) return 'rpm';
+      }
+      const buf = carry.length ? Buffer.concat([carry, head]) : head;
+      if (buf.indexOf(INNO) !== -1) return 'inno';
+      if (buf.indexOf(NSIS) !== -1) sawNsis = true;
+      carry = Buffer.from(buf.subarray(Math.max(0, buf.length - overlap)));
+    }
+    return sawNsis ? 'nsis' : null;
+  } catch {
+    return null;
+  } finally {
+    fs.closeSync(fd);
+  }
 }
 
 // --- installer --------------------------------------------------------------

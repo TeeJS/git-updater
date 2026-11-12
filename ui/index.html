@@ -34,9 +34,10 @@
            border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px;
            margin-bottom: 1rem; box-shadow: 0 8px 24px -18px #000; }
   .row { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
-  input[type=text], input[type=password] { font: 400 14px var(--mono); padding: .5rem .65rem; border-radius: 8px; color: var(--text);
+  input[type=text], input[type=password], input[type=number] { font: 400 14px var(--mono); padding: .5rem .65rem; border-radius: 8px; color: var(--text);
     background: #0d1117; border: 1px solid var(--border); }
-  input[type=text]:focus, input[type=password]:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(227,161,60,.18); }
+  input[type=number] { width: 7rem; }
+  input[type=text]:focus, input[type=password]:focus, input[type=number]:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(227,161,60,.18); }
   input[type=text]::placeholder, input[type=password]::placeholder { color: var(--faint); }
   input[type=checkbox] { width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; }
   button { font: 600 13.5px var(--sans); cursor: pointer; border-radius: 8px; padding: .46rem .78rem;
@@ -287,6 +288,14 @@
         <label class="scan-label"><input type="checkbox" id="autoCloseReopen"> Automatically close apps and re-open when complete</label>
       </div>
       <p class="hint">Off by default. When Update all runs, close running apps gracefully and re-open those it closed after each update completes. Apps that do not close are skipped.</p>
+      <div class="row" style="margin-top:.6rem">
+        <span style="color:var(--muted);font-size:.9rem;min-width:8rem">Downloads</span>
+        <label class="scan-label"><input type="checkbox" id="downloadLimitEnabled"> Limit each download to</label>
+        <input type="number" id="downloadLimitMiB" min="1" max="1048576" step="1" aria-label="Download limit in MiB">
+        <span style="color:var(--muted);font-size:.9rem">MiB</span>
+        <button id="saveDownloadLimit">Save</button>
+      </div>
+      <p class="hint">Default 500 MiB: a bigger download is refused with a message. Turn the limit off for none; large files still need enough free disk space.</p>
       <p class="hint">git-updater <span id="appVersion"></span></p>
     </div>
   </details>
@@ -602,6 +611,9 @@ async function load() {
   $('selfPreRel').checked = !!config.selfUpdatePrerelease;
   $('checkOnOpen').checked = !!config.checkOnOpen;
   $('autoCloseReopen').checked = !!config.autoCloseReopen;
+  $('downloadLimitEnabled').checked = config.downloadLimitEnabled !== false;
+  $('downloadLimitMiB').value = config.downloadLimitMiB == null ? 500 : config.downloadLimitMiB;
+  $('downloadLimitMiB').disabled = !$('downloadLimitEnabled').checked;
   $('dateFormat').value = config.dateFormat === 'DD/MM' ? 'DD/MM' : 'MM/DD';
   config.repos.forEach((r) => { st[keyOf(r)] = { ph: 'loading' }; }); // show rows instantly
   renderRepos();
@@ -664,6 +676,20 @@ $('selfPreRel').onchange = () => { config.selfUpdatePrerelease = $('selfPreRel')
 $('checkOnOpen').onchange = () => { config.checkOnOpen = $('checkOnOpen').checked; saveConfig().then(() => msg('Saved.', 'ok')); };
 $('autoCloseReopen').onchange = () => { config.autoCloseReopen = $('autoCloseReopen').checked; saveConfig().then(() => msg('Saved.', 'ok')); };
 $('dateFormat').onchange = () => { config.dateFormat = $('dateFormat').value; renderRepos(); saveConfig().then(() => msg('Saved.', 'ok')); };
+// Download limit: ported from EstusFlask/git-updater-background. Saved with its own button
+// (not on every keystroke); validated here and again by the main process on save.
+$('downloadLimitEnabled').onchange = () => { $('downloadLimitMiB').disabled = !$('downloadLimitEnabled').checked; };
+$('saveDownloadLimit').onclick = async () => {
+  const enabled = $('downloadLimitEnabled').checked;
+  const mib = enabled ? Number($('downloadLimitMiB').value) : (config.downloadLimitMiB || 500);
+  if (!Number.isSafeInteger(mib) || mib < 1 || mib > 1048576) {
+    msg('Enter a whole number from 1 to 1048576 MiB.', 'bad');
+    return;
+  }
+  const next = { ...config, downloadLimitEnabled: enabled, downloadLimitMiB: mib };
+  try { await window.api.saveConfig(next); config = next; $('downloadLimitMiB').value = mib; msg('Saved.', 'ok'); }
+  catch (e) { msg(clean(e), 'bad'); }
+};
 $('browse').onclick = async () => {
   try { const { path } = await window.api.pickFolder(); if (path) { $('portableRoot').value = path; await saveConfig(); msg('Saved.', 'ok'); refreshInstalled().then(renderRepos); } }
   catch (e) { msg(clean(e), 'bad'); }

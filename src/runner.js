@@ -97,7 +97,7 @@ async function run(config, opts = {}) {
     let closed = false;
     const markClosed = () => { closed = true; };
     try {
-      const result = await handleRepo(repo, id, st, { ...opts, portableRoot: config.portableRoot, markClosed });
+      const result = await handleRepo(repo, id, st, { ...opts, portableRoot: config.portableRoot, maxBytes: core.downloadLimitBytes(config), markClosed });
       results.push(closed ? { ...result, closed: true } : result);
     } catch (e) {
       results.push({ repo: id, id: appKey(repo), status: 'failed', reason: e.message, stopRun: !!e.rateLimited || !!e.badToken, ...(closed ? { closed: true } : {}) });
@@ -252,7 +252,7 @@ async function handleRepo(repo, id, st, opts) {
   try {
     const file = path.join(tmp, asset.name);
     emit('downloading', 0);
-    await github.downloadAsset(asset.browser_download_url, file, (pct) => emit('downloading', pct));
+    await github.downloadAsset(asset.browser_download_url, file, (pct) => emit('downloading', pct), opts.maxBytes);
     emit('verifying');
     // Prefer GitHub's own digest; fall back to a checksums file shipped in the release
     // (SHA256SUMS, <asset>.sha256, ...). Only truly digest-less releases skip.
