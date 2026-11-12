@@ -1,5 +1,7 @@
 {
   "portableRoot": "C:/PortableApps",
+  "downloadLimitEnabled": true,
+  "downloadLimitMiB": 500,
   "repos": [
     { "owner": "ShareX", "repo": "ShareX", "type": "portable" },
     { "owner": "deskflow", "repo": "deskflow", "type": "portable" },

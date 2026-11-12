@@ -220,6 +220,20 @@ only lightly, because Rosetta runs it.
 All tracked repos are public, so no token is needed. Set `GITHUB_TOKEN` only to lift the
 ~60-request/hour unauthenticated GitHub rate limit.
 
+## Download size limit
+
+Each download (an app's release asset, or git-updater's own update) is held to a size cap:
+`config.downloadLimitMiB` (default **500**), switched off with `config.downloadLimitEnabled: false`
+(Settings → Downloads). A bigger asset is refused, by its declared size when GitHub sends one and
+otherwise as soon as the streamed bytes pass the cap, with a message that says where to raise it.
+`core.downloadLimitBytes` turns the two keys into a byte count (or `null` for no cap) and rejects
+an invalid number when the config is saved.
+
+With the cap raised or off, an installer can be several GiB, so `verifyDigest` and
+`detectInstallerKind` read the file in 1 MiB chunks rather than all at once. The Inno / NSIS marker
+strings can sit anywhere in an installer, so the scan carries the last few bytes of each chunk into
+the next and still prefers Inno over NSIS wherever each appears.
+
 ## CLI
 
 ```bash

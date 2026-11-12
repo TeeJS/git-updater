@@ -26,6 +26,7 @@ const detect = require('../src/detect');
 const runner = require('../src/runner');
 
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'gu-runner-'));
+let seenMaxBytes; // the size cap the runner handed to the (stubbed) download
 
 // `running` is consulted per call, so a test can say "idle at download time, launched by
 // install time" — which is the race the second check exists for.
@@ -44,7 +45,8 @@ async function withStubs({ running, closeApp }, fn) {
     tag_name: 'v2.0.0',
     assets: [{ name: 'payload.zip', browser_download_url: 'https://example.invalid/payload.zip' }],
   });
-  github.downloadAsset = async (_url, file) => {
+  github.downloadAsset = async (_url, file, _onProgress, maxBytes) => {
+    seenMaxBytes = maxBytes;
     const zip = new AdmZip();
     zip.addFile('app.txt', Buffer.from('v2'));
     zip.writeZip(file);
@@ -95,6 +97,27 @@ test('runner: an app launched DURING the download is not overwritten', async () 
     assert.equal(fs.readFileSync(path.join(dest, 'app.txt'), 'utf8'), 'v1');
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('runner: each download is held to the configured size limit (default 500 MiB, none when off)', async () => {
+  const cases = [
+    [{}, 500 * 1024 * 1024],
+    [{ downloadLimitMiB: 2048 }, 2048 * 1024 * 1024],
+    [{ downloadLimitEnabled: false }, null],
+  ];
+  for (const [limits, expected] of cases) {
+    const dir = tmp();
+    try {
+      seenMaxBytes = undefined;
+      await withStubs({ running: [false, false] }, async () => {
+        const { results } = await runner.run({ ...configFor(dir), ...limits }, { statePath: path.join(dir, 'state.json') });
+        assert.equal(results[0].status, 'updated', results[0].reason);
+      });
+      assert.strictEqual(seenMaxBytes, expected, JSON.stringify(limits));
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   }
 });
 
