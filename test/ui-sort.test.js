@@ -44,6 +44,33 @@ test('rows keep their displayed order while busy', () => {
   assert.deepEqual(Array.from(context.sortedRepos(), (r) => r.repo), ['older', 'newer']);
 });
 
+test('Owner sorts by owner then name; App sorts by repo name alone', () => {
+  const list = [
+    { owner: 'TeeJS', repo: 'bedrock-panel', type: 'installer' },
+    { owner: 'anomalyco', repo: 'opencode', type: 'installer' },
+    { owner: 'can1357', repo: 'oh-my-pi', type: 'portable' },
+    { owner: 'anomalyco', repo: 'another', type: 'portable' },
+  ];
+  const config = { repos: [...list], sortColumn: 'app', sortDirection: 'asc' };
+  const context = { config, st: {}, busy: false, displayOrder: null, keyOf, window: browser.window, statusView: () => ({ text: '' }) };
+  vm.runInNewContext(source, context);
+  const names = () => Array.from(context.sortedRepos(), (r) => `${r.owner}/${r.repo}`);
+  assert.deepEqual(names(), ['anomalyco/another', 'TeeJS/bedrock-panel', 'can1357/oh-my-pi', 'anomalyco/opencode']);
+  config.sortDirection = 'desc';
+  assert.deepEqual(names(), ['anomalyco/opencode', 'can1357/oh-my-pi', 'TeeJS/bedrock-panel', 'anomalyco/another']);
+  config.sortColumn = 'owner';
+  config.sortDirection = 'asc';
+  assert.deepEqual(names(), ['anomalyco/another', 'anomalyco/opencode', 'can1357/oh-my-pi', 'TeeJS/bedrock-panel']);
+  config.sortDirection = 'desc';
+  assert.deepEqual(names(), ['TeeJS/bedrock-panel', 'can1357/oh-my-pi', 'anomalyco/opencode', 'anomalyco/another']);
+  assert.deepEqual(config.repos.map((r) => r.repo), list.map((r) => r.repo), 'saved order untouched');
+});
+
+test('header has separate Owner and App sort buttons in the name column', () => {
+  assert.match(html, /data-sort="owner"><button class="sort-button" type="button">Owner</);
+  assert.match(html, /data-sort="app"><button class="sort-button" type="button">App</);
+});
+
 test('status dates format both ways and old records remain Installed', () => {
   const context = { config: { dateFormat: 'MM/DD' } };
   vm.runInNewContext(dateSource, context);
