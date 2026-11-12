@@ -64,7 +64,6 @@
   .add-row button, .scan-row button { height: 35px; }
   .scan-row { display: flex; align-items: center; justify-content: space-between; gap: .75rem; }
   .scan-label { display: inline-flex; align-items: center; gap: .4rem; }
-  details.settings { margin-top: 1rem; }
   @media (max-width: 620px) {
     .add-row { flex-wrap: wrap; }
     .add-row input { min-width: 100%; }
@@ -179,11 +178,14 @@
   #msg.ok { color: var(--green); } #msg.bad { color: var(--red); } #msg.info { color: var(--muted); }
   .empty { color: var(--faint); padding: .7rem .35rem; font-size: .9rem; }
   .divider { height: 1px; background: var(--border); margin: 12px -16px; }
-  details.settings { margin-top: .2rem; }
-  details.settings > summary { cursor: pointer; color: var(--muted); font: 600 .8rem var(--mono); letter-spacing: .08em;
-    text-transform: uppercase; list-style: none; padding: .3rem 0; }
-  details.settings > summary::-webkit-details-marker { display: none; }
-  details.settings > summary::before { content: '⚙  '; }
+  /* Settings is its own screen: a button in the list's header, and a header with Back on the screen. */
+  .topbar { flex-wrap: wrap; }
+  .settings-btn { margin-left: auto; font-size: .85rem; color: var(--muted); }
+  .settings-btn:hover:not(:disabled) { color: var(--text); }
+  .back-btn { color: var(--muted); }
+  .screen-title { font-size: 1.15rem; }
+  .settings-group { margin-bottom: .9rem; }
+  .settings-group > .sec-h { margin-bottom: .7rem; }
   #selfup { display: none; align-items: center; gap: .6rem; margin: 0 0 .8rem; padding: .5rem .7rem;
             font-size: .85rem; color: var(--accent); background: rgba(227,161,60,.1);
             border: 1px solid rgba(227,161,60,.35); border-radius: 8px; }
@@ -197,12 +199,14 @@
 </head>
 <body>
 <div class="wrap">
-  <header>
+  <div id="mainScreen">
+  <header class="topbar">
     <span class="logo" aria-hidden="true"><img src="data:image/png;base64,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" alt="" width="28" height="28"></span>
     <h1><span class="g">git</span>-updater</h1>
+    <button type="button" id="openSettings" class="ghost settings-btn" title="Open Settings"><span aria-hidden="true">⚙</span> Settings</button>
   </header>
   <p class="tagline">Keeps your apps current straight from their GitHub releases.</p>
-  <div id="msg"></div>
+  <div id="msgHome"><div id="msg"></div></div>
   <div id="selfup"><span id="selfupText"></span><button id="selfupBtn" class="primary"></button><button id="selfupDismiss" title="Dismiss">&times;</button></div>
 
   <div class="panel">
@@ -289,9 +293,17 @@
     </div>
   </div>
 
-  <details class="settings" id="settings">
-    <summary>Settings</summary>
-    <div class="panel" style="margin-top:.6rem">
+  </div>
+
+  <div id="settingsScreen" hidden>
+    <header class="topbar">
+      <button type="button" id="settingsBack" class="ghost back-btn" title="Back to the list (Esc)">&larr; Back</button>
+      <h1 class="screen-title">Settings</h1>
+    </header>
+    <div class="msg-slot"></div>
+
+    <section class="panel settings-group" aria-labelledby="sg-apps">
+      <h2 class="sec-h" id="sg-apps">Apps and display</h2>
       <div class="row">
         <span style="color:var(--muted);font-size:.9rem;min-width:8rem">Portable apps folder</span>
         <input type="text" id="portableRoot" placeholder="Click Browse to choose" style="flex:1;min-width:12rem">
@@ -299,24 +311,6 @@
         <button id="saveRoot">Save</button>
       </div>
       <p class="hint">Portable apps unzip into <code>&lt;folder&gt;/&lt;repo&gt;</code>.</p>
-      <div class="row" style="margin-top:.6rem">
-        <span style="color:var(--muted);font-size:.9rem;min-width:8rem">GitHub token</span>
-        <input type="password" id="ghToken" placeholder="github_pat_… or ghp_…" autocomplete="off" spellcheck="false" style="flex:1;min-width:12rem">
-        <button id="saveToken">Save</button>
-        <button id="clearToken" style="display:none">Remove</button>
-      </div>
-      <p class="hint" id="tokenHint">Optional. Without one GitHub allows 60 requests an hour per network; with one, 5,000. A fine-grained token with <b>Public repositories (read-only)</b> access and no other permissions is enough. Stored encrypted on this computer, never in config.json.</p>
-      <div class="row" style="margin-top:.6rem">
-        <span style="color:var(--muted);font-size:.9rem;min-width:8rem">Advanced</span>
-        <button id="editJson">Edit config.json</button>
-        <button id="openLog">Open log</button>
-      </div>
-      <p class="hint">Hand-edit for per-app overrides (asset pattern, install dir, installer kind/args, process name, release tag prefix).</p>
-      <div class="row" style="margin-top:.6rem">
-        <span style="color:var(--muted);font-size:.9rem;min-width:8rem">git-updater updates</span>
-        <label class="scan-label"><input type="checkbox" id="selfPreRel"> Update git-updater to beta (pre-release) versions</label>
-      </div>
-      <p class="hint">Off by default: git-updater updates itself only to stable releases. This is separate from the per-app beta setting.</p>
       <div class="row" style="margin-top:.6rem">
         <span style="color:var(--muted);font-size:.9rem;min-width:8rem">Date format</span>
         <select id="dateFormat" aria-label="Status date format"><option value="MM/DD">MM/DD</option><option value="DD/MM">DD/MM</option></select>
@@ -336,7 +330,11 @@
         <label class="scan-label"><input type="checkbox" id="rememberFilters"> Remember my filters between launches</label>
       </div>
       <p class="hint">Off by default: the Type and Status filters go back to All every time git-updater opens. On, they come back as you left them. The search box always starts empty.</p>
-      <div class="row" style="margin-top:.6rem">
+    </section>
+
+    <section class="panel settings-group" aria-labelledby="sg-updating">
+      <h2 class="sec-h" id="sg-updating">Updating</h2>
+      <div class="row">
         <span style="color:var(--muted);font-size:.9rem;min-width:8rem">Automatically</span>
         <label class="scan-label"><input type="checkbox" id="checkOnOpen"> Check for updates when git-updater opens</label>
       </div>
@@ -354,9 +352,35 @@
         <button id="saveDownloadLimit">Save</button>
       </div>
       <p class="hint">Default 500 MiB: a bigger download is refused with a message. Turn the limit off for none; large files still need enough free disk space.</p>
+      <div class="row" style="margin-top:.6rem">
+        <span style="color:var(--muted);font-size:.9rem;min-width:8rem">git-updater updates</span>
+        <label class="scan-label"><input type="checkbox" id="selfPreRel"> Update git-updater to beta (pre-release) versions</label>
+      </div>
+      <p class="hint">Off by default: git-updater updates itself only to stable releases. This is separate from the per-app beta setting.</p>
+    </section>
+
+    <section class="panel settings-group" aria-labelledby="sg-github">
+      <h2 class="sec-h" id="sg-github">GitHub</h2>
+      <div class="row">
+        <span style="color:var(--muted);font-size:.9rem;min-width:8rem">GitHub token</span>
+        <input type="password" id="ghToken" placeholder="github_pat_… or ghp_…" autocomplete="off" spellcheck="false" style="flex:1;min-width:12rem">
+        <button id="saveToken">Save</button>
+        <button id="clearToken" style="display:none">Remove</button>
+      </div>
+      <p class="hint" id="tokenHint">Optional. Without one GitHub allows 60 requests an hour per network; with one, 5,000. A fine-grained token with <b>Public repositories (read-only)</b> access and no other permissions is enough. Stored encrypted on this computer, never in config.json.</p>
+    </section>
+
+    <section class="panel settings-group" aria-labelledby="sg-advanced">
+      <h2 class="sec-h" id="sg-advanced">Advanced</h2>
+      <div class="row">
+        <span style="color:var(--muted);font-size:.9rem;min-width:8rem">Files</span>
+        <button id="editJson">Edit config.json</button>
+        <button id="openLog">Open log</button>
+      </div>
+      <p class="hint">Hand-edit for per-app overrides (asset pattern, install dir, installer kind/args, process name, release tag prefix).</p>
       <p class="hint">git-updater <span id="appVersion"></span></p>
-    </div>
-  </details>
+    </section>
+  </div>
 </div>
 
 <script>
@@ -482,6 +506,24 @@ function primaryAction(s) {
 
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
 const cell = (node, cls) => { const td = document.createElement('td'); if (cls) td.className = cls; if (node) td.appendChild(node); return td; };
+
+// --- screens: the list, and Settings as its own screen --------------------------
+// Both stay mounted and the other is just hidden, so the search, filters, selection and scroll
+// position of the list are exactly as you left them when you come back. The one status line
+// ("Saved.", errors) moves with you, so a change made in Settings shows its result there.
+let mainScrollY = 0;
+function showScreen(name) {
+  const toSettings = name === 'settings';
+  if (toSettings === !$('settingsScreen').hidden) return; // already there
+  if (toSettings) mainScrollY = window.scrollY;
+  $('mainScreen').hidden = toSettings;
+  $('settingsScreen').hidden = !toSettings;
+  (toSettings ? $('settingsScreen').querySelector('.msg-slot') : $('msgHome')).appendChild($('msg'));
+  // preventScroll: focusing the button would otherwise scroll the page to it and undo the restore.
+  if (toSettings) { window.scrollTo(0, 0); refreshToken(); $('settingsBack').focus({ preventScroll: true }); }
+  else { window.scrollTo(0, mainScrollY); $('openSettings').focus({ preventScroll: true }); }
+}
+// --- end of the screens block ---
 
 // --- find and filter ------------------------------------------------------------
 // The search box and the Type / Status filters. A row is shown only when it matches ALL of
@@ -867,7 +909,16 @@ $('clearToken').onclick = async () => {
   try { await window.api.clearToken(); msg('Token removed.', 'ok'); await refreshToken(); } catch (e) { msg(clean(e), 'bad'); }
 };
 // Quota is fetched when Settings is opened (the /rate_limit call is free) — not at startup.
-$('settings').addEventListener('toggle', () => { if ($('settings').open) refreshToken(); });
+// Settings button, Back button and Esc. (The quota is fetched when the screen opens: /rate_limit is free.)
+$('openSettings').onclick = () => showScreen('settings');
+$('settingsBack').onclick = () => showScreen('main');
+document.addEventListener('keydown', (e) => {
+  // Esc goes back, except in a dropdown, where it closes the dropdown first.
+  if (e.key === 'Escape' && !$('settingsScreen').hidden && !e.defaultPrevented && document.activeElement?.tagName !== 'SELECT') {
+    e.preventDefault();
+    showScreen('main');
+  }
+});
 
 $('saveRoot').onclick = () => saveConfig().then(() => { msg('Saved.', 'ok'); refreshInstalled().then(renderRepos); });
 $('selfPreRel').onchange = () => { config.selfUpdatePrerelease = $('selfPreRel').checked; saveConfig().then(() => msg('Saved.', 'ok')); };
@@ -934,7 +985,7 @@ $('addRepo').onclick = async () => {
   const parsed = parseRepo($('newRepo').value);
   if (!parsed) return msg('Paste a GitHub releases URL or owner/repo.', 'bad');
   const type = selectedType();
-  if (type === 'portable' && !$('portableRoot').value.trim()) { $('settings').open = true; return msg('Set the portable apps folder first — see Settings.', 'bad'); }
+  if (type === 'portable' && !$('portableRoot').value.trim()) { showScreen('settings'); $('portableRoot').focus(); return msg('Set the portable apps folder first.', 'bad'); }
   const dup = config.repos.some((r) => r.owner === parsed.owner && r.repo === parsed.repo && r.type === type && keyOf(r) !== editingKey);
   if (dup) return msg(`${parsed.owner}/${parsed.repo} (${type}) is already in your list.`, 'bad');
 
