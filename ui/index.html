@@ -338,7 +338,7 @@
         <span style="color:var(--muted);font-size:.9rem;min-width:8rem">Automatically</span>
         <label class="scan-label"><input type="checkbox" id="checkOnOpen"> Check for updates when git-updater opens</label>
       </div>
-      <p class="hint">Off by default: git-updater stays on-demand. On, opening the window checks every tracked app — it never updates or installs anything automatically.</p>
+      <p class="hint">Off by default. On, opening the window checks every tracked app — it only checks, and never updates or installs anything.</p>
       <div class="row" style="margin-top:.6rem">
         <span style="color:var(--muted);font-size:.9rem;min-width:8rem">Update all</span>
         <label class="scan-label"><input type="checkbox" id="autoCloseReopen"> Automatically close apps and re-open when complete</label>
@@ -357,6 +357,20 @@
         <label class="scan-label"><input type="checkbox" id="selfPreRel"> Update git-updater to beta (pre-release) versions</label>
       </div>
       <p class="hint">Off by default: git-updater updates itself only to stable releases. This is separate from the per-app beta setting.</p>
+    </section>
+
+    <section class="panel settings-group" aria-labelledby="sg-background">
+      <h2 class="sec-h" id="sg-background">Background</h2>
+      <div class="row">
+        <span style="color:var(--muted);font-size:.9rem;min-width:8rem">At login</span>
+        <label class="scan-label"><input type="checkbox" id="startAtLogin"> Start git-updater when I sign in</label>
+      </div>
+      <p class="hint">Off by default. On, git-updater starts when you sign in. With the tray option below it starts hidden in the tray; without it the window opens minimized to the taskbar. Windows lists it under Task Manager &rarr; Startup apps, where you can also turn it off.</p>
+      <div class="row" style="margin-top:.6rem">
+        <span style="color:var(--muted);font-size:.9rem;min-width:8rem">Tray</span>
+        <label class="scan-label"><input type="checkbox" id="keepRunning"> Keep running in the tray when I close the window</label>
+      </div>
+      <p class="hint">Off by default: closing the window quits git-updater. On, closing it hides it to an icon in the tray (the menu bar on a Mac). Click the icon to open it, or right-click for Open, Check now and Quit. On some Linux desktops the tray icon needs an extension; start git-updater again to bring the window back.</p>
     </section>
 
     <section class="panel settings-group" aria-labelledby="sg-github">
@@ -847,6 +861,8 @@ async function load() {
   // Once per app start, before the first render: load() re-runs on config changes (scan window,
   // folder save), and those must not throw away a sort the user has clicked since.
   $('rememberFilters').checked = !!config.rememberFilters;
+  $('startAtLogin').checked = !!config.startAtLogin;
+  $('keepRunning').checked = !!config.keepRunning;
   if (!booted) {
     applyStartupSort(config);
     // Same once-per-start rule: the saved filters (only with "Remember my filters" on) come back
@@ -1270,6 +1286,31 @@ document.addEventListener('keydown', (e) => {
     $('search').select();
   }
 });
+// Background: start at login and keep running in the tray. The main process applies them (the
+// system's login list, the tray icon) and refuses with a reason when it cannot, in which case the
+// checkboxes go back to what is really set.
+async function saveBackgroundSettings() {
+  const next = { ...config, startAtLogin: $('startAtLogin').checked, keepRunning: $('keepRunning').checked };
+  try {
+    await window.api.saveConfig(next);
+    config = next;
+    msg('Saved.', 'ok');
+  } catch (e) {
+    $('startAtLogin').checked = !!config.startAtLogin;
+    $('keepRunning').checked = !!config.keepRunning;
+    msg(clean(e), 'bad');
+  }
+}
+$('startAtLogin').onchange = saveBackgroundSettings;
+$('keepRunning').onchange = saveBackgroundSettings;
+// The tray's "Check now": same as Check all. It may arrive before the first load has finished.
+function trayCheck(tries = 0) {
+  if (!booted) { if (tries < 100) setTimeout(() => trayCheck(tries + 1), 300); return; }
+  if (busy) return;
+  selfCheck();
+  checkApps(config.repos.map(keyOf));
+}
+window.api.onTrayCheck(() => trayCheck());
 $('rememberFilters').onchange = () => {
   config.rememberFilters = $('rememberFilters').checked;
   // On: save what is set now. Off: forget the saved choices (the ones on screen stay until you change them).

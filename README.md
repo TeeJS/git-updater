@@ -6,8 +6,8 @@
 
 A ton of great software ships on GitHub — and nothing keeps it updated. git-updater is a
 self-hosted **Ninite replacement**: you pick the apps, it checks their latest releases and
-updates them, portable apps and installed programs alike. No accounts, no background
-services, no store — just your list and GitHub.
+updates them, portable apps and installed programs alike. No accounts, no store, nothing
+running unless you ask — just your list and GitHub.
 
 ## Get it
 
@@ -19,7 +19,8 @@ Grab the build for your machine from **[Releases](https://github.com/TeeJS/git-u
 | **macOS** | `git-updater-<v>-mac-arm64.dmg` (Apple Silicon) | open it, drag to Applications |
 | **Linux** | `git-updater-<v>-linux-<arch>.tar.gz` (x64, arm64) | extract anywhere, run `git-updater` |
 
-No setup, no admin rights, no background service, and closing the window exits everything.
+No setup and no admin rights, and closing the window exits everything — unless you turn on
+the optional background mode in Settings (start at login, keep running in the tray).
 Windows builds are Authenticode-signed (Thomas Schmitz, via Azure Trusted Signing); macOS
 builds are Developer ID signed and notarized.
 
@@ -54,9 +55,12 @@ The tarball has no such requirement, which is why it is the recommended Linux do
   transactional — a failed or interrupted update restores the previous version completely,
   and your settings inside the app folder survive. Installers that need admin rights fall
   back to their own window with a normal UAC prompt.
-- **Quiet by design.** Nothing runs at startup, nothing phones home, no background service.
-  Open it, update, close it — on macOS too, where it deliberately does not linger in the
-  dock. It even tells you when git-updater itself has a new release.
+- **Quiet by default.** Out of the box nothing runs at startup, nothing phones home, and
+  closing the window quits — on macOS too, where it does not linger in the dock. If you would
+  rather it stayed available, Settings has two switches, both off until you turn them on:
+  *start at login*, and *keep running in the tray* (closing the window hides it to an icon
+  instead of quitting; right-click the icon for Open, Check now and Quit). It never updates or
+  installs anything on its own. It even tells you when git-updater itself has a new release.
 
 ## On macOS
 

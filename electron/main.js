@@ -2,9 +2,11 @@
 
 // Electron main process — the standalone GUI. Replaces the localhost web server:
 // the renderer talks to the engine over IPC (no socket), the engine runs in-process
-// (no shell, no self-elevation), and closing the window exits everything (on-demand).
+// (no shell, no self-elevation). Quiet by default: nothing runs at startup and closing the
+// window exits everything. Two opt-in settings change that (src/background.js): start at login,
+// and keep running in the tray when the window is closed.
 
-const { app, BrowserWindow, ipcMain, dialog, shell, screen, net, safeStorage } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, screen, net, safeStorage, Tray, Menu, nativeImage } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const core = require('../src/core');
@@ -16,6 +18,7 @@ const platform = require('../src/platform');
 const paths = require('../src/paths');
 const catalog = require('../src/catalog');
 const selfupdate = require('../src/selfupdate');
+const background = require('../src/background');
 const { log, LOG_FILE } = require('../src/log');
 
 // macOS self-updates in place via Squirrel.Mac (electron/macupdate.js), not the launcher model
@@ -120,7 +123,9 @@ function clearToken() {
 }
 
 let win;
-function createWindow() {
+let pendingCheck = false; // "Check now" from the tray arrived before the window finished loading
+// opts.minimized: a login start with no tray icon opens minimized to the taskbar, so it is visible.
+function createWindow(opts = {}) {
   // Tall enough for the whole UI without scrolling, capped at the screen's work area.
   const wa = screen.getPrimaryDisplay().workAreaSize;
   win = new BrowserWindow({
@@ -130,6 +135,7 @@ function createWindow() {
     minHeight: 480,
     backgroundColor: '#0d1117',
     autoHideMenuBar: true,
+    show: !opts.minimized,
     icon: path.join(__dirname, 'icon.png'), // dev + packaged Linux; Win/mac use the bundled app icon
 
     webPreferences: {
@@ -138,7 +144,59 @@ function createWindow() {
       nodeIntegration: false,
     },
   });
+  if (opts.minimized) win.once('ready-to-show', () => { win.showInactive(); win.minimize(); });
+  // With "keep running" on, closing the window hides it to the tray instead of quitting; Quit in the
+  // tray menu, Cmd+Q and a system shutdown are really quitting and are never intercepted.
+  win.on('close', (e) => {
+    if (background.shouldHideOnClose(readConfig(), bg.isQuitting())) {
+      e.preventDefault();
+      win.hide();
+    }
+  });
+  win.on('session-end', () => bg.markQuitting());
+  win.webContents.once('did-finish-load', () => {
+    if (pendingCheck) { pendingCheck = false; win.webContents.send('tray:check'); }
+  });
   win.loadFile(path.join(__dirname, '..', 'ui', 'index.html'));
+}
+
+// Bring the window back (creating it if there is none), from the tray or a second launch.
+function showWindow() {
+  if (!win || win.isDestroyed()) { createWindow(); return; }
+  if (win.isMinimized()) win.restore();
+  win.show();
+  win.focus();
+}
+
+// The tray's "Check now": show the window and run the same check as "Check all".
+function requestCheck() {
+  if (!win || win.isDestroyed()) { pendingCheck = true; createWindow(); return; }
+  showWindow();
+  if (win.webContents.isLoading()) pendingCheck = true;
+  else win.webContents.send('tray:check');
+}
+
+const bg = background.createBackground({
+  app, Tray, Menu, nativeImage, readConfig, log,
+  iconPath: path.join(__dirname, 'icon.png'),
+  openWindow: showWindow,
+  checkNow: requestCheck,
+});
+
+// The stable launcher (never a versioned app-x.y.z folder) is what the login entry starts.
+const loginLauncher = () => background.launcherPath(ROOT, process.platform, process.env);
+// At launch: if "start at login" is on, make sure the system's entry still matches (a moved
+// install, or an entry removed by hand). Written only when it differs; never touched when off.
+function reconcileLogin() {
+  try {
+    if (!readConfig().startAtLogin) return;
+    if (!background.isStartAtLoginApplied(app, true, loginLauncher())) {
+      background.setStartAtLogin(app, true, loginLauncher());
+      log('start at login: entry refreshed');
+    }
+  } catch (e) {
+    log(`start at login: ${e && e.message ? e.message : e}`);
+  }
 }
 
 // --- IPC: the only bridge between the renderer and the engine -----------------
@@ -288,7 +346,21 @@ ipcMain.handle('app:launch', async (_e, appKey) => {
   return { ok: true, path: target };
 });
 ipcMain.handle('config:save', (_e, cfg) => {
-  saveConfigFile(cfg);
+  const wasStartAtLogin = !!readConfig().startAtLogin;
+  const wantsStartAtLogin = !!(cfg && cfg.startAtLogin);
+  // The system's login list is written first, so a refusal (a development run, a system that
+  // ignores it) reaches the Settings checkbox before anything is saved.
+  if (wantsStartAtLogin !== wasStartAtLogin) {
+    background.setStartAtLogin(app, wantsStartAtLogin, loginLauncher());
+    log(`start at login: ${wantsStartAtLogin ? 'on' : 'off'}`);
+  }
+  try {
+    saveConfigFile(cfg);
+  } catch (e) {
+    if (wantsStartAtLogin !== wasStartAtLogin) { try { background.setStartAtLogin(app, wasStartAtLogin, loginLauncher()); } catch {} }
+    throw e;
+  }
+  bg.syncTray(); // the tray icon follows "keep running" at once, no restart
   return { ok: true };
 });
 ipcMain.handle('config:open', () => shell.openPath(CONFIG_PATH));
@@ -546,7 +618,7 @@ ipcMain.handle('selfupdate:apply', async (e) => {
   }
 });
 
-// --- lifecycle: launcher hand-off, single instance, on-demand -------------------
+// --- lifecycle: launcher hand-off, single instance, quiet by default ------------
 (async () => {
   // Relaunch after a self-update: the updating process still holds the single-instance lock
   // until it exits, so wait for it before handing off.
@@ -558,7 +630,7 @@ ipcMain.handle('selfupdate:apply', async (e) => {
   const target = app.isPackaged ? selfupdate.handoffTarget(process.execPath, app.getVersion()) : null;
   if (target) {
     log(`launcher: handing off to ${target.dir}`);
-    selfupdate.launch(target.dir);
+    selfupdate.launch(target.dir, background.forwardArgs(process.argv)); // the login flag must survive the hand-off
     app.exit(0);
     return;
   }
@@ -567,11 +639,9 @@ ipcMain.handle('selfupdate:apply', async (e) => {
     app.quit();
     return;
   }
-  app.on('second-instance', () => {
-    if (win) {
-      if (win.isMinimized()) win.restore();
-      win.focus();
-    }
+  app.on('second-instance', (_event, argv) => {
+    if (argv.includes(background.AUTO_START_ARG)) return; // a login start while already running: nothing to do
+    showWindow(); // also brings back a window hidden in the tray
   });
   app.whenReady().then(() => {
     // Route the engine's HTTP through Chromium's network stack (Electron net.fetch): it trusts
@@ -584,14 +654,21 @@ ipcMain.handle('selfupdate:apply', async (e) => {
     tokenInUse = !!savedToken;
     migrateConfig();
     if (app.isPackaged) selfupdate.cleanupLeftovers(ROOT, app.getVersion()).catch(() => {});
-    createWindow();
+    bg.syncTray();
+    reconcileLogin();
+    const loginLaunch = background.isLoginLaunch(process.argv, { macWasOpenedAtLogin: IS_MAC && app.getLoginItemSettings().wasOpenedAtLogin });
+    const mode = background.startupWindow(readConfig(), loginLaunch, process.platform);
+    if (mode === 'hidden') log('started at login: hidden in the tray');
+    else createWindow({ minimized: mode === 'minimized' });
   });
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    if (BrowserWindow.getAllWindows().length === 0) showWindow();
   });
-  // Close the window -> everything exits, on every platform INCLUDING macOS, where the
-  // convention is normally to stay resident in the dock. That convention is declined on
-  // purpose: git-updater runs nothing at startup, keeps no background service and phones
-  // home never, and a process lingering after the window closes would contradict that.
-  app.on('window-all-closed', () => app.quit());
+  app.on('before-quit', () => bg.markQuitting());
+  // Closing the last window quits, on every platform INCLUDING macOS, where the convention is to
+  // stay resident in the dock. That convention is declined: this app is quiet by default. The one
+  // exception is the opt-in "keep running in the tray", which keeps it alive for its icon.
+  app.on('window-all-closed', () => {
+    if (!background.keepAliveWithoutWindows(readConfig(), bg.isQuitting())) app.quit();
+  });
 })();
