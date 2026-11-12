@@ -74,6 +74,22 @@
 
   .toolbar { display: flex; align-items: center; gap: .55rem; margin-bottom: .7rem; }
   .toolbar .count { color: var(--muted); font-size: .92rem; margin-right: auto; font-weight: 600; }
+  [hidden] { display: none !important; }
+  /* Search + filters above the list. */
+  .findbar { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .65rem; margin-bottom: .7rem; }
+  .searchbox { position: relative; flex: 1 1 14rem; min-width: 10rem; }
+  .searchbox input { width: 100%; box-sizing: border-box; padding-right: 2rem; }
+  .searchbox .clear { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); padding: .05rem .45rem; border: 0; background: transparent; font-size: 1.1rem; line-height: 1.4; color: var(--muted); }
+  .searchbox .clear:hover:not(:disabled) { background: transparent; color: var(--text); }
+  .filter { display: inline-flex; align-items: center; gap: .4rem; color: var(--muted); font-size: .85rem; }
+  .filter select { font: 400 13.5px var(--sans); padding: .42rem .5rem; border-radius: 8px; color: var(--text); background: #0d1117; border: 1px solid var(--border); }
+  .filter select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(227,161,60,.18); }
+  .filter select.on { border-color: var(--accent); }
+  .linklike { background: none; border: 0; padding: 0; font: inherit; color: var(--blue); text-decoration: underline; cursor: pointer; }
+  .linklike:hover:not(:disabled) { background: none; color: var(--text); }
+  .toolbar .linklike { font-weight: 600; font-size: .92rem; text-decoration: none; }
+  .toolbar .linklike:hover:not(:disabled) { text-decoration: underline; }
+  .filtered { color: var(--muted); font-size: .85rem; margin: -.2rem 0 .6rem; display: flex; gap: .6rem; align-items: baseline; }
 
   /* One shared grid defines every column for the header AND each row. The App column
      absorbs available space and ellipsizes — no hard minimum, so the table can never
@@ -190,8 +206,34 @@
   <div id="selfup"><span id="selfupText"></span><button id="selfupBtn" class="primary"></button><button id="selfupDismiss" title="Dismiss">&times;</button></div>
 
   <div class="panel">
+    <div class="findbar" role="search">
+      <div class="searchbox">
+        <input type="text" id="search" placeholder="Search owner or app…" aria-label="Search by owner or app" autocomplete="off" spellcheck="false">
+        <button type="button" class="clear" id="searchClear" title="Clear search (Esc)" aria-label="Clear search" hidden>&times;</button>
+      </div>
+      <label class="filter">Type
+        <select id="filterType" aria-label="Filter by type">
+          <option value="all">All</option><option value="portable">Portable</option><option value="installer">Installer</option>
+        </select>
+      </label>
+      <label class="filter">Status
+        <select id="filterStatus" aria-label="Filter by status">
+          <option value="all">All</option>
+          <option value="unchecked">Not checked yet</option>
+          <option value="uptodate">Checked and up to date</option>
+          <option value="available">Update or install available</option>
+          <option value="update">Update available</option>
+          <option value="installable">Available to install</option>
+          <option value="present">Installed on this PC</option>
+          <option value="absent">Not installed on this PC</option>
+          <option value="failed">Failed</option>
+          <option value="working">Working now</option>
+        </select>
+      </label>
+    </div>
+    <div class="filtered" id="filtered" hidden><span id="filteredText"></span><button type="button" class="linklike" id="filterClear">Clear</button></div>
     <div class="toolbar">
-      <span class="count" id="count"></span>
+      <span class="count"><button type="button" class="linklike" id="count" title="Show only the apps with an update" hidden></button></span>
       <button id="checkAll">Check all</button>
       <button id="updateSel" disabled>Update selected</button>
       <button id="updateAll" class="primary">Update all</button>
@@ -213,6 +255,7 @@
       <div id="rows"></div>
     </div>
     <div class="empty" id="empty" style="display:none">No apps tracked yet — add one below.</div>
+    <div class="empty" id="noMatch" hidden>No apps match. <button type="button" class="linklike" id="noMatchClear">Clear the search and filters</button></div>
 
     <div class="divider"></div>
 
@@ -288,6 +331,11 @@
         <select id="startupSortDirection" aria-label="Sort direction at startup"><option value="asc">Ascending</option><option value="desc">Descending</option></select>
       </div>
       <p class="hint">Off by default: the list opens in the order you last sorted it. On, every launch starts with this sort instead. You can still click a column header to re-sort while the app is open.</p>
+      <div class="row" style="margin-top:.6rem">
+        <span style="color:var(--muted);font-size:.9rem;min-width:8rem">Filters</span>
+        <label class="scan-label"><input type="checkbox" id="rememberFilters"> Remember my filters between launches</label>
+      </div>
+      <p class="hint">Off by default: the Type and Status filters go back to All every time git-updater opens. On, they come back as you left them. The search box always starts empty.</p>
       <div class="row" style="margin-top:.6rem">
         <span style="color:var(--muted);font-size:.9rem;min-width:8rem">Automatically</span>
         <label class="scan-label"><input type="checkbox" id="checkOnOpen"> Check for updates when git-updater opens</label>
@@ -435,6 +483,65 @@ function primaryAction(s) {
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
 const cell = (node, cls) => { const td = document.createElement('td'); if (cls) td.className = cls; if (node) td.appendChild(node); return td; };
 
+// --- find and filter ------------------------------------------------------------
+// The search box and the Type / Status filters. A row is shown only when it matches ALL of
+// them. This block is pure (no DOM, no globals) so the tests can run it on its own.
+const TYPE_FILTERS = ['all', 'portable', 'installer'];
+const STATUS_FILTERS = ['all', 'unchecked', 'uptodate', 'available', 'update', 'installable', 'present', 'absent', 'failed', 'working'];
+const WORKING_PHASES = ['loading', 'checking', 'queued', 'downloading', 'verifying', 'installing', 'waiting'];
+// Case-insensitive, matches the owner, the app name, or both typed together as owner/app.
+function matchesSearch(r, text) {
+  const q = String(text || '').trim().toLowerCase();
+  if (!q) return true;
+  const owner = String(r.owner).toLowerCase();
+  const repo = String(r.repo).toLowerCase();
+  return owner.includes(q) || repo.includes(q) || `${owner}/${repo}`.includes(q);
+}
+// The wording follows what the Status column shows. "present" is whether the app is on this
+// machine, independent of whether it has been checked.
+function matchesStatus(s, choice) {
+  s = s || {};
+  switch (choice) {
+    case 'unchecked': return s.ph === 'idle' || s.ph == null;
+    case 'uptodate': return ['current', 'installed', 'updated'].includes(s.ph);
+    case 'available': return s.ph === 'available'; // what the toolbar's "N updates available" counts
+    case 'update': return s.ph === 'available' && !!s.present;
+    case 'installable': return s.ph === 'available' && !s.present;
+    case 'present': return !!s.present;
+    case 'absent': return !s.present;
+    case 'failed': return s.ph === 'failed';
+    case 'working': return WORKING_PHASES.includes(s.ph);
+    default: return true;
+  }
+}
+function matchesFilters(r, s, f) {
+  return matchesSearch(r, f.text) && (f.type === 'all' || r.type === f.type) && matchesStatus(s, f.status);
+}
+function filtersActive(f) {
+  return !!String(f.text || '').trim() || f.type !== 'all' || f.status !== 'all';
+}
+function cleanChoice(value, allowed) { return allowed.includes(value) ? value : 'all'; }
+// What to start from at launch: the saved choices only when "Remember my filters" is on.
+function savedFilters(cfg) {
+  if (!cfg.rememberFilters) return { type: 'all', status: 'all' };
+  return { type: cleanChoice(cfg.filterType, TYPE_FILTERS), status: cleanChoice(cfg.filterStatus, STATUS_FILTERS) };
+}
+// --- end of the pure find helpers ---
+
+const filter = { text: '', type: 'all', status: 'all' };
+let heldVisible = null; // while a check or update runs: the rows on screen when it started
+let shownKeys = new Set(); // keys of the rows on screen right now (what the toolbar buttons act on)
+// Rows hold still during a run, even if their status stops matching, and the filter re-applies
+// when it finishes: the same way sorting already holds still, so the list never jumps.
+function holdVisible() {
+  heldVisible = filtersActive(filter) ? new Set(config.repos.filter((r) => matchesFilters(r, st[keyOf(r)], filter)).map(keyOf)) : null;
+}
+function visibleRepos(sorted) {
+  if (!filtersActive(filter)) { heldVisible = null; return sorted; }
+  if (busy && heldVisible) return sorted.filter((r) => heldVisible.has(keyOf(r)));
+  return sorted.filter((r) => matchesFilters(r, st[keyOf(r)], filter));
+}
+
 // Settings -> "Sort the list at startup by": the columns the header can sort on, and the
 // helper that makes a launch start from the chosen one. Without it the list opens in whatever
 // order the last header click left behind (config.sortColumn / sortDirection are saved).
@@ -517,7 +624,11 @@ function renderRepos() {
   tb.innerHTML = '';
   $('empty').style.display = config.repos.length ? 'none' : '';
   renderSortHeaders();
-  sortedRepos().forEach((r) => {
+  const shown = visibleRepos(sortedRepos());
+  shownKeys = new Set(shown.map(keyOf));
+  $('noMatch').hidden = !(config.repos.length && !shown.length);
+  renderFindState(shown.length, config.repos.length);
+  shown.forEach((r) => {
     const key = keyOf(r);
     const s = st[key] || (st[key] = { ph: 'idle' });
     const row = el('div', 'app-row'); // 7 grid children, same template as the header
@@ -568,13 +679,54 @@ function renderRepos() {
   syncBar();
 }
 
+// What the toolbar buttons act on: every app, or only the rows on screen while a search or
+// filter is active. Hidden rows are never touched by "Update all" or "Update selected".
+function targetKeys() {
+  return filtersActive(filter) ? [...shownKeys] : config.repos.map(keyOf);
+}
+function selectedTargets() {
+  return [...selected].filter((k) => !filtersActive(filter) || shownKeys.has(k));
+}
 function syncBar() {
   const avail = config.repos.filter((r) => st[keyOf(r)]?.ph === 'available').length;
   $('count').textContent = avail ? `${avail} update${avail > 1 ? 's' : ''} available` : '';
-  $('updateSel').disabled = busy || selected.size === 0;
-  $('updateAll').disabled = busy || config.repos.length === 0;
-  $('checkAll').disabled = busy || config.repos.length === 0;
-  $('selAll').checked = config.repos.length > 0 && selected.size === config.repos.length;
+  $('count').hidden = !avail;
+  const targets = targetKeys().length;
+  $('updateSel').disabled = busy || selectedTargets().length === 0;
+  $('updateAll').disabled = busy || targets === 0;
+  $('checkAll').disabled = busy || targets === 0;
+  $('selAll').checked = targets > 0 && targetKeys().every((k) => selected.has(k));
+}
+// The "Showing 5 of 23" line, the clear buttons, the highlighted filters and the toolbar labels.
+function renderFindState(shown, total) {
+  const active = filtersActive(filter);
+  $('filtered').hidden = !active;
+  if (active) $('filteredText').textContent = `Showing ${shown} of ${total} app${total === 1 ? '' : 's'}`;
+  $('searchClear').hidden = !filter.text;
+  $('filterType').classList.toggle('on', filter.type !== 'all');
+  $('filterStatus').classList.toggle('on', filter.status !== 'all');
+  $('checkAll').textContent = active ? 'Check shown' : 'Check all';
+  $('updateAll').textContent = active ? 'Update shown' : 'Update all';
+}
+function syncFilterControls() {
+  $('search').value = filter.text;
+  $('filterType').value = filter.type;
+  $('filterStatus').value = filter.status;
+}
+// Any change to the search or a filter: re-render, and keep the choices when "remember" is on.
+function filtersChanged() {
+  heldVisible = null;
+  renderRepos();
+  if (config.rememberFilters) {
+    config.filterType = filter.type;
+    config.filterStatus = filter.status;
+    saveConfig();
+  }
+}
+function clearFilters() {
+  filter.text = ''; filter.type = 'all'; filter.status = 'all';
+  syncFilterControls();
+  filtersChanged();
 }
 
 // --- overflow menu ---
@@ -652,7 +804,15 @@ async function load() {
   $('startupSortColumn').disabled = $('startupSortDirection').disabled = !config.startupSortEnabled;
   // Once per app start, before the first render: load() re-runs on config changes (scan window,
   // folder save), and those must not throw away a sort the user has clicked since.
-  if (!booted) applyStartupSort(config);
+  $('rememberFilters').checked = !!config.rememberFilters;
+  if (!booted) {
+    applyStartupSort(config);
+    // Same once-per-start rule: the saved filters (only with "Remember my filters" on) come back
+    // before the first render; the search box always starts empty.
+    const saved = savedFilters(config);
+    filter.text = ''; filter.type = saved.type; filter.status = saved.status;
+    syncFilterControls();
+  }
   config.repos.forEach((r) => { st[keyOf(r)] = { ph: 'loading' }; }); // show rows instantly
   renderRepos();
   await refreshInstalled(); // slower registry/manifest detection
@@ -859,6 +1019,7 @@ async function closeAndRetry(r, key) {
 // --- check / update ---
 async function checkApps(keys) {
   if (busy) return;
+  holdVisible(); // before the statuses change, so rows do not vanish from a filtered list mid-run
   busy = true; keys.forEach((k) => (st[k] = { ...(st[k] || {}), ph: 'checking' })); renderRepos();
   const retyped = { portable: [], installer: [] }; // type corrections — reported, never silent
   let stopped = null; // rate-limit / bad-token reason that ended the run early
@@ -902,6 +1063,7 @@ async function checkApps(keys) {
 
 async function runBatch(keys, force, autoClose = false) {
   if (busy || !keys.length) return;
+  holdVisible(); // before the statuses change, so rows do not vanish from a filtered list mid-run
   busy = true;
   keys.forEach((k) => (st[k] = { ...(st[k] || {}), ph: 'queued' })); renderRepos();
   let done = 0, installed = 0, failed = 0;
@@ -1027,10 +1189,43 @@ $('selfupDismiss').onclick = () => {
   $('selfup').classList.remove('show');
 };
 
-$('checkAll').onclick = () => { selfCheck(); checkApps(config.repos.map(keyOf)); };
-$('updateAll').onclick = () => runBatch(config.repos.map(keyOf), false, !!config.autoCloseReopen);
-$('updateSel').onclick = () => runBatch([...selected]);
-$('selAll').onchange = (e) => { selected.clear(); if (e.target.checked) config.repos.forEach((r) => selected.add(keyOf(r))); renderRepos(); };
+// With a search or filter active these act on the rows on screen only (see targetKeys()).
+$('checkAll').onclick = () => { if (!filtersActive(filter)) selfCheck(); checkApps(targetKeys()); };
+$('updateAll').onclick = () => runBatch(targetKeys(), false, !!config.autoCloseReopen);
+$('updateSel').onclick = () => runBatch(selectedTargets());
+$('selAll').onchange = (e) => {
+  if (e.target.checked) targetKeys().forEach((k) => selected.add(k));
+  else targetKeys().forEach((k) => selected.delete(k));
+  renderRepos();
+};
+
+// --- search and filters (wiring; the matching rules are the pure helpers above) ---
+$('search').addEventListener('input', () => { filter.text = $('search').value; filtersChanged(); });
+$('search').addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && $('search').value) { e.preventDefault(); filter.text = ''; $('search').value = ''; filtersChanged(); }
+});
+$('searchClear').onclick = () => { filter.text = ''; $('search').value = ''; filtersChanged(); $('search').focus(); };
+$('filterType').onchange = () => { filter.type = cleanChoice($('filterType').value, TYPE_FILTERS); filtersChanged(); };
+$('filterStatus').onchange = () => { filter.status = cleanChoice($('filterStatus').value, STATUS_FILTERS); filtersChanged(); };
+$('filterClear').onclick = clearFilters;
+$('noMatchClear').onclick = clearFilters;
+// The "N updates available" label is a shortcut for the filter that shows exactly those apps.
+$('count').onclick = () => { filter.status = 'available'; syncFilterControls(); filtersChanged(); };
+// Ctrl+F (Cmd+F on a Mac) jumps to the search box.
+document.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && String(e.key).toLowerCase() === 'f') {
+    e.preventDefault();
+    $('search').focus();
+    $('search').select();
+  }
+});
+$('rememberFilters').onchange = () => {
+  config.rememberFilters = $('rememberFilters').checked;
+  // On: save what is set now. Off: forget the saved choices (the ones on screen stay until you change them).
+  config.filterType = config.rememberFilters ? filter.type : 'all';
+  config.filterStatus = config.rememberFilters ? filter.status : 'all';
+  saveConfig().then(() => msg('Saved.', 'ok'));
+};
 
 load().catch((e) => msg(clean(e), 'bad'));
 </script>

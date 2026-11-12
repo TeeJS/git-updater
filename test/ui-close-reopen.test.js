@@ -36,6 +36,7 @@ test('Update all closes and reopens only running apps, including after update fa
     busy: false,
     st: { [key]: { present: true } },
     renderRepos: () => {},
+    holdVisible: () => {}, // runBatch freezes which rows are shown while it runs (search and filters)
     msg: () => {},
     clean: String,
     window: { api: {
@@ -56,6 +57,7 @@ test('Update all does not reopen an app when the runner could not close it', asy
     busy: false,
     st: { [key]: { present: true } },
     renderRepos: () => {},
+    holdVisible: () => {}, // runBatch freezes which rows are shown while it runs (search and filters)
     msg: () => {},
     clean: String,
     window: { api: {
@@ -77,6 +79,7 @@ test('interactive installer reopens only after completion callback', async () =>
     busy: false,
     st: { [key]: { present: true, from: '1.0' } },
     renderRepos: () => {},
+    holdVisible: () => {}, // runBatch freezes which rows are shown while it runs (search and filters)
     msg: () => {},
     clean: String,
     watchInstall: (_key, _from, _wasInstall, callback) => { completion = callback; },
