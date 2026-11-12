@@ -113,7 +113,9 @@
   .table-header .sort-button { display: block; width: 100%; min-height: 24px; padding: 0; border: 0; background: none; color: inherit; font: inherit; letter-spacing: inherit; text-align: left; text-transform: inherit; cursor: pointer; }
   .table-header .sort-button:hover, .table-header .sort-button:focus-visible { color: var(--text); }
   .sort-arrow { margin-left: .2rem; }
-  .app-row { padding: .5rem 0; border-top: 1px solid var(--border); }
+  /* "Owner / App" share one column (the rows show owner/repo): two separate sort buttons side by side. */
+  .table-header > .name-header { display: flex; align-items: baseline; gap: .35rem; overflow: hidden; white-space: nowrap; }
+  .name-header .sort-button { width: auto; }  .app-row { padding: .5rem 0; border-top: 1px solid var(--border); }
   .app-name { font: 500 14px var(--mono); }
   .status { display: inline-flex; align-items: center; gap: .4rem; font-size: .88rem; }
   .status .txt { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -123,6 +125,11 @@
     .app-row { grid-template-columns: 24px minmax(0, 1fr) 88px 88px 160px 100px; column-gap: 8px; }
     /* .badge sets display later in the cascade; child selector out-specifies it */
     .table-header > .type-cell, .app-row > .type-cell { display: none; }
+  }
+  /* Narrowest card (window near its 640px minimum): the name column is too thin for "Owner / App" on one line, so stack the two sort buttons. */
+  @container (max-width: 620px) {
+    .table-header > .name-header { flex-direction: column; align-items: flex-start; gap: 0; }
+    .name-header .name-sep { display: none; }
   }
   .badge { display: inline-block; font: 600 .72rem var(--sans); padding: .12rem .5rem; border-radius: 999px; border: 1px solid transparent; }
   .badge.portable { color: var(--blue); background: rgba(88,166,255,.12); border-color: rgba(88,166,255,.3); }
@@ -192,7 +199,11 @@
     <div class="table-wrapper">
       <div class="table-header">
         <span><input type="checkbox" id="selAll" title="Select all"></span>
-        <span role="columnheader" data-sort="app"><button class="sort-button" type="button">App<span class="sort-arrow" aria-hidden="true"></span></button></span>
+        <span class="name-header">
+          <span role="columnheader" data-sort="owner"><button class="sort-button" type="button">Owner<span class="sort-arrow" aria-hidden="true"></span></button></span>
+          <span class="name-sep" aria-hidden="true">/</span>
+          <span role="columnheader" data-sort="app"><button class="sort-button" type="button">App<span class="sort-arrow" aria-hidden="true"></span></button></span>
+        </span>
         <span class="type-cell" role="columnheader" data-sort="type"><button class="sort-button" type="button">Type<span class="sort-arrow" aria-hidden="true"></span></button></span>
         <span role="columnheader" data-sort="current"><button class="sort-button" type="button">Current<span class="sort-arrow" aria-hidden="true"></span></button></span>
         <span role="columnheader" data-sort="available"><button class="sort-button" type="button">Available<span class="sort-arrow" aria-hidden="true"></span></button></span>
@@ -406,11 +417,13 @@ function sortedRepos() {
   }
   const col = config.sortColumn;
   const direction = config.sortDirection === 'desc' ? -1 : 1;
-  if (['app', 'type', 'current', 'available', 'status'].includes(col)) {
+  if (['owner', 'app', 'type', 'current', 'available', 'status'].includes(col)) {
     repos.sort((a, b) => {
       const sa = st[keyOf(a)] || {}, sb = st[keyOf(b)] || {};
       let result;
-      if (col === 'app') result = `${a.owner}/${a.repo}`.localeCompare(`${b.owner}/${b.repo}`);
+      // Owner sorts by owner then name; App sorts by the repo name alone (TeeJS/bedrock-panel files under B), owner breaks ties.
+      if (col === 'owner') result = a.owner.localeCompare(b.owner) || a.repo.localeCompare(b.repo);
+      else if (col === 'app') result = a.repo.localeCompare(b.repo) || a.owner.localeCompare(b.owner);
       else if (col === 'type') result = a.type.localeCompare(b.type);
       else if (col === 'current' || col === 'available') {
         const va = col === 'current' ? sa.from : sa.to, vb = col === 'current' ? sb.from : sb.to;
