@@ -110,6 +110,21 @@ test('build guard: a macOS build with no outDir is an error too', async () => {
   );
 });
 
+test('build guard: a disk image that is missing, unsigned or unstapled is never ready', () => {
+  // A signed-and-stapled image needs codesign and a real .dmg, so that half runs on the Mac
+  // (and in the release workflow). The failure direction is testable anywhere: whether
+  // codesign is absent or refuses the file, the answer must be "not ready", never a pass.
+  const d = tmpdir();
+  try {
+    const bogus = path.join(d, 'not-an-image.dmg');
+    fs.writeFileSync(bogus, 'not a disk image');
+    assert.equal(guard.isDmgReady(bogus), false);
+    assert.equal(guard.isDmgReady(path.join(d, 'missing.dmg')), false);
+  } finally {
+    fs.rmSync(d, { recursive: true, force: true });
+  }
+});
+
 test('build guard: a non-macOS build returns quietly and asserts nothing', async () => {
   await guard.default(ctx({ platformToTargets: new Map([['windows', {}]]) }));
 });
