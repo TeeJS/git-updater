@@ -26,6 +26,43 @@ Each build's signing hook **degrades gracefully**: with no credentials it produc
 *unsigned* artifact rather than failing — except macOS, where the guard (below) fails the
 build on purpose, because an unnotarized mac app will not launch at all.
 
+## Release from GitHub Actions (written, not yet proven)
+
+[`.github/workflows/release.yml`](../.github/workflows/release.yml) does everything below on
+GitHub's own runners: it builds and signs all three platforms (macOS Developer ID +
+notarization on `macos-latest`, Windows Azure Artifact Signing through OIDC on
+`windows-latest`, Linux unsigned on `ubuntu-latest`) and drafts the release with exactly the
+ten files. **It never publishes.** It is adapted from `TeeJS/faction-wars-editor`, where the
+same design is proven.
+
+**Status: no dry run has passed yet.** Until one has, cut releases with the per-host steps
+below, which remain the fallback afterwards too.
+
+- **Dry run** (builds and signs, creates nothing): once the workflow is on `main`,
+  `gh workflow run release.yml -f dry_run=true`. Read the proof lines in the logs: the Windows
+  job lists each exe as `Valid`; the Mac job shows notarization verified for the app and the
+  disk image.
+- **Release:** bump the version on `main` (step 0), then push the tag, which must equal
+  `v` + the `package.json` version. A `-beta.N` version makes a pre-release draft.
+
+  ```bash
+  git tag vX.Y.Z && git push origin vX.Y.Z
+  ```
+
+  Check the draft, then publish it: `gh release edit vX.Y.Z --draft=false --latest`, or for a
+  beta `gh release edit vX.Y.Z-beta.N --draft=false --prerelease`. The tag already exists at
+  the built commit, so the "target moved" check in step 6 does not apply.
+- **One-time setup for this repo:**
+  - Five repository secrets for macOS: `MAC_CERT_P12_BASE64`, `MAC_CERT_PASSWORD`,
+    `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`.
+  - A `release` environment with three variables, `AZURE_CLIENT_ID`, `AZURE_TENANT_ID` and
+    `AZURE_SUBSCRIPTION_ID` (IDs, not secrets).
+  - An Azure federated credential on the `github-actions-code-signing` app whose subject is
+    `repo:TeeJS@4136437/git-updater@1349272327:environment:release` (GitHub presents the
+    ID-based form; a name-only subject fails with `AADSTS700213`).
+- **Unproven part:** Linux arm64 is built on the x64 runner. If a dry run shows it failing,
+  move arm64 to an `ubuntu-24.04-arm` job.
+
 ---
 
 ## 0. Bump the version (once, on any host)

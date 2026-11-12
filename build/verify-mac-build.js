@@ -61,6 +61,31 @@ function isNotarized(appPath) {
   }
 }
 
+// A disk image is ready when it carries its own valid signature AND a stapled ticket
+// (see notarize-dmg.js: a ticket alone still measured "rejected"). Both checks work
+// whether or not Gatekeeper assessments are enabled on the build machine; when they are
+// on, spctl is asked as well, which is the check docs/RELEASING.md uses.
+// Ported from TeeJS/faction-wars-editor, which added it after finding the gap below.
+function isDmgReady(dmg) {
+  const ok = (cmd, args) => {
+    try {
+      execFileSync(cmd, args, { stdio: 'ignore' });
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  if (!ok('codesign', ['--verify', '--strict', dmg])) return false;
+  if (!ok('xcrun', ['stapler', 'validate', dmg])) return false;
+  let assessing = false;
+  try {
+    assessing = /enabled/.test(execFileSync('spctl', ['--status'], { encoding: 'utf8' }));
+  } catch {
+    assessing = false;
+  }
+  return !assessing || ok('spctl', ['-a', '-t', 'open', '--context', 'context:primary-signature', dmg]);
+}
+
 function explain(state) {
   if (state.partial) {
     return `only part of a credential set is set (${state.partial.join(', ')}); missing: ${state.missing.join(', ')}`;
@@ -144,10 +169,18 @@ exports.default = async function verifyMacBuild(context) {
 
   const creds = credentialState();
   const bad = apps.filter((a) => !isNotarized(a));
-  if (!bad.length) {
-    console.log(`  • notarization verified against ${apps.length} artifact(s), not the build log`);
+  // Check the DISK IMAGES too, not just the .app. notarizeDmgs returns [] quietly when it
+  // cannot see a Developer ID, and when electron-builder is handed a CSC_LINK it deletes its
+  // temporary keychain (packager disposers) BEFORE this hook runs. Checking only the .app
+  // would then pass while shipping an unsigned .dmg that Gatekeeper rejects.
+  const badDmgs = require('./notarize-dmg')
+    .dmgsIn(context && context.artifactPaths, outDir)
+    .filter((d) => !isDmgReady(d));
+  if (!bad.length && !badDmgs.length) {
+    console.log(`  • notarization verified against ${apps.length} app(s) and the disk image(s), not the build log`);
     return;
   }
+  bad.push(...badDmgs.map((d) => `${d}  (disk image: not signed, or no stapled ticket)`));
 
   const why = creds.ok
     ? 'credentials were present, so notarization was attempted and did not take'
@@ -171,3 +204,4 @@ module.exports.credentialState = credentialState;
 module.exports.isNotarized = isNotarized;
 module.exports.builtForMac = builtForMac;
 module.exports.findApps = findApps;
+module.exports.isDmgReady = isDmgReady;
