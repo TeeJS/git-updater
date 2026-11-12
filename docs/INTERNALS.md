@@ -391,6 +391,17 @@ auto-update or auto-install, so the app keeps its "no network at startup unless 
 posture. The `booted` flag in the UI script makes it a one-shot per app start: `load()`
 re-runs on config changes (scan window adds, folder save) and those must not re-trigger it.
 
+### Sort at startup
+
+Clicking a column header saves `config.sortColumn` / `config.sortDirection`, so by default the
+list reopens in the order it was last left. `config.startupSortEnabled` (a Settings checkbox,
+**off by default**, with a column and an Ascending/Descending pick: `startupSortColumn` /
+`startupSortDirection`) makes every launch start from the chosen sort instead.
+`applyStartupSort` copies it over the remembered sort once, in `load()` before the first render,
+behind the same `booted` guard as check-on-open so a config reload cannot undo a sort the user has
+clicked since. Changing the setting saves it but does not re-sort the list on screen. A bad column
+or direction in a hand-edited `config.json` falls back to the remembered sort (or App, ascending).
+
 ## Checking a change actually works
 
 The cross-platform port closed fourteen defects. Twelve would have shipped something that
