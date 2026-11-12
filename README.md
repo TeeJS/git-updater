@@ -113,3 +113,7 @@ git-updater's own folder — `%APPDATA%\git-updater\` on Windows, `~/Library/App
 Support/git-updater/` on macOS, `~/.config/git-updater/` on Linux. Per-app overrides (asset
 patterns, custom install dirs, installer switches), architecture notes, and design details
 are in **[docs/INTERNALS.md](docs/INTERNALS.md)**.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
