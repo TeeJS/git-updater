@@ -391,6 +391,28 @@ auto-update or auto-install, so the app keeps its "no network at startup unless 
 posture. The `booted` flag in the UI script makes it a one-shot per app start: `load()`
 re-runs on config changes (scan window adds, folder save) and those must not re-trigger it.
 
+### Search and filters
+
+The search box and the Type / Status dropdowns above the list narrow what is shown; a row has to
+match all of them. Search matches the owner, the app name, or both typed as `owner/app`, ignoring
+case. The matching rules are a pure block in `ui/index.html` (`matchesSearch`, `matchesStatus`,
+`matchesFilters`, between two marker comments) so `test/ui-find.test.js` can run them on their
+own; the Status wording follows what the Status column shows, and "Installed on this PC" /
+"Not installed on this PC" look at whether the app is on the machine, checked or not.
+
+Filtering only changes what is displayed. While a search or filter is active, **Check all**,
+**Update all** and the select-all box act on the rows on screen (`targetKeys()`), and say so
+("Check shown", "Update shown"); **Update selected** skips selected rows that are hidden. During a
+check or update the rows on screen are held (`holdVisible()`), even if their status stops
+matching, and the filter re-applies when the run ends, the same way sorting holds still.
+Check on open still checks every app. The toolbar's "N updates available" label is a button that
+applies the "Update or install available" status filter, which is what it counts.
+
+`config.rememberFilters` (a Settings checkbox, **off by default**) saves the Type and Status
+choices (`filterType`, `filterStatus`) when they change and restores them once at launch, behind
+the same `booted` guard as the startup sort. The search text always starts empty. Turning the
+checkbox off resets the saved choices to All.
+
 ### Sort at startup
 
 Clicking a column header saves `config.sortColumn` / `config.sortDirection`, so by default the
