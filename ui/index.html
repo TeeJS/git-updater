@@ -279,6 +279,16 @@
         <select id="dateFormat" aria-label="Status date format"><option value="MM/DD">MM/DD</option><option value="DD/MM">DD/MM</option></select>
       </div>
       <div class="row" style="margin-top:.6rem">
+        <span style="color:var(--muted);font-size:.9rem;min-width:8rem">Sort order</span>
+        <label class="scan-label"><input type="checkbox" id="startupSortEnabled"> Sort the list at startup by</label>
+        <select id="startupSortColumn" aria-label="Column to sort by at startup">
+          <option value="owner">Owner</option><option value="app">App</option><option value="type">Type</option>
+          <option value="current">Current</option><option value="available">Available</option><option value="status">Status</option>
+        </select>
+        <select id="startupSortDirection" aria-label="Sort direction at startup"><option value="asc">Ascending</option><option value="desc">Descending</option></select>
+      </div>
+      <p class="hint">Off by default: the list opens in the order you last sorted it. On, every launch starts with this sort instead. You can still click a column header to re-sort while the app is open.</p>
+      <div class="row" style="margin-top:.6rem">
         <span style="color:var(--muted);font-size:.9rem;min-width:8rem">Automatically</span>
         <label class="scan-label"><input type="checkbox" id="checkOnOpen"> Check for updates when git-updater opens</label>
       </div>
@@ -424,6 +434,25 @@ function primaryAction(s) {
 
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
 const cell = (node, cls) => { const td = document.createElement('td'); if (cls) td.className = cls; if (node) td.appendChild(node); return td; };
+
+// Settings -> "Sort the list at startup by": the columns the header can sort on, and the
+// helper that makes a launch start from the chosen one. Without it the list opens in whatever
+// order the last header click left behind (config.sortColumn / sortDirection are saved).
+const SORT_COLUMNS = ['owner', 'app', 'type', 'current', 'available', 'status'];
+function startupSortChoice(cfg) {
+  const column = SORT_COLUMNS.includes(cfg.startupSortColumn) ? cfg.startupSortColumn
+    : SORT_COLUMNS.includes(cfg.sortColumn) ? cfg.sortColumn : 'app';
+  const direction = cfg.startupSortDirection != null ? cfg.startupSortDirection : cfg.sortDirection;
+  return { column, direction: direction === 'desc' ? 'desc' : 'asc' };
+}
+// Called once per app start (see load()): returns true when it replaced the remembered sort.
+function applyStartupSort(cfg) {
+  if (!cfg.startupSortEnabled) return false;
+  const { column, direction } = startupSortChoice(cfg);
+  cfg.sortColumn = column;
+  cfg.sortDirection = direction;
+  return true;
+}
 
 function sortedRepos() {
   const repos = [...config.repos];
@@ -615,6 +644,15 @@ async function load() {
   $('downloadLimitMiB').value = config.downloadLimitMiB == null ? 500 : config.downloadLimitMiB;
   $('downloadLimitMiB').disabled = !$('downloadLimitEnabled').checked;
   $('dateFormat').value = config.dateFormat === 'DD/MM' ? 'DD/MM' : 'MM/DD';
+  // The Settings controls start on the current sort so turning the checkbox on changes nothing yet.
+  const startup = startupSortChoice(config);
+  $('startupSortEnabled').checked = !!config.startupSortEnabled;
+  $('startupSortColumn').value = startup.column;
+  $('startupSortDirection').value = startup.direction;
+  $('startupSortColumn').disabled = $('startupSortDirection').disabled = !config.startupSortEnabled;
+  // Once per app start, before the first render: load() re-runs on config changes (scan window,
+  // folder save), and those must not throw away a sort the user has clicked since.
+  if (!booted) applyStartupSort(config);
   config.repos.forEach((r) => { st[keyOf(r)] = { ph: 'loading' }; }); // show rows instantly
   renderRepos();
   await refreshInstalled(); // slower registry/manifest detection
@@ -676,6 +714,16 @@ $('selfPreRel').onchange = () => { config.selfUpdatePrerelease = $('selfPreRel')
 $('checkOnOpen').onchange = () => { config.checkOnOpen = $('checkOnOpen').checked; saveConfig().then(() => msg('Saved.', 'ok')); };
 $('autoCloseReopen').onchange = () => { config.autoCloseReopen = $('autoCloseReopen').checked; saveConfig().then(() => msg('Saved.', 'ok')); };
 $('dateFormat').onchange = () => { config.dateFormat = $('dateFormat').value; renderRepos(); saveConfig().then(() => msg('Saved.', 'ok')); };
+// Startup sort: saved as soon as it changes, and only read at the next launch, so changing it
+// does not re-sort the list that is on screen now.
+function saveStartupSort() {
+  config.startupSortEnabled = $('startupSortEnabled').checked;
+  config.startupSortColumn = $('startupSortColumn').value;
+  config.startupSortDirection = $('startupSortDirection').value;
+  $('startupSortColumn').disabled = $('startupSortDirection').disabled = !config.startupSortEnabled;
+  saveConfig().then(() => msg('Saved. The list will start sorted this way next time.', 'ok'));
+}
+['startupSortEnabled', 'startupSortColumn', 'startupSortDirection'].forEach((id) => { $(id).onchange = saveStartupSort; });
 // Download limit: ported from EstusFlask/git-updater-background. Saved with its own button
 // (not on every keystroke); validated here and again by the main process on save.
 $('downloadLimitEnabled').onchange = () => { $('downloadLimitMiB').disabled = !$('downloadLimitEnabled').checked; };
