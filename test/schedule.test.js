@@ -17,7 +17,7 @@ function setup(cfg) {
     saveState: (st) => { env.state = JSON.parse(JSON.stringify(st)); },
     now: () => env.clock,
     log: (m) => env.logs.push(m),
-    runCheck: async (info) => { env.runs.push(info); if (env.fail) throw new Error('boom'); },
+    jobs: [{ name: 'check', run: async (info) => { env.runs.push(info); if (env.fail) throw new Error('boom'); } }],
   });
   return { env, s };
 }
@@ -120,7 +120,7 @@ test('a tick while a check is still running does not start a second one', async 
   const gate = new Promise((r) => { release = r; });
   const s2 = createScheduler({
     readConfig: () => env.cfg, loadState: () => JSON.parse(JSON.stringify(env.state)), saveState: (st) => { env.state = JSON.parse(JSON.stringify(st)); },
-    now: () => env.clock, runCheck: async () => { env.runs.push(1); await gate; },
+    now: () => env.clock, jobs: [{ name: 'check', run: async () => { env.runs.push(1); await gate; } }],
   });
   env.clock = at(2026, 11, 13, 9, 0);
   const first = s2.tick();
@@ -141,4 +141,77 @@ test('the state file survives a restart', () => {
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+// --- two jobs: check and install ------------------------------------------------
+
+function setupTwo(cfg) {
+  const env = {
+    cfg: { scheduleCheckEnabled: true, scheduleCheckCron: '0 9 * * *', scheduleInstallEnabled: true, scheduleInstallCron: '47 2 * * 2#1', ...cfg },
+    state: {}, clock: at(2026, 11, 12, 10), order: [], busy: false, logs: [],
+  };
+  const s = createScheduler({
+    readConfig: () => env.cfg,
+    loadState: () => JSON.parse(JSON.stringify(env.state)),
+    saveState: (st) => { env.state = JSON.parse(JSON.stringify(st)); },
+    now: () => env.clock,
+    log: (m) => env.logs.push(m),
+    canRun: (name) => !(env.busy && name === 'install'),
+    jobs: [
+      { name: 'check', run: async () => { env.order.push('check'); } },
+      { name: 'install', run: async () => { env.order.push('install'); } },
+    ],
+  });
+  return { env, s };
+}
+
+test('two jobs keep their own last-run times and run independently', async () => {
+  const { env, s } = setupTwo();
+  const r0 = await s.tick();
+  assert.equal(r0.check.why, 'baseline');
+  assert.equal(r0.install.why, 'baseline');
+  assert.ok(env.state.checkLastRun && env.state.installLastRun, 'separate keys');
+  assert.equal(env.state.installCron, '47 2 * * 2#1');
+  env.clock = at(2026, 11, 13, 9, 0); // the daily check is due; the monthly install is not
+  const r1 = await s.tick();
+  assert.equal(r1.check.ran, true);
+  assert.equal(r1.install.ran, false);
+  assert.deepEqual(env.order, ['check']);
+  env.clock = at(2026, 12, 1, 2, 47); // the first Tuesday of December
+  const r2 = await s.tick();
+  assert.equal(r2.install.ran, true, 'the 1st Tuesday at 2:47 AM');
+  // (the daily check had also been missed since Nov 13 and is caught up first; the install comes last)
+  assert.deepEqual(env.order, ['check', 'check', 'install']);
+});
+
+test('when both are due in the same tick the check runs first, then the install, never at the same time', async () => {
+  const { env, s } = setupTwo({ scheduleCheckCron: '47 2 * * 2#1' });
+  await s.tick();
+  env.clock = at(2026, 12, 1, 2, 47);
+  await s.tick();
+  assert.deepEqual(env.order, ['check', 'install']);
+});
+
+test('an install that is blocked (an update is in progress) is not marked as run and goes on the next tick', async () => {
+  const { env, s } = setupTwo();
+  await s.tick();
+  env.clock = at(2026, 12, 1, 2, 47);
+  env.busy = true;
+  const r = await s.tick();
+  assert.equal(r.install.why, 'blocked');
+  assert.deepEqual(env.order.filter((x) => x === 'install'), []);
+  env.busy = false;
+  env.clock = at(2026, 12, 1, 2, 48);
+  const r2 = await s.tick();
+  assert.equal(r2.install.ran, true, 'retried once the other update finished');
+});
+
+test('switching the install schedule off does not touch the check schedule', async () => {
+  const { env, s } = setupTwo();
+  await s.tick();
+  env.cfg.scheduleInstallEnabled = false;
+  const r = await s.tick();
+  assert.equal(r.install.why, 'off');
+  assert.equal(env.state.installLastRun, undefined);
+  assert.ok(env.state.checkLastRun, 'the check keeps its place');
 });

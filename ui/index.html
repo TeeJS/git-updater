@@ -112,6 +112,7 @@
       94px              /* current */
       94px              /* available */
       170px             /* status */
+      64px              /* auto-update */
       100px;            /* actions */
     column-gap: 10px;
     align-items: center;
@@ -135,15 +136,19 @@
   .app-name { font: 500 14px var(--mono); }
   .status { display: inline-flex; align-items: center; gap: .4rem; font-size: .88rem; }
   .status .txt { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* The Auto-update column: one checkbox per app, header wraps onto two lines ("Auto-" / "update"). */
+  .auto-cell { display: flex; justify-content: center; align-items: center; }
+  .table-header > .auto-cell .sort-button { text-align: center; }
+  .table-header > .auto-cell .sort-button { line-height: 1.15; }
   /* Narrow card: hide the Type column (container query on the card, not the viewport). */
-  @container (max-width: 720px) {
+  @container (max-width: 800px) {
     .table-header,
-    .app-row { grid-template-columns: 24px minmax(0, 1fr) 88px 88px 160px 100px; column-gap: 8px; }
+    .app-row { grid-template-columns: 24px minmax(0, 1fr) 88px 88px 160px 64px 100px; column-gap: 8px; }
     /* .badge sets display later in the cascade; child selector out-specifies it */
     .table-header > .type-cell, .app-row > .type-cell { display: none; }
   }
-  /* Narrowest card (window near its 640px minimum): the name column is too thin for "Owner / App" on one line, so stack the two sort buttons. */
-  @container (max-width: 620px) {
+  /* Narrow card (the window near its 720px minimum): the name column is too thin for "Owner / App" on one line, so stack the two sort buttons. */
+  @container (max-width: 680px) {
     .table-header > .name-header { flex-direction: column; align-items: flex-start; gap: 0; }
     .name-header .name-sep { display: none; }
   }
@@ -234,6 +239,11 @@
           <option value="working">Working now</option>
         </select>
       </label>
+      <label class="filter">Auto-update
+        <select id="filterAuto" aria-label="Filter by auto-update">
+          <option value="all">All</option><option value="on">On</option><option value="off">Off</option>
+        </select>
+      </label>
     </div>
     <div class="filtered" id="filtered" hidden><span id="filteredText"></span><button type="button" class="linklike" id="filterClear">Clear</button></div>
     <div class="toolbar">
@@ -254,7 +264,8 @@
         <span class="type-cell" role="columnheader" data-sort="type"><button class="sort-button" type="button">Type<span class="sort-arrow" aria-hidden="true"></span></button></span>
         <span role="columnheader" data-sort="current"><button class="sort-button" type="button">Current<span class="sort-arrow" aria-hidden="true"></span></button></span>
         <span role="columnheader" data-sort="available"><button class="sort-button" type="button">Available<span class="sort-arrow" aria-hidden="true"></span></button></span>
-        <span role="columnheader" data-sort="status"><button class="sort-button" type="button">Status<span class="sort-arrow" aria-hidden="true"></span></button></span><span></span>
+        <span role="columnheader" data-sort="status"><button class="sort-button" type="button">Status<span class="sort-arrow" aria-hidden="true"></span></button></span>
+        <span class="auto-cell" role="columnheader" data-sort="auto" title="Apps ticked here are updated by the Install schedule"><button class="sort-button" type="button">Auto-update<span class="sort-arrow" aria-hidden="true"></span></button></span><span></span>
       </div>
       <div id="rows"></div>
     </div>
@@ -320,7 +331,7 @@
         <label class="scan-label"><input type="checkbox" id="startupSortEnabled"> Sort the list at startup by</label>
         <select id="startupSortColumn" aria-label="Column to sort by at startup">
           <option value="owner">Owner</option><option value="app">App</option><option value="type">Type</option>
-          <option value="current">Current</option><option value="available">Available</option><option value="status">Status</option>
+          <option value="current">Current</option><option value="available">Available</option><option value="status">Status</option><option value="auto">Auto-update</option>
         </select>
         <select id="startupSortDirection" aria-label="Sort direction at startup"><option value="asc">Ascending</option><option value="desc">Descending</option></select>
       </div>
@@ -366,8 +377,16 @@
         <label class="scan-label"><input type="checkbox" id="scheduleCheckEnabled"> Check for updates on a schedule</label>
         <input type="text" id="scheduleCheckCron" placeholder="0 9 * * *" aria-label="Check schedule" spellcheck="false" autocomplete="off" style="width:13rem">
       </div>
-      <p class="hint" id="schedulePreview" aria-live="polite"></p>
+      <p class="hint" id="scheduleCheckPreview" aria-live="polite"></p>
       <p class="hint">Off by default. It only checks and tells you with a notification; it never downloads or installs anything. A schedule has five fields in this computer's time: <code>minute hour day-of-month month weekday</code>. For example <code>0 9 * * *</code> is every day at 9:00, <code>0 8 * * MON-FRI</code> is weekdays at 8:00, and <code>47 2 * * 2#1</code> is the 1st Tuesday of every month at 2:47 AM (<code>#</code> means the nth weekday; <code>L</code> in the day-of-month field is the last day). It runs at most once an hour, and only while git-updater is running: turn on <em>Start at login</em> and <em>Keep running in the tray</em> below to keep it running.</p>
+      <div class="row" style="margin-top:.9rem">
+        <span style="color:var(--muted);font-size:.9rem;min-width:8rem">Install</span>
+        <label class="scan-label"><input type="checkbox" id="scheduleInstallEnabled"> Update my Auto-update apps on a schedule</label>
+        <input type="text" id="scheduleInstallCron" placeholder="47 2 * * 2#1" aria-label="Install schedule" spellcheck="false" autocomplete="off" style="width:13rem">
+      </div>
+      <p class="hint" id="scheduleInstallPreview" aria-live="polite"></p>
+      <p class="hint" id="scheduleInstallApps"></p>
+      <p class="hint">Off by default. At the scheduled time git-updater updates <strong>only the apps ticked in the Auto-update column</strong> of the list, and only those already installed: it never installs a new app. Portable apps go first, then installers. It runs unattended, so it never opens an installer window or a permission prompt: an installer that needs administrator permission is skipped and listed in the notification as needing you, and you update it from the window. A running app follows <em>Automatically close apps and re-open when complete</em> above: on, it is closed gracefully, updated and re-opened; off, it is skipped. Nothing is ever force-closed. Same rules for the schedule as above.</p>
       <div class="row" style="margin-top:.6rem">
         <span style="color:var(--muted);font-size:.9rem;min-width:8rem">Missed runs</span>
         <label class="scan-label"><input type="checkbox" id="scheduleCatchUp"> Run a missed schedule when the computer next starts or wakes</label>
@@ -575,6 +594,7 @@ function showScreen(name) {
 // them. This block is pure (no DOM, no globals) so the tests can run it on its own.
 const TYPE_FILTERS = ['all', 'portable', 'installer'];
 const STATUS_FILTERS = ['all', 'unchecked', 'uptodate', 'available', 'update', 'installable', 'present', 'absent', 'failed', 'working'];
+const AUTO_FILTERS = ['all', 'on', 'off'];
 const WORKING_PHASES = ['loading', 'checking', 'queued', 'downloading', 'verifying', 'installing', 'waiting'];
 // Case-insensitive, matches the owner, the app name, or both typed together as owner/app.
 function matchesSearch(r, text) {
@@ -601,21 +621,27 @@ function matchesStatus(s, choice) {
     default: return true;
   }
 }
+// The Auto-update column: "on" is the apps ticked for the Install schedule. A missing choice is All.
+function matchesAuto(r, choice) {
+  if (choice === 'on') return r.autoUpdate === true;
+  if (choice === 'off') return r.autoUpdate !== true;
+  return true;
+}
 function matchesFilters(r, s, f) {
-  return matchesSearch(r, f.text) && (f.type === 'all' || r.type === f.type) && matchesStatus(s, f.status);
+  return matchesSearch(r, f.text) && (f.type === 'all' || r.type === f.type) && matchesStatus(s, f.status) && matchesAuto(r, f.auto);
 }
 function filtersActive(f) {
-  return !!String(f.text || '').trim() || f.type !== 'all' || f.status !== 'all';
+  return !!String(f.text || '').trim() || f.type !== 'all' || f.status !== 'all' || (!!f.auto && f.auto !== 'all');
 }
 function cleanChoice(value, allowed) { return allowed.includes(value) ? value : 'all'; }
 // What to start from at launch: the saved choices only when "Remember my filters" is on.
 function savedFilters(cfg) {
-  if (!cfg.rememberFilters) return { type: 'all', status: 'all' };
-  return { type: cleanChoice(cfg.filterType, TYPE_FILTERS), status: cleanChoice(cfg.filterStatus, STATUS_FILTERS) };
+  if (!cfg.rememberFilters) return { type: 'all', status: 'all', auto: 'all' };
+  return { type: cleanChoice(cfg.filterType, TYPE_FILTERS), status: cleanChoice(cfg.filterStatus, STATUS_FILTERS), auto: cleanChoice(cfg.filterAuto, AUTO_FILTERS) };
 }
 // --- end of the pure find helpers ---
 
-const filter = { text: '', type: 'all', status: 'all' };
+const filter = { text: '', type: 'all', status: 'all', auto: 'all' };
 let heldVisible = null; // while a check or update runs: the rows on screen when it started
 let shownKeys = new Set(); // keys of the rows on screen right now (what the toolbar buttons act on)
 // Rows hold still during a run, even if their status stops matching, and the filter re-applies
@@ -632,7 +658,7 @@ function visibleRepos(sorted) {
 // Settings -> "Sort the list at startup by": the columns the header can sort on, and the
 // helper that makes a launch start from the chosen one. Without it the list opens in whatever
 // order the last header click left behind (config.sortColumn / sortDirection are saved).
-const SORT_COLUMNS = ['owner', 'app', 'type', 'current', 'available', 'status'];
+const SORT_COLUMNS = ['owner', 'app', 'type', 'current', 'available', 'status', 'auto'];
 function startupSortChoice(cfg) {
   const column = SORT_COLUMNS.includes(cfg.startupSortColumn) ? cfg.startupSortColumn
     : SORT_COLUMNS.includes(cfg.sortColumn) ? cfg.sortColumn : 'app';
@@ -656,7 +682,7 @@ function sortedRepos() {
   }
   const col = config.sortColumn;
   const direction = config.sortDirection === 'desc' ? -1 : 1;
-  if (['owner', 'app', 'type', 'current', 'available', 'status'].includes(col)) {
+  if (['owner', 'app', 'type', 'current', 'available', 'status', 'auto'].includes(col)) {
     repos.sort((a, b) => {
       const sa = st[keyOf(a)] || {}, sb = st[keyOf(b)] || {};
       let result;
@@ -664,6 +690,7 @@ function sortedRepos() {
       if (col === 'owner') result = a.owner.localeCompare(b.owner) || a.repo.localeCompare(b.repo);
       else if (col === 'app') result = a.repo.localeCompare(b.repo) || a.owner.localeCompare(b.owner);
       else if (col === 'type') result = a.type.localeCompare(b.type);
+      else if (col === 'auto') result = (b.autoUpdate ? 1 : 0) - (a.autoUpdate ? 1 : 0); // ascending: ticked apps first
       else if (col === 'current' || col === 'available') {
         const va = col === 'current' ? sa.from : sa.to, vb = col === 'current' ? sb.from : sb.to;
         if (!va && vb) return 1;
@@ -748,6 +775,20 @@ function renderRepos() {
     const stEl = el('span', 'status st ' + sv.cls); stEl.append(el('span', 'dot'), stTxt);
     row.appendChild(stEl);
 
+    // Auto-update: ticked apps are the ones the Install schedule updates.
+    const autoCell = el('span', 'auto-cell');
+    const ac = el('input'); ac.type = 'checkbox'; ac.checked = !!r.autoUpdate;
+    ac.title = 'Include this app in the Install schedule';
+    ac.setAttribute('aria-label', `Auto-update ${r.owner}/${r.repo}`);
+    ac.onchange = () => {
+      if (ac.checked) r.autoUpdate = true; else delete r.autoUpdate;
+      saveConfig();
+      renderInstallInfo();
+      if (filter.auto !== 'all' || config.sortColumn === 'auto') renderRepos();
+    };
+    autoCell.appendChild(ac);
+    row.appendChild(autoCell);
+
     // Actions
     const act = el('div', 'row-actions');
     const runningFail = s.ph === 'failed' && /is running/.test(s.reason || '');
@@ -792,6 +833,7 @@ function renderFindState(shown, total) {
   $('searchClear').hidden = !filter.text;
   $('filterType').classList.toggle('on', filter.type !== 'all');
   $('filterStatus').classList.toggle('on', filter.status !== 'all');
+  $('filterAuto').classList.toggle('on', filter.auto !== 'all');
   $('checkAll').textContent = active ? 'Check shown' : 'Check all';
   $('updateAll').textContent = active ? 'Update shown' : 'Update all';
 }
@@ -799,6 +841,7 @@ function syncFilterControls() {
   $('search').value = filter.text;
   $('filterType').value = filter.type;
   $('filterStatus').value = filter.status;
+  $('filterAuto').value = filter.auto;
 }
 // Any change to the search or a filter: re-render, and keep the choices when "remember" is on.
 function filtersChanged() {
@@ -807,11 +850,12 @@ function filtersChanged() {
   if (config.rememberFilters) {
     config.filterType = filter.type;
     config.filterStatus = filter.status;
+    config.filterAuto = filter.auto;
     saveConfig();
   }
 }
 function clearFilters() {
-  filter.text = ''; filter.type = 'all'; filter.status = 'all';
+  filter.text = ''; filter.type = 'all'; filter.status = 'all'; filter.auto = 'all';
   syncFilterControls();
   filtersChanged();
 }
@@ -896,14 +940,17 @@ async function load() {
   $('keepRunning').checked = !!config.keepRunning;
   $('scheduleCheckEnabled').checked = !!config.scheduleCheckEnabled;
   $('scheduleCheckCron').value = config.scheduleCheckCron || '';
+  $('scheduleInstallEnabled').checked = !!config.scheduleInstallEnabled;
+  $('scheduleInstallCron').value = config.scheduleInstallCron || '';
   $('scheduleCatchUp').checked = config.scheduleCatchUp !== false; // on unless switched off
   renderSchedulePreview();
+  renderInstallInfo();
   if (!booted) {
     applyStartupSort(config);
     // Same once-per-start rule: the saved filters (only with "Remember my filters" on) come back
     // before the first render; the search box always starts empty.
     const saved = savedFilters(config);
-    filter.text = ''; filter.type = saved.type; filter.status = saved.status;
+    filter.text = ''; filter.type = saved.type; filter.status = saved.status; filter.auto = saved.auto;
     syncFilterControls();
   }
   config.repos.forEach((r) => { st[keyOf(r)] = { ph: 'loading' }; }); // show rows instantly
@@ -1051,12 +1098,14 @@ $('addRepo').onclick = async () => {
   }
   $('addRepo').disabled = false;
 
+  const wasAutoUpdate = !!(editingKey && config.repos.find((r) => keyOf(r) === editingKey)?.autoUpdate);
   if (editingKey) { // replace the edited entry
     delete st[editingKey]; selected.delete(editingKey);
     config.repos = config.repos.filter((r) => keyOf(r) !== editingKey);
   }
   const entry = { owner: parsed.owner, repo: parsed.repo, type };
   if ($('preRel').checked) entry.prerelease = true;
+  if (wasAutoUpdate) entry.autoUpdate = true; // editing an app must not quietly drop its Auto-update tick
   config.repos.push(entry);
   const wasEditing = !!editingKey;
   cancelEdit();
@@ -1310,6 +1359,7 @@ $('search').addEventListener('keydown', (e) => {
 $('searchClear').onclick = () => { filter.text = ''; $('search').value = ''; filtersChanged(); $('search').focus(); };
 $('filterType').onchange = () => { filter.type = cleanChoice($('filterType').value, TYPE_FILTERS); filtersChanged(); };
 $('filterStatus').onchange = () => { filter.status = cleanChoice($('filterStatus').value, STATUS_FILTERS); filtersChanged(); };
+$('filterAuto').onchange = () => { filter.auto = cleanChoice($('filterAuto').value, AUTO_FILTERS); filtersChanged(); };
 $('filterClear').onclick = clearFilters;
 $('noMatchClear').onclick = clearFilters;
 // The "N updates available" label is a shortcut for the filter that shows exactly those apps.
@@ -1337,12 +1387,15 @@ async function saveBackgroundSettings() {
     msg(clean(e), 'bad');
   }
 }
-// Schedule (Check). The preview comes from the main process (the same parser that runs the schedule),
-// so what you see under the box is what will happen. A bad schedule is refused with the reason.
-let previewTimer = null;
-async function renderSchedulePreview() {
-  const p = $('schedulePreview');
-  const expr = $('scheduleCheckCron').value.trim();
+// Schedules (Check and Install). The preview comes from the main process (the same parser that runs the
+// schedule), so what you see under the box is what will happen. A bad schedule is refused with the reason.
+const SCHEDULE_KINDS = ['Check', 'Install'];
+const SCHEDULE_DEFAULTS = { Check: '0 9 * * *', Install: '47 2 * * 2#1' };
+const previewTimers = {};
+async function renderSchedulePreview(kind) {
+  if (!kind) { SCHEDULE_KINDS.forEach(renderSchedulePreview); return; }
+  const p = $(`schedule${kind}Preview`);
+  const expr = $(`schedule${kind}Cron`).value.trim();
   if (!expr) { p.textContent = ''; p.style.color = ''; return; }
   try {
     const v = await window.api.schedulePreview(expr);
@@ -1355,27 +1408,43 @@ async function renderSchedulePreview() {
     }
   } catch { p.textContent = ''; }
 }
+// How many apps the Install schedule would touch right now, so an empty tick list is never a surprise.
+function renderInstallInfo() {
+  const n = config.repos.filter((r) => r.autoUpdate === true).length;
+  $('scheduleInstallApps').textContent = n
+    ? `${n} app${n === 1 ? ' is' : 's are'} ticked in the Auto-update column.`
+    : 'No apps are ticked in the Auto-update column yet, so there is nothing for this schedule to update.';
+}
 async function saveSchedule() {
-  const enabled = $('scheduleCheckEnabled').checked;
-  let expr = $('scheduleCheckCron').value.trim();
-  if (enabled && !expr) { expr = '0 9 * * *'; $('scheduleCheckCron').value = expr; renderSchedulePreview(); } // a sensible start
-  const next = { ...config, scheduleCheckEnabled: enabled, scheduleCheckCron: expr, scheduleCatchUp: $('scheduleCatchUp').checked };
+  const next = { ...config, scheduleCatchUp: $('scheduleCatchUp').checked };
+  for (const kind of SCHEDULE_KINDS) {
+    const enabled = $(`schedule${kind}Enabled`).checked;
+    let expr = $(`schedule${kind}Cron`).value.trim();
+    if (enabled && !expr) { expr = SCHEDULE_DEFAULTS[kind]; $(`schedule${kind}Cron`).value = expr; renderSchedulePreview(kind); } // a sensible start
+    next[`schedule${kind}Enabled`] = enabled;
+    next[`schedule${kind}Cron`] = expr;
+  }
   try {
     await window.api.saveConfig(next);
     config = next;
-    msg(enabled ? 'Saved. The schedule is on.' : 'Saved.', 'ok');
+    msg('Saved.', 'ok');
   } catch (e) {
-    $('scheduleCheckEnabled').checked = !!config.scheduleCheckEnabled;
-    $('scheduleCheckCron').value = config.scheduleCheckCron || '';
+    for (const kind of SCHEDULE_KINDS) {
+      $(`schedule${kind}Enabled`).checked = !!config[`schedule${kind}Enabled`];
+      $(`schedule${kind}Cron`).value = config[`schedule${kind}Cron`] || '';
+    }
     $('scheduleCatchUp').checked = config.scheduleCatchUp !== false;
     renderSchedulePreview();
     msg(clean(e), 'bad');
   }
 }
-$('scheduleCheckCron').addEventListener('input', () => { clearTimeout(previewTimer); previewTimer = setTimeout(renderSchedulePreview, 250); });
-$('scheduleCheckCron').addEventListener('change', saveSchedule); // on leaving the box or pressing Enter
-$('scheduleCheckCron').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); $('scheduleCheckCron').blur(); } });
-$('scheduleCheckEnabled').onchange = saveSchedule;
+for (const kind of SCHEDULE_KINDS) {
+  const box = $(`schedule${kind}Cron`);
+  box.addEventListener('input', () => { clearTimeout(previewTimers[kind]); previewTimers[kind] = setTimeout(() => renderSchedulePreview(kind), 250); });
+  box.addEventListener('change', saveSchedule); // on leaving the box or pressing Enter
+  box.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); box.blur(); } });
+  $(`schedule${kind}Enabled`).onchange = saveSchedule;
+}
 $('scheduleCatchUp').onchange = saveSchedule;
 $('startAtLogin').onchange = saveBackgroundSettings;
 $('keepRunning').onchange = saveBackgroundSettings;
@@ -1386,7 +1455,9 @@ async function applyBackgroundResults() {
     if (last && !busy && mergeBackgroundResults(st, last.results)) renderRepos();
   } catch {}
 }
-window.api.onScheduleDone(() => applyBackgroundResults());
+// A scheduled install changed versions and dates, so the list is read again; a scheduled check only
+// fills in rows that have no status yet.
+window.api.onScheduleDone((d) => { if (d && d.kind === 'install') { if (!busy) load(); } else applyBackgroundResults(); });
 // The tray's "Check now": same as Check all. It may arrive before the first load has finished.
 function trayCheck(tries = 0) {
   if (!booted) { if (tries < 100) setTimeout(() => trayCheck(tries + 1), 300); return; }
@@ -1400,6 +1471,7 @@ $('rememberFilters').onchange = () => {
   // On: save what is set now. Off: forget the saved choices (the ones on screen stay until you change them).
   config.filterType = config.rememberFilters ? filter.type : 'all';
   config.filterStatus = config.rememberFilters ? filter.status : 'all';
+  config.filterAuto = config.rememberFilters ? filter.auto : 'all';
   saveConfig().then(() => msg('Saved.', 'ok'));
 };
 

@@ -29,7 +29,7 @@ contextBridge.exposeInMainWorld('api', {
   onTrayCheck: (cb) => ipcRenderer.on('tray:check', () => cb()),
   schedulePreview: (expr) => ipcRenderer.invoke('schedule:preview', expr),
   scheduleLast: () => ipcRenderer.invoke('schedule:last'),
-  onScheduleDone: (cb) => ipcRenderer.on('schedule:done', () => cb()),
+  onScheduleDone: (cb) => ipcRenderer.on('schedule:done', (_e, data) => cb(data)),
   selfUpdateCheck: () => ipcRenderer.invoke('selfupdate:check'),
   selfUpdateApply: () => ipcRenderer.invoke('selfupdate:apply'),
   selfUpdateLastApply: () => ipcRenderer.invoke('selfupdate:lastApply'),
