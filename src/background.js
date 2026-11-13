@@ -52,6 +52,16 @@ function forwardArgs(argv) {
   return Array.isArray(argv) && argv.includes(AUTO_START_ARG) ? [AUTO_START_ARG] : [];
 }
 
+// The Windows AppUserModelID. The installed app uses the build's appId (package.json), so its
+// notifications carry git-updater's name and icon. A development run (`electron .`) must NOT use it:
+// Windows ties an AppUserModelID to a Start Menu shortcut, and a dev run that shows a notification
+// leaves the shortcut for electron.exe ("Electron") carrying the ID, after which the installed
+// app's taskbar button is named "Electron" and wears the Electron atom icon.
+const APP_USER_MODEL_ID = 'com.teejs.gitupdater';
+function appUserModelId(isPackaged) {
+  return isPackaged ? APP_USER_MODEL_ID : `${APP_USER_MODEL_ID}.dev`;
+}
+
 // The path the login item must point at: the stable launcher, never a versioned app-x.y.z folder
 // (a self-update swaps versions, and that path would go stale). An AppImage is its own launcher.
 function launcherPath(root, platform = process.platform, env = process.env) {
@@ -196,6 +206,8 @@ module.exports = {
   shouldHideOnClose,
   keepAliveWithoutWindows,
   forwardArgs,
+  appUserModelId,
+  APP_USER_MODEL_ID,
   launcherPath,
   trayMenuTemplate,
   loginItemSettings,

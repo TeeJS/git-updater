@@ -805,7 +805,9 @@ ipcMain.handle('selfupdate:apply', async (e) => {
     if (app.isPackaged) selfupdate.cleanupLeftovers(ROOT, app.getVersion()).catch(() => {});
     bg.syncTray();
     reconcileLogin();
-    if (process.platform === 'win32') app.setAppUserModelId('com.teejs.gitupdater'); // the same id as the build's appId, so notifications carry the app's name
+    // The installed app uses the build's appId, so notifications carry its name; a development run gets its own
+    // id (see background.appUserModelId) so it can never rename or re-icon the installed app's taskbar button.
+    if (process.platform === 'win32') app.setAppUserModelId(background.appUserModelId(app.isPackaged));
     // The scheduled check: a tick every half minute, one shortly after start (a missed run is caught
     // up then), and one when the computer wakes (timers pause while it sleeps).
     setInterval(() => { scheduler.tick(); }, schedule.TICK_MS).unref();
