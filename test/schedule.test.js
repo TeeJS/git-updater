@@ -48,8 +48,8 @@ test('it runs once per scheduled time, not on every tick', async () => {
   assert.equal(env.runs.length, 2);
 });
 
-test('a missed run is caught up once when noticed (the app was off), and says so', async () => {
-  const { env, s } = setup();
+test('with catch-up switched on, a missed run is caught up once when noticed (the app was off), and says so', async () => {
+  const { env, s } = setup({ scheduleCatchUp: true });
   await s.tick(); // baseline Nov 12 10:00
   env.clock = at(2026, 11, 16, 14, 0); // off for days
   const r = await s.tick();
@@ -61,8 +61,8 @@ test('a missed run is caught up once when noticed (the app was off), and says so
   assert.equal(env.runs.length, 1);
 });
 
-test('with catch-up off, a run missed long ago is dropped, not run', async () => {
-  const { env, s } = setup({ scheduleCatchUp: false });
+test('catch-up is off unless switched on: a run missed long ago is dropped, not run', async () => {
+  const { env, s } = setup(); // no scheduleCatchUp in the config
   await s.tick();
   env.clock = at(2026, 11, 16, 14, 0);
   const r = await s.tick();
@@ -166,7 +166,7 @@ function setupTwo(cfg) {
 }
 
 test('two jobs keep their own last-run times and run independently', async () => {
-  const { env, s } = setupTwo();
+  const { env, s } = setupTwo({ scheduleCatchUp: true });
   const r0 = await s.tick();
   assert.equal(r0.check.why, 'baseline');
   assert.equal(r0.install.why, 'baseline');

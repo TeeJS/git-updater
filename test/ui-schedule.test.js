@@ -49,19 +49,21 @@ test('the Settings schedule controls are wired to the main process', () => {
   assert.match(html, /box\.addEventListener\('change', saveSchedule\)/, 'both cron boxes save on leaving');
   assert.match(html, /\$\('scheduleCatchUp'\)\.onchange = saveSchedule/);
   assert.match(html, /window\.api\.onScheduleDone\(/, 'a finished background check updates the window');
-  assert.match(html, /scheduleCatchUp !== false/, 'missed-run catch-up is on unless switched off');
-  // A schedule that is switched on with nothing typed gets a sensible one.
-  assert.match(html, /SCHEDULE_DEFAULTS = \{ Check: '0 9 \* \* \*', Install: '47 2 \* \* 2#1' \}/);
+  assert.match(html, /scheduleCatchUp === true/, 'missed-run catch-up is off unless switched on');
+  assert.doesNotMatch(html, /scheduleCatchUp !== false/, 'and never defaults to on');
+  // A schedule that is switched on with nothing typed gets a sensible one (not one of the examples in the help text).
+  assert.match(html, /SCHEDULE_DEFAULTS = \{ Check: '0 12 \* \* \*', Install: '0 13 \* \* MON' \}/);
   assert.match(html, /expr = SCHEDULE_DEFAULTS\[kind\]/);
+  assert.match(html, /id="scheduleCheckCron" placeholder="0 12 \* \* \*"/, 'the grey placeholder shows the default');
+  assert.match(html, /id="scheduleInstallCron" placeholder="0 13 \* \* MON"/);
 });
 
 test('the Install schedule is off by default and spells out its limits', () => {
   assert.doesNotMatch(html, /id="scheduleInstallEnabled"[^>]*checked/);
   const group = html.slice(html.indexOf('id="sg-schedule"'), html.indexOf('id="sg-background"'));
-  assert.match(group, /only the apps ticked in the Auto-update column/);
-  assert.match(group, /only those already installed: it never installs a new app/);
-  assert.match(group, /never opens an installer window or a permission prompt/);
-  assert.match(group, /Nothing is ever force-closed/);
+  assert.match(group, /only ticked, already-installed apps, unattended/);
+  assert.match(group, /installers that need permission are skipped and reported/);
+  assert.match(group, /nothing is force-closed/);
   assert.match(group, /Automatically close apps and re-open when complete/, 'a running app follows the existing setting');
   assert.match(group, /id="scheduleInstallApps"/, 'it says how many apps are ticked, so an empty list is never a surprise');
 });
@@ -72,9 +74,16 @@ test('a finished scheduled install re-reads the list; a finished check only fill
 
 test('the Check schedule is off by default and says what it does and does not do', () => {
   assert.doesNotMatch(html, /id="scheduleCheckEnabled"[^>]*checked/);
+  assert.doesNotMatch(html, /id="scheduleCatchUp"[^>]*checked/, 'missed runs are off by default');
   const group = html.slice(html.indexOf('id="sg-schedule"'), html.indexOf('id="sg-background"'));
-  assert.match(group, /never downloads or installs anything/);
-  assert.match(group, /47 2 \* \* 2#1/, 'the 1st Tuesday example is on the screen');
-  assert.match(group, /at most once an hour/);
-  assert.match(group, /only while git-updater is running/);
+  assert.match(group, /Only checks and notifies/);
+  assert.match(group, /minute hour day-of-month month weekday/, 'the format is spelled out');
+  assert.match(group, /Runs only while git-updater is running/);
+});
+
+test('every Settings explanation is one or two short sentences', () => {
+  const screen = html.slice(html.indexOf('id="settingsScreen"'), html.indexOf('id="settingsScreen"') + 12000);
+  const hints = [...screen.matchAll(/<p class="hint"[^>]*>(.*?)<\/p>/g)].map((m) => m[1].replace(/<[^>]+>/g, ''));
+  assert.ok(hints.length >= 10, 'the hints were found');
+  for (const h of hints) assert.ok(h.length <= 220, `too long (${h.length} chars): ${h}`);
 });

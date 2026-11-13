@@ -61,7 +61,7 @@ function createScheduler(deps) {
       return { ran: false, why: 'baseline' };
     }
 
-    const due = cron.isDue(parsed, new Date(st[lastKey]), t, { catchUp: cfg.scheduleCatchUp !== false });
+    const due = cron.isDue(parsed, new Date(st[lastKey]), t, { catchUp: cfg.scheduleCatchUp === true });
     if (!due.due) {
       if (due.dropped) {
         log(`scheduled ${job.name}: the ${due.at.toISOString()} run was missed and catching up is off`);
