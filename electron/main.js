@@ -632,6 +632,8 @@ ipcMain.handle('selfupdate:openRelease', () =>
   shell.openExternal(`https://github.com/${selfupdate.REPO.owner}/${selfupdate.REPO.repo}/releases`)
 );
 ipcMain.handle('app:version', () => app.getVersion());
+// Settings -> GitHub -> "Create token": opens GitHub's new-token page with the form filled in.
+ipcMain.handle('token:openCreate', () => shell.openExternal(github.TOKEN_CREATE_URL));
 
 // Token status for Settings: whether one is saved, plus the live quota. Never the token itself.
 // `unreadable`: the file exists but could not be decrypted (OS credential key changed), so

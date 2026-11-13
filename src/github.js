@@ -306,4 +306,14 @@ function verifyDigest(filePath, digest) {
   return { verified: true };
 }
 
-module.exports = { getLatestRelease, listAssets, downloadAsset, verifyDigest, fetchChecksumFromRelease, setFetch, setToken, rateLimit };
+// The GitHub page where Settings sends you to create the token, with the form pre-filled (GitHub documents
+// these URL parameters for fine-grained tokens): a name, a description and no expiry. There is deliberately no
+// permission parameter: a fine-grained token with none can still read public repositories, which is all
+// git-updater needs. The Electron main process opens this; the window never passes a URL across the bridge.
+const TOKEN_CREATE_URL = 'https://github.com/settings/personal-access-tokens/new?' + new URLSearchParams({
+  name: 'git-updater',
+  description: 'Read public release info for git-updater',
+  expires_in: 'none',
+}).toString();
+
+module.exports = { getLatestRelease, listAssets, downloadAsset, verifyDigest, fetchChecksumFromRelease, setFetch, setToken, rateLimit, TOKEN_CREATE_URL };
