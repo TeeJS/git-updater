@@ -459,8 +459,9 @@
         <input type="password" id="ghToken" placeholder="github_pat_… or ghp_…" autocomplete="off" spellcheck="false" style="flex:1;min-width:12rem">
         <button id="saveToken">Save</button>
         <button id="clearToken" style="display:none">Remove</button>
+        <button type="button" id="createToken" class="ghost" title="Opens GitHub in your browser with the form filled in">Create token ↗</button>
       </div>
-      <p class="hint" id="tokenHint">Optional: raises GitHub's limit from 60 to 5,000 requests an hour. A fine-grained token with <b>Public repositories (read-only)</b> is enough. Stored encrypted.</p>
+      <p class="hint" id="tokenHint">Optional: raises GitHub's limit from 60 to 5,000 requests an hour. <b>Create token</b> opens GitHub with the form filled in: leave every permission off, then paste the token here. Stored encrypted.</p>
     </section>
 
     <section class="panel settings-group" aria-labelledby="sg-advanced">
@@ -1052,6 +1053,7 @@ $('saveToken').onclick = async () => {
   finally { $('saveToken').disabled = false; }
 };
 $('ghToken').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('saveToken').click(); });
+$('createToken').onclick = () => window.api.tokenOpenCreate().catch((e) => msg(clean(e), 'bad'));
 $('clearToken').onclick = async () => {
   if (!confirm('Remove the saved GitHub token?')) return;
   try { await window.api.clearToken(); msg('Token removed.', 'ok'); await refreshToken(); } catch (e) { msg(clean(e), 'bad'); }

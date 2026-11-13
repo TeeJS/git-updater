@@ -30,7 +30,7 @@ const SETTINGS_IDS = [
   'repeatCheckHours', 'repeatCheckDays', 'repeatCheckWeeks', 'repeatCheckMonths', 'repeatCheckNote',
   'scheduleInstallEnabled', 'scheduleInstallCron', 'scheduleInstallPreview', 'scheduleInstallApps',
   'repeatInstallHours', 'repeatInstallDays', 'repeatInstallWeeks', 'repeatInstallMonths', 'repeatInstallNote',
-  'ghToken', 'saveToken', 'clearToken', 'tokenHint',
+  'ghToken', 'saveToken', 'clearToken', 'createToken', 'tokenHint',
   'editJson', 'openLog', 'appVersion',
 ];
 
