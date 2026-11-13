@@ -16,9 +16,10 @@ assert.ok(begin > 0 && end > begin, 'pure find helpers found');
 const source = html.slice(begin, end);
 const ctx = {};
 vm.runInNewContext(source, ctx);
-const lists = vm.runInNewContext(`${source}; [TYPE_FILTERS, STATUS_FILTERS]`, {});
+const lists = vm.runInNewContext(`${source}; [TYPE_FILTERS, STATUS_FILTERS, AUTO_FILTERS]`, {});
 const TYPE_FILTERS = Array.from(lists[0]);
 const STATUS_FILTERS = Array.from(lists[1]);
+const AUTO_FILTERS = Array.from(lists[2]);
 
 const repo = (owner, name, type = 'portable') => ({ owner, repo: name, type });
 const tee = repo('TeeJS', 'bedrock-panel', 'installer');
@@ -84,10 +85,10 @@ test('filtersActive: only a real choice counts, not blank search text', () => {
 });
 
 test('remember filters: off starts from All; on restores the saved choices; junk falls back to All', () => {
-  assert.deepEqual({ ...ctx.savedFilters({ filterType: 'installer', filterStatus: 'failed' }) }, { type: 'all', status: 'all' });
-  assert.deepEqual({ ...ctx.savedFilters({ rememberFilters: true, filterType: 'installer', filterStatus: 'failed' }) }, { type: 'installer', status: 'failed' });
-  assert.deepEqual({ ...ctx.savedFilters({ rememberFilters: true, filterType: 'bogus', filterStatus: 'nope' }) }, { type: 'all', status: 'all' });
-  assert.deepEqual({ ...ctx.savedFilters({ rememberFilters: true }) }, { type: 'all', status: 'all' });
+  assert.deepEqual({ ...ctx.savedFilters({ filterType: 'installer', filterStatus: 'failed', filterAuto: 'on' }) }, { type: 'all', status: 'all', auto: 'all' });
+  assert.deepEqual({ ...ctx.savedFilters({ rememberFilters: true, filterType: 'installer', filterStatus: 'failed', filterAuto: 'on' }) }, { type: 'installer', status: 'failed', auto: 'on' });
+  assert.deepEqual({ ...ctx.savedFilters({ rememberFilters: true, filterType: 'bogus', filterStatus: 'nope', filterAuto: 'maybe' }) }, { type: 'all', status: 'all', auto: 'all' });
+  assert.deepEqual({ ...ctx.savedFilters({ rememberFilters: true }) }, { type: 'all', status: 'all', auto: 'all' });
 });
 
 test('the dropdowns offer exactly the choices the rules know, All first', () => {
@@ -98,6 +99,8 @@ test('the dropdowns offer exactly the choices the rules know, All first', () => 
   };
   assert.deepEqual(options('filterType'), TYPE_FILTERS);
   assert.deepEqual(options('filterStatus'), STATUS_FILTERS);
+  assert.deepEqual(options('filterAuto'), AUTO_FILTERS);
+  assert.equal(AUTO_FILTERS[0], 'all');
   assert.equal(TYPE_FILTERS[0], 'all');
   assert.equal(STATUS_FILTERS[0], 'all');
 });
@@ -119,4 +122,32 @@ test('the toolbar buttons act on the rows on screen while filtering', () => {
   assert.match(html, /\$\('updateAll'\)\.onclick = \(\) => runBatch\(targetKeys\(\)/);
   assert.match(html, /\$\('updateSel'\)\.onclick = \(\) => runBatch\(selectedTargets\(\)\)/);
   assert.match(html, /const shown = visibleRepos\(sortedRepos\(\)\)/, 'the list is rendered from the filtered rows');
+});
+
+// --- the Auto-update filter ------------------------------------------------------
+
+test('auto-update filter: on is the ticked apps, off is everything else, a missing choice is All', () => {
+  const ticked = { owner: 'a', repo: 'x', type: 'portable', autoUpdate: true };
+  const plain = { owner: 'a', repo: 'y', type: 'portable' };
+  const off = { owner: 'a', repo: 'z', type: 'portable', autoUpdate: false };
+  assert.equal(ctx.matchesAuto(ticked, 'on'), true);
+  assert.equal(ctx.matchesAuto(plain, 'on'), false);
+  assert.equal(ctx.matchesAuto(off, 'on'), false);
+  assert.equal(ctx.matchesAuto(ticked, 'off'), false);
+  assert.equal(ctx.matchesAuto(plain, 'off'), true);
+  assert.equal(ctx.matchesAuto(off, 'off'), true);
+  assert.equal(ctx.matchesAuto(plain, 'all'), true);
+  assert.equal(ctx.matchesAuto(ticked, undefined), true, 'older callers that pass no choice still work');
+});
+
+test('auto-update joins the other filters: a row must match all of them', () => {
+  const s = { ph: 'available', present: true };
+  const ticked = { owner: 'a', repo: 'x', type: 'installer', autoUpdate: true };
+  const f = (auto) => ({ text: '', type: 'installer', status: 'update', auto });
+  assert.equal(ctx.matchesFilters(ticked, s, f('on')), true);
+  assert.equal(ctx.matchesFilters(ticked, s, f('off')), false);
+  assert.equal(ctx.matchesFilters(ticked, s, { text: '', type: 'portable', status: 'all', auto: 'on' }), false, 'wrong type still excludes it');
+  assert.equal(ctx.filtersActive({ text: '', type: 'all', status: 'all', auto: 'on' }), true);
+  assert.equal(ctx.filtersActive({ text: '', type: 'all', status: 'all', auto: 'all' }), false);
+  assert.equal(ctx.filtersActive({ text: '', type: 'all', status: 'all' }), false, 'no auto choice at all is not a filter');
 });

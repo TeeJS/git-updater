@@ -121,6 +121,34 @@ test('runner: each download is held to the configured size limit (default 500 Mi
   }
 });
 
+// An unattended (scheduled) run never opens an installer window or an authorization prompt: nobody
+// is there to answer it. An installer that needs one is reported as "needs you", not run.
+test('runner: an unattended run reports an installer that needs permission as "needs you" and opens nothing', async () => {
+  const install = require('../src/install');
+  const real = install.installInstaller;
+  const dir = tmp();
+  try {
+    install.installInstaller = () => { throw Object.assign(new Error('requires elevation'), { elevation: true }); };
+    const cfg = { portableRoot: dir, repos: [{ owner: 'acme', repo: 'widget', type: 'installer', asset: 'payload.zip', install: { kind: 'nsis' } }] };
+    const opened = [];
+    await withStubs({ running: [false, false] }, async () => {
+      const { results } = await runner.run(cfg, { statePath: path.join(dir, 'state.json'), unattended: true, openFile: (f) => opened.push(f) });
+      assert.equal(results[0].status, 'failed');
+      assert.match(results[0].reason, /^needs you: widget's installer needs administrator permission/);
+    });
+    assert.deepEqual(opened, [], 'no installer window was opened');
+    // The same failure in an interactive run still falls back to the installer's own window (unchanged).
+    await withStubs({ running: [false, false] }, async () => {
+      const { results } = await runner.run(cfg, { statePath: path.join(dir, 'state2.json'), openFile: (f) => opened.push(f) });
+      assert.match(results[0].reason, /installer window opened/);
+    });
+    assert.equal(opened.length, 1);
+  } finally {
+    install.installInstaller = real;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('runner: an app that stays closed throughout is updated normally', async () => {
   const dir = tmp();
   try {

@@ -25,7 +25,8 @@ const SETTINGS_IDS = [
   'startupSortEnabled', 'startupSortColumn', 'startupSortDirection', 'rememberFilters',
   'checkOnOpen', 'autoCloseReopen', 'downloadLimitEnabled', 'downloadLimitMiB', 'saveDownloadLimit', 'selfPreRel',
   'startAtLogin', 'keepRunning',
-  'scheduleCheckEnabled', 'scheduleCheckCron', 'schedulePreview', 'scheduleCatchUp',
+  'scheduleCheckEnabled', 'scheduleCheckCron', 'scheduleCheckPreview', 'scheduleCatchUp',
+  'scheduleInstallEnabled', 'scheduleInstallCron', 'scheduleInstallPreview', 'scheduleInstallApps',
   'ghToken', 'saveToken', 'clearToken', 'tokenHint',
   'editJson', 'openLog', 'appVersion',
 ];

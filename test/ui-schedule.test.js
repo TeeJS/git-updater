@@ -45,13 +45,29 @@ test('background results fill in rows that have no status yet, and only those', 
 
 test('the Settings schedule controls are wired to the main process', () => {
   assert.match(html, /window\.api\.schedulePreview\(expr\)/, 'the preview comes from the same parser that runs the schedule');
-  assert.match(html, /\$\('scheduleCheckEnabled'\)\.onchange = saveSchedule/);
+  assert.match(html, /\$\(`schedule\${kind}Enabled`\)\.onchange = saveSchedule/, 'both switches save');
+  assert.match(html, /box\.addEventListener\('change', saveSchedule\)/, 'both cron boxes save on leaving');
   assert.match(html, /\$\('scheduleCatchUp'\)\.onchange = saveSchedule/);
-  assert.match(html, /\$\('scheduleCheckCron'\)\.addEventListener\('change', saveSchedule\)/);
   assert.match(html, /window\.api\.onScheduleDone\(/, 'a finished background check updates the window');
   assert.match(html, /scheduleCatchUp !== false/, 'missed-run catch-up is on unless switched off');
   // A schedule that is switched on with nothing typed gets a sensible one.
-  assert.match(html, /expr = '0 9 \* \* \*'/);
+  assert.match(html, /SCHEDULE_DEFAULTS = \{ Check: '0 9 \* \* \*', Install: '47 2 \* \* 2#1' \}/);
+  assert.match(html, /expr = SCHEDULE_DEFAULTS\[kind\]/);
+});
+
+test('the Install schedule is off by default and spells out its limits', () => {
+  assert.doesNotMatch(html, /id="scheduleInstallEnabled"[^>]*checked/);
+  const group = html.slice(html.indexOf('id="sg-schedule"'), html.indexOf('id="sg-background"'));
+  assert.match(group, /only the apps ticked in the Auto-update column/);
+  assert.match(group, /only those already installed: it never installs a new app/);
+  assert.match(group, /never opens an installer window or a permission prompt/);
+  assert.match(group, /Nothing is ever force-closed/);
+  assert.match(group, /Automatically close apps and re-open when complete/, 'a running app follows the existing setting');
+  assert.match(group, /id="scheduleInstallApps"/, 'it says how many apps are ticked, so an empty list is never a surprise');
+});
+
+test('a finished scheduled install re-reads the list; a finished check only fills in blank rows', () => {
+  assert.match(html, /d\.kind === 'install'\) \{ if \(!busy\) load\(\); \} else applyBackgroundResults\(\)/);
 });
 
 test('the Check schedule is off by default and says what it does and does not do', () => {
