@@ -465,6 +465,16 @@ overwritten). It runs while git-updater is running, so to rely on it turn on **S
 **Keep running in the tray**. `config:save` refuses an invalid schedule when it is switched on or
 edited, and only then, so a hand-edited bad value can never block saving every other setting.
 
+Above each cron line, **Repeat every:** has Hours / Days / Weeks / Months dropdowns that write the line
+(`buildCron` in the `// --- cron builder` block of `ui/index.html`, tested against `src/cron.js` in
+`test/ui-repeat.test.js`). One unit is active at a time, the minute, hour, weekday and day of the month
+already in the line are kept, and only numbers cron can repeat evenly are offered: hours 1, 2, 3, 4, 6, 8,
+12 (`0 */6 * * *`); days 1-6 (`0 12 */3 * *`: cron counts days within a month, so it restarts on the 1st,
+and the screen says so); weeks 1 (`0 13 * * MON`) and 2 (`MON#1,MON#3`, the 1st and 3rd, said on the
+screen); months 1, 2, 3, 4, 6, 12. There is no minutes dropdown because a schedule never runs more
+often than hourly. `describeCron` is the reverse, so typing a line moves the dropdowns and a saved line
+shows in them when it has one of these shapes (otherwise they read 0).
+
 ### Auto-update column and the Install schedule
 
 Each app row has an **Auto-update** checkbox (`repo.autoUpdate: true` in `config.json`; unticking

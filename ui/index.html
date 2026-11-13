@@ -181,6 +181,14 @@
   .menu button.danger { color: var(--red); }
   .menu .sep { height: 1px; background: var(--border); margin: .3rem .2rem; }
   .hint { font-size: .84rem; color: var(--faint); margin: .6rem 0 0; }
+  .hint:empty { display: none; }
+  /* "Repeat every:" above each cron line: label over each dropdown, one unit active at a time. */
+  .repeat { display: flex; flex-wrap: wrap; align-items: flex-end; gap: .5rem .9rem; margin: .7rem 0 0; }
+  .repeat-title { color: var(--muted); font-size: .9rem; min-width: 8rem; padding-bottom: .5rem; }
+  .repeat label { display: flex; flex-direction: column; gap: .25rem; color: var(--muted); font-size: .8rem; }
+  .repeat select { font: 400 13.5px var(--sans); padding: .42rem .5rem; border-radius: 8px; color: var(--text); background: #0d1117; border: 1px solid var(--border); min-width: 4.4rem; }
+  .repeat select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(227,161,60,.18); }
+  .repeat select.on { border-color: var(--accent); }
   .hint code { font-family: var(--mono); color: var(--muted); }
   #msg { min-height: 1.2rem; margin: 0 0 .8rem; font-weight: 600; font-size: .9rem; }
   #msg.ok { color: var(--green); } #msg.bad { color: var(--red); } #msg.info { color: var(--muted); }
@@ -389,6 +397,17 @@
       <div class="row">
         <span style="color:var(--muted);font-size:.9rem;min-width:8rem">Check</span>
         <label class="scan-label"><input type="checkbox" id="scheduleCheckEnabled"> Check for updates on a schedule</label>
+      </div>
+      <div class="repeat" role="group" aria-label="Check: repeat every">
+        <span class="repeat-title">Repeat every:</span>
+        <label>Hours<select id="repeatCheckHours"></select></label>
+        <label>Days<select id="repeatCheckDays"></select></label>
+        <label>Weeks<select id="repeatCheckWeeks"></select></label>
+        <label>Months<select id="repeatCheckMonths"></select></label>
+      </div>
+      <p class="hint" id="repeatCheckNote"></p>
+      <div class="row" style="margin-top:.6rem">
+        <span style="color:var(--muted);font-size:.9rem;min-width:8rem">Cron line</span>
         <input type="text" id="scheduleCheckCron" placeholder="0 12 * * *" aria-label="Check schedule" spellcheck="false" autocomplete="off" style="width:13rem">
       </div>
       <p class="hint" id="scheduleCheckPreview" aria-live="polite"></p>
@@ -396,6 +415,17 @@
       <div class="row" style="margin-top:.9rem">
         <span style="color:var(--muted);font-size:.9rem;min-width:8rem">Install</span>
         <label class="scan-label"><input type="checkbox" id="scheduleInstallEnabled"> Update my Auto-update apps on a schedule</label>
+      </div>
+      <div class="repeat" role="group" aria-label="Install: repeat every">
+        <span class="repeat-title">Repeat every:</span>
+        <label>Hours<select id="repeatInstallHours"></select></label>
+        <label>Days<select id="repeatInstallDays"></select></label>
+        <label>Weeks<select id="repeatInstallWeeks"></select></label>
+        <label>Months<select id="repeatInstallMonths"></select></label>
+      </div>
+      <p class="hint" id="repeatInstallNote"></p>
+      <div class="row" style="margin-top:.6rem">
+        <span style="color:var(--muted);font-size:.9rem;min-width:8rem">Cron line</span>
         <input type="text" id="scheduleInstallCron" placeholder="0 13 * * MON" aria-label="Install schedule" spellcheck="false" autocomplete="off" style="width:13rem">
       </div>
       <p class="hint" id="scheduleInstallPreview" aria-live="polite"></p>
@@ -959,6 +989,7 @@ async function load() {
   $('scheduleInstallEnabled').checked = !!config.scheduleInstallEnabled;
   $('scheduleInstallCron').value = config.scheduleInstallCron || '';
   $('scheduleCatchUp').checked = config.scheduleCatchUp === true; // off unless switched on
+  SCHEDULE_KINDS.forEach(syncRepeat);
   renderSchedulePreview();
   renderInstallInfo();
   if (!booted) {
@@ -1412,6 +1443,91 @@ async function saveBackgroundSettings() {
 const SCHEDULE_KINDS = ['Check', 'Install'];
 const SCHEDULE_DEFAULTS = { Check: '0 12 * * *', Install: '0 13 * * MON' }; // daily at noon; Mondays at 1 PM
 const previewTimers = {};
+
+// --- cron builder: the "Repeat every" dropdowns above each cron line ---
+// Pick a unit and a number and the cron line is written for you. One unit is active at a time (picking one
+// puts the others back to 0), and only numbers cron can repeat evenly are offered. Schedules are never faster
+// than hourly, so there is no minutes dropdown. describeCron is the reverse: it shows a cron line in the
+// dropdowns when it has one of these shapes, and zeros when it does not. The minute, hour, weekday and
+// day-of-month already in the line are kept, so changing the unit does not move the time you chose.
+var REPEAT_VALUES = { hours: [0, 1, 2, 3, 4, 6, 8, 12], days: [0, 1, 2, 3, 4, 5, 6], weeks: [0, 1, 2], months: [0, 1, 2, 3, 4, 6, 12] };
+var REPEAT_UNITS = ['hours', 'days', 'weeks', 'months'];
+var REPEAT_TIME = { Check: { minute: 0, hour: 12, dow: 'MON' }, Install: { minute: 0, hour: 13, dow: 'MON' } };
+var WEEKDAY_CODES = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+var WEEKDAY_NAMES = { SUN: 'Sunday', MON: 'Monday', TUE: 'Tuesday', WED: 'Wednesday', THU: 'Thursday', FRI: 'Friday', SAT: 'Saturday' };
+function cronParts(current, dflt) {
+  const b = { minute: dflt.minute, hour: dflt.hour, dow: dflt.dow, dom: 1 };
+  const p = String(current || '').trim().split(/\s+/);
+  if (p.length !== 5) return b;
+  if (/^\d{1,2}$/.test(p[0]) && +p[0] <= 59) b.minute = +p[0];
+  if (/^\d{1,2}$/.test(p[1]) && +p[1] <= 23) b.hour = +p[1];
+  if (/^\d{1,2}$/.test(p[2]) && +p[2] >= 1 && +p[2] <= 28) b.dom = +p[2];
+  const w = /^(SUN|MON|TUE|WED|THU|FRI|SAT|[0-6])(?:#[1-5])?(?:,|$)/i.exec(p[4]);
+  if (w) b.dow = /^\d$/.test(w[1]) ? WEEKDAY_CODES[+w[1]] : w[1].toUpperCase();
+  return b;
+}
+function buildCron(unit, n, current, dflt) {
+  if (!n || !(REPEAT_VALUES[unit] || []).includes(n)) return null;
+  const b = cronParts(current, dflt);
+  const step = n === 1 ? '*' : `*/${n}`;
+  if (unit === 'hours') return `${b.minute} ${step} * * *`;
+  if (unit === 'days') return `${b.minute} ${b.hour} ${step} * *`;
+  if (unit === 'weeks') return `${b.minute} ${b.hour} * * ${n === 1 ? b.dow : `${b.dow}#1,${b.dow}#3`}`;
+  return `${b.minute} ${b.hour} ${b.dom} ${step} *`;
+}
+function describeCron(expr) {
+  const none = { hours: 0, days: 0, weeks: 0, months: 0 };
+  const p = String(expr || '').trim().split(/\s+/);
+  if (p.length !== 5 || !/^\d+$/.test(p[0])) return none;
+  const [, h, dom, mon, dow] = p;
+  const stepOf = (s) => { const m = /^\*\/(\d+)$/.exec(s); return m ? +m[1] : s === '*' ? 1 : 0; };
+  const day = '(?:SUN|MON|TUE|WED|THU|FRI|SAT|[0-6])';
+  if (dom === '*' && mon === '*' && dow === '*') {
+    if (h === '*' || /^\*\/\d+$/.test(h)) { const n = stepOf(h); return n && REPEAT_VALUES.hours.includes(n) ? { ...none, hours: n } : none; }
+    return /^\d+$/.test(h) ? { ...none, days: 1 } : none;
+  }
+  if (!/^\d+$/.test(h)) return none;
+  if (/^\*\/\d+$/.test(dom) && mon === '*' && dow === '*') { const n = stepOf(dom); return n >= 2 && n <= 6 ? { ...none, days: n } : none; }
+  if (dom === '*' && mon === '*') {
+    if (new RegExp(`^${day}$`, 'i').test(dow)) return { ...none, weeks: 1 };
+    if (new RegExp(`^(${day})#1,\\1#3$`, 'i').test(dow)) return { ...none, weeks: 2 };
+  }
+  if (/^\d+$/.test(dom) && dow === '*') { const n = stepOf(mon); return n && REPEAT_VALUES.months.includes(n) ? { ...none, months: n } : none; }
+  return none;
+}
+// A line under the dropdowns for the two choices cron cannot repeat evenly.
+function repeatNote(unit, n, current, dflt) {
+  if (unit === 'days' && n > 1) return 'Cron counts days within each month, so this starts over on the 1st.';
+  if (unit === 'weeks' && n === 2) return `Twice a month: the 1st and 3rd ${WEEKDAY_NAMES[cronParts(current, dflt).dow]}.`;
+  return '';
+}
+// --- end of the cron builder block ---
+
+function repeatSelect(kind, unit) { return $(`repeat${kind}${unit[0].toUpperCase()}${unit.slice(1)}`); }
+// Show the cron line in the dropdowns (they follow whatever is typed or saved).
+function syncRepeat(kind) {
+  const expr = $(`schedule${kind}Cron`).value;
+  const d = describeCron(expr);
+  let note = '';
+  for (const unit of REPEAT_UNITS) {
+    const s = repeatSelect(kind, unit);
+    s.value = String(d[unit]);
+    s.classList.toggle('on', d[unit] > 0);
+    if (d[unit]) note = repeatNote(unit, d[unit], expr, REPEAT_TIME[kind]);
+  }
+  $(`repeat${kind}Note`).textContent = note;
+}
+// A dropdown was used: write the cron line, show what it means and save, the same as typing it.
+function repeatChanged(kind, unit) {
+  const n = Number(repeatSelect(kind, unit).value);
+  const box = $(`schedule${kind}Cron`);
+  const expr = buildCron(unit, n, box.value, REPEAT_TIME[kind]);
+  if (!expr) { syncRepeat(kind); return; } // 0 changes nothing: the dropdowns go back to what the line says
+  box.value = expr;
+  syncRepeat(kind);
+  renderSchedulePreview(kind);
+  saveSchedule();
+}
 async function renderSchedulePreview(kind) {
   if (!kind) { SCHEDULE_KINDS.forEach(renderSchedulePreview); return; }
   const p = $(`schedule${kind}Preview`);
@@ -1443,7 +1559,7 @@ async function saveSchedule() {
   for (const kind of SCHEDULE_KINDS) {
     const enabled = $(`schedule${kind}Enabled`).checked;
     let expr = $(`schedule${kind}Cron`).value.trim();
-    if (enabled && !expr) { expr = SCHEDULE_DEFAULTS[kind]; $(`schedule${kind}Cron`).value = expr; renderSchedulePreview(kind); } // a sensible start
+    if (enabled && !expr) { expr = SCHEDULE_DEFAULTS[kind]; $(`schedule${kind}Cron`).value = expr; syncRepeat(kind); renderSchedulePreview(kind); } // a sensible start
     next[`schedule${kind}Enabled`] = enabled;
     next[`schedule${kind}Cron`] = expr;
   }
@@ -1455,6 +1571,7 @@ async function saveSchedule() {
     for (const kind of SCHEDULE_KINDS) {
       $(`schedule${kind}Enabled`).checked = !!config[`schedule${kind}Enabled`];
       $(`schedule${kind}Cron`).value = config[`schedule${kind}Cron`] || '';
+      syncRepeat(kind);
     }
     $('scheduleCatchUp').checked = config.scheduleCatchUp === true;
     renderSchedulePreview();
@@ -1463,7 +1580,12 @@ async function saveSchedule() {
 }
 for (const kind of SCHEDULE_KINDS) {
   const box = $(`schedule${kind}Cron`);
-  box.addEventListener('input', () => { clearTimeout(previewTimers[kind]); previewTimers[kind] = setTimeout(() => renderSchedulePreview(kind), 250); });
+  box.addEventListener('input', () => { syncRepeat(kind); clearTimeout(previewTimers[kind]); previewTimers[kind] = setTimeout(() => renderSchedulePreview(kind), 250); });
+  for (const unit of REPEAT_UNITS) {
+    const s = repeatSelect(kind, unit);
+    s.innerHTML = REPEAT_VALUES[unit].map((v) => `<option value="${v}">${v}</option>`).join('');
+    s.onchange = () => repeatChanged(kind, unit);
+  }
   box.addEventListener('change', saveSchedule); // on leaving the box or pressing Enter
   box.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); box.blur(); } });
   $(`schedule${kind}Enabled`).onchange = saveSchedule;
