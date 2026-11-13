@@ -55,6 +55,15 @@ test('the tray menu has Open, Check now and Quit', () => {
   assert.deepEqual(calls, ['open', 'check', 'quit']);
 });
 
+test('the tray menu starts with the running version, greyed out', () => {
+  const menu = bg.trayMenuTemplate({ version: '0.2.7-beta.4', open() {}, checkNow() {}, quit() {} });
+  assert.equal(menu[0].label, 'git-updater v0.2.7-beta.4');
+  assert.equal(menu[0].enabled, false, 'a label, not a command');
+  assert.equal(menu[0].click, undefined);
+  assert.equal(menu[1].type, 'separator');
+  assert.deepEqual(menu.filter((m) => m.label).map((m) => m.label).slice(1), ['Open git-updater', 'Check now', 'Quit']);
+});
+
 // --- start at login -----------------------------------------------------------
 
 function fakeApp({ packaged = true, applies = true } = {}) {
@@ -137,7 +146,7 @@ function fakeElectron() {
 function controller(cfgRef, platform = 'win32') {
   const fx = fakeElectron();
   const events = [];
-  const app = { quit: () => events.push('app.quit') };
+  const app = { quit: () => events.push('app.quit'), getVersion: () => '1.2.3' };
   const c = bg.createBackground({
     app, Tray: fx.Tray, Menu: fx.Menu, nativeImage: fx.nativeImage, iconPath: '/icon.png', platform,
     readConfig: () => cfgRef.cfg, openWindow: () => events.push('open'), checkNow: () => events.push('check'),
@@ -180,6 +189,7 @@ test('tray: a click opens the window except on Linux, and the menu items do thei
   const mac = controller(cfg, 'darwin');
   mac.c.syncTray();
   assert.equal(mac.fx.made.trays[0].image.size, 22);
+  assert.equal(win.fx.made.menus[0][0].label, 'git-updater v1.2.3', 'the real tray shows the app version first');
 });
 
 test('the tooltip can list what a background check found, and resets', () => {
