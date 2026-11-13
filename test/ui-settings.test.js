@@ -23,7 +23,8 @@ const settingsScreen = html.slice(settingsStart, scriptStart);
 const SETTINGS_IDS = [
   'portableRoot', 'browse', 'saveRoot', 'dateFormat',
   'startupSortEnabled', 'startupSortColumn', 'startupSortDirection', 'rememberFilters',
-  'checkOnOpen', 'autoCloseReopen', 'downloadLimitEnabled', 'downloadLimitMiB', 'saveDownloadLimit', 'selfPreRel',
+  'checkOnOpen', 'autoCloseReopen', 'downloadLimitEnabled', 'downloadLimitMiB', 'saveDownloadLimit',
+  'selfCheckOnOpen', 'selfAutoUpdate', 'selfPreRel',
   'startAtLogin', 'keepRunning',
   'scheduleCheckEnabled', 'scheduleCheckCron', 'scheduleCheckPreview', 'scheduleCatchUp',
   'scheduleInstallEnabled', 'scheduleInstallCron', 'scheduleInstallPreview', 'scheduleInstallApps',

@@ -218,6 +218,25 @@ async function backgroundCheck() {
   if (win && !win.isDestroyed()) win.webContents.send('schedule:done');
 }
 
+// "Auto-update git-updater" (Settings -> Updating) is the same as ticking an app in the list: the
+// scheduled install updates git-updater itself too. If the window is not on screen (hidden in the
+// tray, or minimized) the app comes back the same way, quietly, and says so in a notification.
+async function backgroundSelfUpdate() {
+  if (!app.isPackaged) { log('scheduled install: git-updater itself is not updated in a development run'); return; }
+  try {
+    const found = await checkSelfUpdate();
+    if (!found) { log('scheduled install: git-updater is up to date'); return; }
+    const onScreen = !!(win && !win.isDestroyed() && win.isVisible() && !win.isMinimized());
+    log(`scheduled install: updating git-updater to ${found.version}${onScreen ? '' : ' (restarting quietly)'}`);
+    const send = (phase, pct) => { if (win && !win.isDestroyed()) win.webContents.send('update:progress', { id: 'self', phase, pct }); };
+    await performSelfUpdate({ onProgress: send, quiet: !onScreen });
+  } catch (e) {
+    const why = e && e.message ? e.message : String(e);
+    log(`scheduled install: git-updater could not update itself: ${why}`);
+    notify(`git-updater could not update itself: ${why}`);
+  }
+}
+
 // The scheduled install (Settings -> Schedule -> Install): updates only the apps ticked in the
 // Auto-update column that are already installed, portable apps first. Unattended means it never
 // opens an installer window or a permission prompt (an installer that needs one is reported as
@@ -234,9 +253,10 @@ async function backgroundInstall() {
     const installed = await computeInstalled(cfg);
     const { targets, skipped } = autoupdate.pickTargets(config.repos, installed);
     for (const s of skipped) log(`scheduled install: skipping ${s.name} (${s.why})`);
-    if (!targets.length) { log('scheduled install: no ticked apps that are installed'); return; }
-    log(`scheduled install: ${targets.map((r) => `${r.owner}/${r.repo}`).join(', ')}`);
+    if (!targets.length) log('scheduled install: no ticked apps that are installed');
+    else log(`scheduled install: ${targets.map((r) => `${r.owner}/${r.repo}`).join(', ')}`);
     const autoClose = !!cfg.autoCloseReopen;
+    let stopped = false; // GitHub said stop: git-updater itself is left for the next run too
     for (const r of targets) {
       const key = autoupdate.keyOf(r);
       const name = `${r.owner}/${r.repo}`;
@@ -255,14 +275,18 @@ async function backgroundInstall() {
       if (result && result.closed && autoClose) {
         try { await launchApp(key); log(`scheduled install: re-opened ${name}`); } catch (e) { log(`scheduled install: could not re-open ${name}: ${e && e.message ? e.message : e}`); }
       }
-      if (result && result.stopRun) { log('scheduled install: stopping (GitHub rate limit or a rejected token)'); break; }
+      if (result && result.stopRun) { log('scheduled install: stopping (GitHub rate limit or a rejected token)'); stopped = true; break; }
     }
-    const s = autoupdate.summarize(entries);
-    log(`scheduled install: updated ${s.updated.length}, already current ${s.current}, need you ${s.needsYou.length + s.running.length}, failed ${s.failed.length}`);
-    for (const x of s.needsYou) log(`scheduled install: ${x.name} needs you: ${x.reason}`);
-    for (const x of s.failed) log(`scheduled install: ${x.name} failed: ${x.reason}`);
-    const text = autoupdate.summaryText(s);
-    if (text) notify(text);
+    if (entries.length) {
+      const s = autoupdate.summarize(entries);
+      log(`scheduled install: updated ${s.updated.length}, already current ${s.current}, need you ${s.needsYou.length + s.running.length}, failed ${s.failed.length}`);
+      for (const x of s.needsYou) log(`scheduled install: ${x.name} needs you: ${x.reason}`);
+      for (const x of s.failed) log(`scheduled install: ${x.name} failed: ${x.reason}`);
+      const text = autoupdate.summaryText(s);
+      if (text) notify(text);
+    }
+    // git-updater itself comes last, because applying its update restarts this process.
+    if (cfg.selfAutoUpdate && !stopped) await backgroundSelfUpdate();
   } finally {
     updating = false;
     if (win && !win.isDestroyed()) win.webContents.send('schedule:done', { kind: 'install' });
@@ -583,7 +607,7 @@ ipcMain.handle('asset:preview', async (_e, appKey) => {
 // tracked apps. Compares the latest release tag with the running version; on Update,
 // downloads+verifies+extracts the new build, then hands off to a detached helper (a
 // second copy of this same exe) to swap it in and relaunch once this process exits.
-ipcMain.handle('selfupdate:check', async () => {
+async function checkSelfUpdate() {
   if (!app.isPackaged) return null; // dev run
   try {
     const prerelease = !!readConfig().selfUpdatePrerelease; // self-update beta channel (Settings)
@@ -599,7 +623,8 @@ ipcMain.handle('selfupdate:check', async () => {
     log(`selfupdate check: ${e && e.message ? e.message : e}`); // e.g. no releases yet
     return null;
   }
-});
+}
+ipcMain.handle('selfupdate:check', () => checkSelfUpdate());
 ipcMain.handle('selfupdate:lastApply', () => selfupdate.consumeApplyMarker(app.getVersion()));
 // The releases page for git-updater itself. The URL is built HERE, from the engine's own
 // constants — the renderer never passes a URL across the bridge, same as release:open.
@@ -705,30 +730,36 @@ ipcMain.handle('update', async (e, body = {}) => {
 
 // Downloads+verifies+extracts the new build into ROOT\app-<version>\ (nothing running is
 // touched), then restarts through the launcher, which hands off to it once this process is gone.
+// Shared by the window's Update button and the scheduled install; the caller owns the `updating` flag.
+// `quiet` (a scheduled run with no window on screen) is kept in the apply marker, so the new process
+// starts hidden or minimized the way this one is instead of putting a window up.
+async function performSelfUpdate({ onProgress, quiet = false }) {
+  const cfg = readConfig();
+  const prerelease = !!cfg.selfUpdatePrerelease; // self-update beta channel (Settings)
+  if (IS_MAC) {
+    // Squirrel.Mac downloads+verifies the signed zip, swaps the bundle and relaunches; it
+    // owns the restart, so there is no launcher hand-off or app.exit here.
+    const r = await macupdate.apply({ onProgress, prerelease, quiet });
+    log(`self-update(mac): restarting into ${r.version}`);
+    return r;
+  }
+  const { tag } = await selfupdate.prepareUpdate(ROOT, app.getVersion(), onProgress, { prerelease, maxBytes: core.downloadLimitBytes(cfg) });
+  selfupdate.writeApplyMarker({ expectVersion: tag, quiet });
+  selfupdate.relaunchViaLauncher(ROOT, process.pid);
+  log(`self-update: restarting into ${tag}`);
+  setTimeout(() => app.exit(0), 300); // let the IPC reply below flush before this process dies
+  return { relaunching: true, version: tag };
+}
+
 ipcMain.handle('selfupdate:apply', async (e) => {
   if (updating) throw new Error('an update is already in progress');
   if (!app.isPackaged) throw new Error('self-update is unavailable in a dev run');
   updating = true;
   try {
-    const onProgress = (phase, pct) => e.sender.send('update:progress', { id: 'self', phase, pct });
-    const cfg = readConfig();
-    const prerelease = !!cfg.selfUpdatePrerelease; // self-update beta channel (Settings)
-    if (IS_MAC) {
-      // Squirrel.Mac downloads+verifies the signed zip, swaps the bundle and relaunches; it
-      // owns the restart, so there is no launcher hand-off or app.exit here.
-      const r = await macupdate.apply({ onProgress, prerelease });
-      log(`self-update(mac): restarting into ${r.version}`);
-      return r;
-    }
-    const { tag } = await selfupdate.prepareUpdate(ROOT, app.getVersion(), onProgress, { prerelease, maxBytes: core.downloadLimitBytes(cfg) });
-    selfupdate.writeApplyMarker({ expectVersion: tag });
-    selfupdate.relaunchViaLauncher(ROOT, process.pid);
-    log(`self-update: restarting into ${tag}`);
-    setTimeout(() => app.exit(0), 300); // let the IPC reply below flush before this process dies
-    return { relaunching: true, version: tag };
-  } catch (e) {
-    log(`self-update FAILED: ${e && e.stack ? e.stack : e}`);
-    throw e;
+    return await performSelfUpdate({ onProgress: (phase, pct) => e.sender.send('update:progress', { id: 'self', phase, pct }) });
+  } catch (err) {
+    log(`self-update FAILED: ${err && err.stack ? err.stack : err}`);
+    throw err;
   } finally {
     updating = false; // only reached on a failure before the relaunch was started
   }
@@ -778,7 +809,16 @@ ipcMain.handle('selfupdate:apply', async (e) => {
     setInterval(() => { scheduler.tick(); }, schedule.TICK_MS).unref();
     setTimeout(() => { scheduler.tick(); }, 15 * 1000).unref();
     powerMonitor.on('resume', () => { scheduler.tick(); });
-    const loginLaunch = background.isLoginLaunch(process.argv, { macWasOpenedAtLogin: IS_MAC && app.getLoginItemSettings().wasOpenedAtLogin });
+    // A scheduled self-update with no window on screen restarts quietly: start the way a login start does
+    // (hidden in the tray, or minimized) and say what happened, since nobody is looking at the window.
+    const quietRestart = app.isPackaged ? selfupdate.takeQuietRestart(app.getVersion()) : null;
+    if (quietRestart) {
+      log(`quiet restart after a scheduled self-update (expected ${quietRestart.expectVersion}, running ${app.getVersion()})`);
+      notify(quietRestart.ok
+        ? `git-updater updated to v${app.getVersion()}.`
+        : `git-updater tried to update to v${quietRestart.expectVersion} but is still v${app.getVersion()}. See the log.`);
+    }
+    const loginLaunch = !!quietRestart || background.isLoginLaunch(process.argv, { macWasOpenedAtLogin: IS_MAC && app.getLoginItemSettings().wasOpenedAtLogin });
     const mode = background.startupWindow(readConfig(), loginLaunch, process.platform);
     if (mode === 'hidden') log('started at login: hidden in the tray');
     else createWindow({ minimized: mode === 'minimized' });

@@ -66,7 +66,9 @@ The tarball has no such requirement, which is why it is the recommended Linux do
   you ticked in the **Auto-update** column that are already installed. It never force-closes
   a running app and never opens an installer window or permission prompt: an installer that
   needs your permission is skipped and reported as "needs you". It even tells you when
-  git-updater itself has a new release.
+  git-updater itself has a new release. Settings has two more switches for that, both off:
+  *check for git-updater updates when it opens*, and *auto-update git-updater* (updated by the
+  Install schedule like a ticked app, then it restarts, quietly if the window is hidden).
 
 ## On macOS
 

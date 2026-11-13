@@ -81,6 +81,32 @@ test('the Check schedule is off by default and says what it does and does not do
   assert.match(group, /Runs only while git-updater is running/);
 });
 
+test('git-updater has its own two switches, both off by default, saved on change', () => {
+  assert.doesNotMatch(html, /id="selfCheckOnOpen"[^>]*checked/);
+  assert.doesNotMatch(html, /id="selfAutoUpdate"[^>]*checked/);
+  assert.match(html, /\$\('selfCheckOnOpen'\)\.checked = !!config\.selfCheckOnOpen/);
+  assert.match(html, /\$\('selfAutoUpdate'\)\.checked = !!config\.selfAutoUpdate/);
+  assert.match(html, /\$\('selfCheckOnOpen'\)\.onchange = \(\) => \{ config\.selfCheckOnOpen = /);
+  assert.match(html, /\$\('selfAutoUpdate'\)\.onchange = \(\) => \{ config\.selfAutoUpdate = /);
+});
+
+test('the launch check for git-updater runs alone when only its own switch is on', () => {
+  assert.match(html, /\} else if \(config\.selfCheckOnOpen\) \{\s*selfCheck\(\);/, 'git-updater only, apps left alone');
+});
+
+test('the Install schedule line counts git-updater when it is set to auto-update', () => {
+  const fn = html.slice(html.indexOf('function renderInstallInfo()'), html.indexOf('async function saveSchedule()'));
+  const text = (n, self) => {
+    const out = {};
+    new Function('$', 'config', fn + '\nrenderInstallInfo();')((id) => out, { selfAutoUpdate: self, repos: Array.from({ length: n }, () => ({ autoUpdate: true })) });
+    return out.textContent;
+  };
+  assert.equal(text(2, false), '2 apps are ticked in the Auto-update column.');
+  assert.equal(text(1, true), '1 app is ticked in the Auto-update column, plus git-updater itself.');
+  assert.equal(text(0, true), 'Only git-updater itself is set to auto-update.');
+  assert.match(text(0, false), /^No apps are ticked/);
+});
+
 test('every Settings explanation is one or two short sentences', () => {
   const screen = html.slice(html.indexOf('id="settingsScreen"'), html.indexOf('id="settingsScreen"') + 12000);
   const hints = [...screen.matchAll(/<p class="hint"[^>]*>(.*?)<\/p>/g)].map((m) => m[1].replace(/<[^>]+>/g, ''));

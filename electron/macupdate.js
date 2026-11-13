@@ -67,7 +67,7 @@ async function check(opts = {}) {
 // Resolves { relaunching:true, version } the moment the download is staged — before the swap —
 // so the renderer can show "Restarting into X…", exactly like the Windows/Linux handler
 // returns { relaunching } before its process exits. quitAndInstall then fires on a short timer.
-function apply({ onProgress, prerelease } = {}) {
+function apply({ onProgress, prerelease, quiet } = {}) {
   const autoUpdater = updater();
   autoUpdater.allowPrerelease = !!prerelease; // must match check()'s channel, or apply re-checks to a different release
   return new Promise((resolve, reject) => {
@@ -91,7 +91,7 @@ function apply({ onProgress, prerelease } = {}) {
       // Reuse the platform-neutral apply marker so the post-relaunch version check in
       // ui/index.html (selfUpdateLastApply) works on macOS too.
       try {
-        selfupdate.writeApplyMarker({ expectVersion: version });
+        selfupdate.writeApplyMarker({ expectVersion: version, quiet });
       } catch {}
       log(`self-update(mac): downloaded ${version}, restarting`);
       finish(resolve, { relaunching: true, version });

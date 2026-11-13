@@ -497,6 +497,20 @@ What the run does, in `backgroundInstall()` in `electron/main.js` (the choices a
   counts. The window reloads its list when it receives `schedule:done` for the install kind.
 - **Stopping early:** a GitHub rate limit or a rejected token (`stopRun`) ends the run there, so the
   rest of the apps are not tried and the log says why.
+- **git-updater itself** (`selfAutoUpdate`, Settings -> Updating -> "Auto-update git-updater", off by
+  default) is the same as ticking an app: it is updated by this run, **last**, because applying the
+  update restarts the process (`backgroundSelfUpdate()` -> `performSelfUpdate()`, the same code the
+  window's Update button runs, on the same beta-channel and download-limit settings). A development
+  run skips it. If the window is not on screen (hidden in the tray, or minimized) the update is
+  **quiet**: the apply marker (`self-update/last-apply.json`) records `quiet: true`, and the new
+  process reads it once at startup (`selfupdate.takeQuietRestart`, only within five minutes of the
+  update) and starts as a login start does (hidden with the tray on, otherwise minimized) with one
+  notification saying what version it is now. With the window on screen it restarts into a normal
+  window.
+
+**Check on launch.** "Check for git-updater updates when it opens" (`selfCheckOnOpen`, off by default)
+runs the window's own-update check once after the first render, without checking the apps. The older
+"Check for updates when git-updater opens" setting still checks the apps **and** git-updater, as it did.
 
 A real-Electron smoke test (config, data and Chromium user data in a temp folder) ran a catch-up
 install against GitHub: the ticked portable app was downloaded, verified and installed, and the
