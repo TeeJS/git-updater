@@ -6,7 +6,7 @@
 // window exits everything. Two opt-in settings change that (src/background.js): start at login,
 // and keep running in the tray when the window is closed.
 
-const { app, BrowserWindow, ipcMain, dialog, shell, screen, net, safeStorage, Tray, Menu, nativeImage } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, screen, net, safeStorage, Tray, Menu, nativeImage, Notification, powerMonitor } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const core = require('../src/core');
@@ -19,6 +19,8 @@ const paths = require('../src/paths');
 const catalog = require('../src/catalog');
 const selfupdate = require('../src/selfupdate');
 const background = require('../src/background');
+const cron = require('../src/cron');
+const schedule = require('../src/schedule');
 const { log, LOG_FILE } = require('../src/log');
 
 // macOS self-updates in place via Squirrel.Mac (electron/macupdate.js), not the launcher model
@@ -183,6 +185,46 @@ const bg = background.createBackground({
   checkNow: requestCheck,
 });
 
+// --- scheduled check (Settings -> Schedule) --------------------------------------
+// A timer inside this one running process: no scheduled task, no helper. It only CHECKS and tells
+// you; it never downloads or installs anything. The schedule engine is src/schedule.js.
+let lastBackground = null; // what the last scheduled check found, for the window to show when it opens
+
+function notify(body) {
+  try {
+    if (!Notification.isSupported()) return;
+    const n = new Notification({ title: 'git-updater', body });
+    n.on('click', showWindow);
+    n.show();
+  } catch (e) {
+    log(`notification failed: ${e && e.message ? e.message : e}`);
+  }
+}
+
+async function backgroundCheck() {
+  const config = core.validateConfig(readConfig());
+  const out = await runner.run(config, { mode: 'check' });
+  applyRetypes(out.results);
+  const results = (out.results || []).map((r) => ({ id: r.id, status: r.status, from: r.from, to: r.to, reason: r.reason }));
+  // In a check, "current" is up to date, "failed" is an error and anything else is an update.
+  const updates = results.filter((r) => r.status !== 'failed' && r.status !== 'current').length;
+  const failed = results.filter((r) => r.status === 'failed').length;
+  lastBackground = { at: new Date().toISOString(), results };
+  log(`scheduled check: ${results.length} apps, ${updates} with updates, ${failed} failed`);
+  bg.setTooltip(updates ? `git-updater: ${updates} update${updates > 1 ? 's' : ''} available` : '');
+  if (updates) notify(`${updates} update${updates > 1 ? 's' : ''} available. Click to open git-updater.`);
+  else if (results.length && failed === results.length) notify(`The scheduled check could not finish: ${results[0].reason || 'see the log'}`);
+  if (win && !win.isDestroyed()) win.webContents.send('schedule:done');
+}
+
+const scheduleState = schedule.fileState(path.join(DATA_DIR, 'schedule-state.json'));
+const scheduler = schedule.createScheduler({
+  readConfig, log,
+  loadState: scheduleState.load,
+  saveState: scheduleState.save,
+  runCheck: backgroundCheck,
+});
+
 // The stable launcher (never a versioned app-x.y.z folder) is what the login entry starts.
 const loginLauncher = () => background.launcherPath(ROOT, process.platform, process.env);
 // At launch: if "start at login" is on, make sure the system's entry still matches (a moved
@@ -345,8 +387,23 @@ ipcMain.handle('app:launch', async (_e, appKey) => {
   if (err) throw new Error(err);
   return { ok: true, path: target };
 });
+// The Settings screen's "Next runs" preview, and what the last scheduled check found.
+ipcMain.handle('schedule:preview', (_e, expr) => {
+  const v = cron.validate(String(expr || ''));
+  return { ok: v.ok, error: v.error, runs: v.runs.map((d) => d.toISOString()) };
+});
+ipcMain.handle('schedule:last', () => lastBackground);
+
 ipcMain.handle('config:save', (_e, cfg) => {
-  const wasStartAtLogin = !!readConfig().startAtLogin;
+  const previous = readConfig();
+  // A schedule that is switched on (or edited) must be valid. Only checked when those fields changed,
+  // so a hand-edited bad value can never block saving every other setting.
+  const sched = (c) => `${!!(c && c.scheduleCheckEnabled)}|${(c && c.scheduleCheckCron) || ''}`;
+  if (cfg && cfg.scheduleCheckEnabled && sched(cfg) !== sched(previous)) {
+    const v = cron.validate(cfg.scheduleCheckCron);
+    if (!v.ok) throw new Error(`Check schedule: ${v.error}`);
+  }
+  const wasStartAtLogin = !!previous.startAtLogin;
   const wantsStartAtLogin = !!(cfg && cfg.startAtLogin);
   // The system's login list is written first, so a refusal (a development run, a system that
   // ignores it) reaches the Settings checkbox before anything is saved.
@@ -656,6 +713,12 @@ ipcMain.handle('selfupdate:apply', async (e) => {
     if (app.isPackaged) selfupdate.cleanupLeftovers(ROOT, app.getVersion()).catch(() => {});
     bg.syncTray();
     reconcileLogin();
+    if (process.platform === 'win32') app.setAppUserModelId('com.teejs.gitupdater'); // the same id as the build's appId, so notifications carry the app's name
+    // The scheduled check: a tick every half minute, one shortly after start (a missed run is caught
+    // up then), and one when the computer wakes (timers pause while it sleeps).
+    setInterval(() => { scheduler.tick(); }, schedule.TICK_MS).unref();
+    setTimeout(() => { scheduler.tick(); }, 15 * 1000).unref();
+    powerMonitor.on('resume', () => { scheduler.tick(); });
     const loginLaunch = background.isLoginLaunch(process.argv, { macWasOpenedAtLogin: IS_MAC && app.getLoginItemSettings().wasOpenedAtLogin });
     const mode = background.startupWindow(readConfig(), loginLaunch, process.platform);
     if (mode === 'hidden') log('started at login: hidden in the tray');

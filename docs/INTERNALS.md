@@ -425,6 +425,46 @@ smoke test of `electron/main.js` (window hides on close with the tray on, quits 
 login-start modes, the tray following `config:save`) was run with config, data and Chromium user
 data redirected to a temp folder.
 
+### Scheduled check (cron-style)
+
+**Settings -> Schedule** can check for updates on a schedule, off by default. It only **checks and
+tells you**; it never downloads or installs anything (scheduled installs come separately and only
+for apps you tick). The schedule is a cron line in this computer's local time:
+
+```
+minute hour day-of-month month day-of-week
+47 2 * * 2#1        the 1st Tuesday of every month at 2:47 AM
+0 9 * * *           every day at 9:00
+0 8 * * MON-FRI     weekdays at 8:00
+0 23 L * *          the last day of the month at 23:00
+```
+
+`src/cron.js` is a small parser with no dependency: `*`, numbers, `a-b`, `a-b/n`, `*/n`, comma lists,
+month and weekday names, plus two extensions, `weekday#n` (the nth weekday of the month) and `L`
+(day-of-month: the last day). The classic rule is kept on purpose: when **both** day fields are
+restricted, a day matches when **either** does, which is why "the first Tuesday" is written
+`2#1` and not `1-7 * 2` (that would also run every Tuesday). A time that does not exist on a
+daylight-saving day (2:47 AM on the spring-forward day) is skipped. `validate()` refuses a bad
+schedule with a message, refuses one that never runs, and refuses one that fires **more often than
+once an hour** (GitHub allows 60 requests an hour without a token). The Settings screen shows the
+next three run times, computed by the same parser through the `schedule:preview` IPC, so what you
+see is what will happen.
+
+`src/schedule.js` is the engine: a timer inside the one running app (a tick every 30 seconds, one
+15 seconds after start, and one when the computer wakes; no scheduled task, no helper process). It
+keeps when each schedule last ran in `schedule-state.json` next to `config.json`. Switching a
+schedule on, or editing it, starts counting from then, so a past time is never run. If the app
+was off or the computer asleep at the scheduled time, the check runs **once** when it next notices
+(the "Run a missed schedule" checkbox, on by default; off: the missed time is dropped). The time is
+marked as run **before** the check starts, so a crash or a slow check never makes it run twice.
+
+A finished check sets the tray tooltip ("git-updater: 3 updates available"), shows a system
+notification when it found updates (a click opens the window), and is kept in memory so the window
+shows what it found next time it opens (`schedule:last`; rows already checked in the window are not
+overwritten). It runs while git-updater is running, so to rely on it turn on **Start at login** and
+**Keep running in the tray**. `config:save` refuses an invalid schedule when it is switched on or
+edited, and only then, so a hand-edited bad value can never block saving every other setting.
+
 ### The Settings screen
 
 Settings is its own screen, not a collapsed box under the list: a **Settings** button at the top

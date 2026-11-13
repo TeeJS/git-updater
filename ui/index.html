@@ -359,6 +359,22 @@
       <p class="hint">Off by default: git-updater updates itself only to stable releases. This is separate from the per-app beta setting.</p>
     </section>
 
+    <section class="panel settings-group" aria-labelledby="sg-schedule">
+      <h2 class="sec-h" id="sg-schedule">Schedule</h2>
+      <div class="row">
+        <span style="color:var(--muted);font-size:.9rem;min-width:8rem">Check</span>
+        <label class="scan-label"><input type="checkbox" id="scheduleCheckEnabled"> Check for updates on a schedule</label>
+        <input type="text" id="scheduleCheckCron" placeholder="0 9 * * *" aria-label="Check schedule" spellcheck="false" autocomplete="off" style="width:13rem">
+      </div>
+      <p class="hint" id="schedulePreview" aria-live="polite"></p>
+      <p class="hint">Off by default. It only checks and tells you with a notification; it never downloads or installs anything. A schedule has five fields in this computer's time: <code>minute hour day-of-month month weekday</code>. For example <code>0 9 * * *</code> is every day at 9:00, <code>0 8 * * MON-FRI</code> is weekdays at 8:00, and <code>47 2 * * 2#1</code> is the 1st Tuesday of every month at 2:47 AM (<code>#</code> means the nth weekday; <code>L</code> in the day-of-month field is the last day). It runs at most once an hour, and only while git-updater is running: turn on <em>Start at login</em> and <em>Keep running in the tray</em> below to keep it running.</p>
+      <div class="row" style="margin-top:.6rem">
+        <span style="color:var(--muted);font-size:.9rem;min-width:8rem">Missed runs</span>
+        <label class="scan-label"><input type="checkbox" id="scheduleCatchUp"> Run a missed schedule when the computer next starts or wakes</label>
+      </div>
+      <p class="hint">On by default. If the computer was off or asleep at the scheduled time, the check runs once as soon as git-updater notices. Off: a missed time is simply skipped.</p>
+    </section>
+
     <section class="panel settings-group" aria-labelledby="sg-background">
       <h2 class="sec-h" id="sg-background">Background</h2>
       <div class="row">
@@ -520,6 +536,21 @@ function primaryAction(s) {
 
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
 const cell = (node, cls) => { const td = document.createElement('td'); if (cls) td.className = cls; if (node) td.appendChild(node); return td; };
+
+// --- background results ---------------------------------------------------------
+// What the scheduled check found fills in rows that have no status yet, so opening the window
+// shows it without checking again. Rows already checked, and failures, are left alone.
+function mergeBackgroundResults(st, results) {
+  let n = 0;
+  for (const r of results || []) {
+    const s = st[r.id];
+    if (!s || s.ph !== 'idle' || r.status === 'failed') continue;
+    st[r.id] = { ...s, ph: r.status === 'current' ? 'current' : 'available', from: r.from || s.from, to: r.to };
+    n++;
+  }
+  return n;
+}
+// --- end of the background results block ---
 
 // --- screens: the list, and Settings as its own screen --------------------------
 // Both stay mounted and the other is just hidden, so the search, filters, selection and scroll
@@ -863,6 +894,10 @@ async function load() {
   $('rememberFilters').checked = !!config.rememberFilters;
   $('startAtLogin').checked = !!config.startAtLogin;
   $('keepRunning').checked = !!config.keepRunning;
+  $('scheduleCheckEnabled').checked = !!config.scheduleCheckEnabled;
+  $('scheduleCheckCron').value = config.scheduleCheckCron || '';
+  $('scheduleCatchUp').checked = config.scheduleCatchUp !== false; // on unless switched off
+  renderSchedulePreview();
   if (!booted) {
     applyStartupSort(config);
     // Same once-per-start rule: the saved filters (only with "Remember my filters" on) come back
@@ -876,6 +911,7 @@ async function load() {
   await refreshInstalled(); // slower registry/manifest detection
   config.repos.forEach((r) => { const s = st[keyOf(r)]; if (s && s.ph === 'loading') s.ph = 'idle'; });
   renderRepos();
+  applyBackgroundResults();
   // No GitHub calls at startup — fast launch. Repo validity (deleted/renamed) and
   // available updates surface when the user runs Check.
   const lastApply = await window.api.selfUpdateLastApply().catch(() => null);
@@ -1301,8 +1337,56 @@ async function saveBackgroundSettings() {
     msg(clean(e), 'bad');
   }
 }
+// Schedule (Check). The preview comes from the main process (the same parser that runs the schedule),
+// so what you see under the box is what will happen. A bad schedule is refused with the reason.
+let previewTimer = null;
+async function renderSchedulePreview() {
+  const p = $('schedulePreview');
+  const expr = $('scheduleCheckCron').value.trim();
+  if (!expr) { p.textContent = ''; p.style.color = ''; return; }
+  try {
+    const v = await window.api.schedulePreview(expr);
+    if (v.ok) {
+      p.style.color = '';
+      p.textContent = 'Next runs: ' + v.runs.map((iso) => new Date(iso).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })).join('  ·  ');
+    } else {
+      p.style.color = 'var(--red)';
+      p.textContent = v.error;
+    }
+  } catch { p.textContent = ''; }
+}
+async function saveSchedule() {
+  const enabled = $('scheduleCheckEnabled').checked;
+  let expr = $('scheduleCheckCron').value.trim();
+  if (enabled && !expr) { expr = '0 9 * * *'; $('scheduleCheckCron').value = expr; renderSchedulePreview(); } // a sensible start
+  const next = { ...config, scheduleCheckEnabled: enabled, scheduleCheckCron: expr, scheduleCatchUp: $('scheduleCatchUp').checked };
+  try {
+    await window.api.saveConfig(next);
+    config = next;
+    msg(enabled ? 'Saved. The schedule is on.' : 'Saved.', 'ok');
+  } catch (e) {
+    $('scheduleCheckEnabled').checked = !!config.scheduleCheckEnabled;
+    $('scheduleCheckCron').value = config.scheduleCheckCron || '';
+    $('scheduleCatchUp').checked = config.scheduleCatchUp !== false;
+    renderSchedulePreview();
+    msg(clean(e), 'bad');
+  }
+}
+$('scheduleCheckCron').addEventListener('input', () => { clearTimeout(previewTimer); previewTimer = setTimeout(renderSchedulePreview, 250); });
+$('scheduleCheckCron').addEventListener('change', saveSchedule); // on leaving the box or pressing Enter
+$('scheduleCheckCron').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); $('scheduleCheckCron').blur(); } });
+$('scheduleCheckEnabled').onchange = saveSchedule;
+$('scheduleCatchUp').onchange = saveSchedule;
 $('startAtLogin').onchange = saveBackgroundSettings;
 $('keepRunning').onchange = saveBackgroundSettings;
+// A scheduled check finished (while the window was hidden, or open): show what it found.
+async function applyBackgroundResults() {
+  try {
+    const last = await window.api.scheduleLast();
+    if (last && !busy && mergeBackgroundResults(st, last.results)) renderRepos();
+  } catch {}
+}
+window.api.onScheduleDone(() => applyBackgroundResults());
 // The tray's "Check now": same as Check all. It may arrive before the first load has finished.
 function trayCheck(tries = 0) {
   if (!booted) { if (tries < 100) setTimeout(() => trayCheck(tries + 1), 300); return; }
