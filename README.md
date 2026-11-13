@@ -6,8 +6,8 @@
 
 A ton of great software ships on GitHub — and nothing keeps it updated. git-updater is a
 self-hosted **Ninite replacement**: you pick the apps, it checks their latest releases and
-updates them, portable apps and installed programs alike. No accounts, no background
-services, no store — just your list and GitHub.
+updates them, portable apps and installed programs alike. No accounts, no store, nothing
+running unless you ask — just your list and GitHub.
 
 ## Get it
 
@@ -19,7 +19,8 @@ Grab the build for your machine from **[Releases](https://github.com/TeeJS/git-u
 | **macOS** | `git-updater-<v>-mac-arm64.dmg` (Apple Silicon) | open it, drag to Applications |
 | **Linux** | `git-updater-<v>-linux-<arch>.tar.gz` (x64, arm64) | extract anywhere, run `git-updater` |
 
-No setup, no admin rights, no background service, and closing the window exits everything.
+No setup and no admin rights, and closing the window exits everything — unless you turn on
+the optional background mode in Settings (start at login, keep running in the tray).
 Windows builds are Authenticode-signed (Thomas Schmitz, via Azure Trusted Signing); macOS
 builds are Developer ID signed and notarized.
 
@@ -54,9 +55,18 @@ The tarball has no such requirement, which is why it is the recommended Linux do
   transactional — a failed or interrupted update restores the previous version completely,
   and your settings inside the app folder survive. Installers that need admin rights fall
   back to their own window with a normal UAC prompt.
-- **Quiet by design.** Nothing runs at startup, nothing phones home, no background service.
-  Open it, update, close it — on macOS too, where it deliberately does not linger in the
-  dock. It even tells you when git-updater itself has a new release.
+- **Quiet by default.** Out of the box nothing runs at startup, nothing phones home, and
+  closing the window quits — on macOS too, where it does not linger in the dock. If you would
+  rather it stayed available, Settings has two switches, both off until you turn them on:
+  *start at login*, and *keep running in the tray* (closing the window hides it to an icon
+  instead of quitting; right-click the icon for Open, Check now and Quit). It can also check for
+  updates on a schedule you write cron-style, such as `47 2 * * 2#1` for the first Tuesday of
+  each month at 2:47 AM, and tell you with a notification. It never installs anything on its
+  own unless you turn on the separate **Install** schedule, and even then it only touches apps
+  you ticked in the **Auto-update** column that are already installed. It never force-closes
+  a running app and never opens an installer window or permission prompt: an installer that
+  needs your permission is skipped and reported as "needs you". It even tells you when
+  git-updater itself has a new release.
 
 ## On macOS
 
@@ -92,12 +102,6 @@ the thing being replaced.
 Prefer beta builds for a specific app? Tick *include beta (pre-release) versions* when
 adding it.
 
-## On the open-quake panel
-
-git-updater is also available as a **drop-in app for [open-quake](https://github.com/TeeJS/open-quake)**
-(Settings → Drop-In Apps → Browse). It shares the same app list and state with the desktop
-version — add apps here, update them from the panel, or vice versa.
-
 ## For developers
 
 ```bash
@@ -113,3 +117,7 @@ git-updater's own folder — `%APPDATA%\git-updater\` on Windows, `~/Library/App
 Support/git-updater/` on macOS, `~/.config/git-updater/` on Linux. Per-app overrides (asset
 patterns, custom install dirs, installer switches), architecture notes, and design details
 are in **[docs/INTERNALS.md](docs/INTERNALS.md)**.
+
+## License
+
+MIT. See [LICENSE](LICENSE).

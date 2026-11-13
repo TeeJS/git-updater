@@ -54,6 +54,34 @@ test('detectInstallerKind: recognizes MSI, Inno, NSIS from bytes; null when unkn
   }
 });
 
+// The installer file is read in 1 MiB chunks, so a marker can straddle a chunk boundary.
+// Ported from EstusFlask/git-updater-background (flash201524), commit 4d89769; the Inno-over-NSIS
+// precedence test is ours, because chunking must not change which one wins.
+test('detectInstallerKind finds a signature split across read chunks', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gu-installer-kind-'));
+  try {
+    const file = path.join(dir, 'large.exe');
+    fs.writeFileSync(file, Buffer.concat([Buffer.alloc(1024 * 1024 - 4), Buffer.from('Inno Setup')]));
+    assert.equal(install.detectInstallerKind(file), 'inno');
+    const nsis = path.join(dir, 'large-nsis.exe');
+    fs.writeFileSync(nsis, Buffer.concat([Buffer.alloc(1024 * 1024 - 3), Buffer.from('Nullsoft')]));
+    assert.equal(install.detectInstallerKind(nsis), 'nsis');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('detectInstallerKind: Inno wins over NSIS even when NSIS appears in an earlier chunk', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gu-installer-kind-'));
+  try {
+    const file = path.join(dir, 'both.exe');
+    fs.writeFileSync(file, Buffer.concat([Buffer.from('Nullsoft'), Buffer.alloc(2 * 1024 * 1024), Buffer.from('Inno Setup')]));
+    assert.equal(install.detectInstallerKind(file), 'inno');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 // --- transactional portable install (#6) -------------------------------------
 
 const AdmZip = require('adm-zip');

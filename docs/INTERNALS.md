@@ -220,6 +220,20 @@ only lightly, because Rosetta runs it.
 All tracked repos are public, so no token is needed. Set `GITHUB_TOKEN` only to lift the
 ~60-request/hour unauthenticated GitHub rate limit.
 
+## Download size limit
+
+Each download (an app's release asset, or git-updater's own update) is held to a size cap:
+`config.downloadLimitMiB` (default **500**), switched off with `config.downloadLimitEnabled: false`
+(Settings → Downloads). A bigger asset is refused, by its declared size when GitHub sends one and
+otherwise as soon as the streamed bytes pass the cap, with a message that says where to raise it.
+`core.downloadLimitBytes` turns the two keys into a byte count (or `null` for no cap) and rejects
+an invalid number when the config is saved.
+
+With the cap raised or off, an installer can be several GiB, so `verifyDigest` and
+`detectInstallerKind` read the file in 1 MiB chunks rather than all at once. The Inno / NSIS marker
+strings can sit anywhere in an installer, so the scan carries the last few bytes of each chunk into
+the next and still prefers Inno over NSIS wherever each appears.
+
 ## CLI
 
 ```bash
@@ -377,6 +391,169 @@ auto-update or auto-install, so the app keeps its "no network at startup unless 
 posture. The `booted` flag in the UI script makes it a one-shot per app start: `load()`
 re-runs on config changes (scan window adds, folder save) and those must not re-trigger it.
 
+### Background mode (start at login, keep running in the tray)
+
+git-updater is quiet by default: nothing runs at startup, and closing the window quits (on macOS
+too). Two opt-in settings in **Settings -> Background**, both off by default, change that; the
+logic is in `src/background.js`, which has no Electron import (the decisions are pure and the
+stateful parts take Electron's `app`, `Tray`, `Menu` and `nativeImage` as arguments, so
+`test/background.test.js` runs them with fakes).
+
+- **`config.startAtLogin`** registers a login item. Windows and macOS use Electron's
+  `app.setLoginItemSettings` (a registry Run value on Windows, a login item on macOS, so it shows
+  in Task Manager's Startup apps list); Linux writes an XDG autostart entry
+  (`~/.config/autostart/git-updater.desktop`). It points at the **stable launcher**
+  (`launcherPath(ROOT)`, or `$APPIMAGE`), never an `app-<version>` folder, because a self-update
+  swaps versions. The entry passes `--auto-start`, and the launcher forwards that one flag when it
+  hands off to the newest version. At launch `reconcileLogin()` rewrites the entry only if it no
+  longer matches, and never touches the system when the setting is off. `config:save` writes the
+  login list before saving the config, so a refusal (a development run, a system that ignores it)
+  reaches the checkbox and nothing is saved.
+- **`config.keepRunning`** shows a tray icon (menu bar on a Mac) whenever it is on, live, no
+  restart. Closing the window then hides it instead of quitting (`shouldHideOnClose`); Quit in the
+  tray menu, Cmd+Q and a system shutdown set a `quitting` flag so they are never intercepted. The
+  icon's menu is Open, Check now (the window runs the same check as "Check all") and Quit; a click
+  opens the window except on Linux, where indicators ignore clicks and the menu does the work.
+  Launching git-updater again also brings the window back.
+
+A login start with the tray on starts **hidden** (no window, just the icon); without the tray it
+opens **minimized to the taskbar**, so it is never an invisible process. On Linux it is always
+minimized, because a tray icon needs a desktop extension on some desktops.
+
+No shell, no scheduled task, no second process and no listening port is involved. A real-Electron
+smoke test of `electron/main.js` (window hides on close with the tray on, quits with it off, the
+login-start modes, the tray following `config:save`) was run with config, data and Chromium user
+data redirected to a temp folder.
+
+### Scheduled check (cron-style)
+
+**Settings -> Schedule** can check for updates on a schedule, off by default. It only **checks and
+tells you**; it never downloads or installs anything (the scheduled install is separate, below, and
+only touches apps you tick). The schedule is a cron line in this computer's local time:
+
+```
+minute hour day-of-month month day-of-week
+47 2 * * 2#1        the 1st Tuesday of every month at 2:47 AM
+0 9 * * *           every day at 9:00
+0 8 * * MON-FRI     weekdays at 8:00
+0 23 L * *          the last day of the month at 23:00
+```
+
+`src/cron.js` is a small parser with no dependency: `*`, numbers, `a-b`, `a-b/n`, `*/n`, comma lists,
+month and weekday names, plus two extensions, `weekday#n` (the nth weekday of the month) and `L`
+(day-of-month: the last day). The classic rule is kept on purpose: when **both** day fields are
+restricted, a day matches when **either** does, which is why "the first Tuesday" is written
+`2#1` and not `1-7 * 2` (that would also run every Tuesday). A time that does not exist on a
+daylight-saving day (2:47 AM on the spring-forward day) is skipped. `validate()` refuses a bad
+schedule with a message, refuses one that never runs, and refuses one that fires **more often than
+once an hour** (GitHub allows 60 requests an hour without a token). The Settings screen shows the
+next three run times, computed by the same parser through the `schedule:preview` IPC, so what you
+see is what will happen.
+
+`src/schedule.js` is the engine: a timer inside the one running app (a tick every 30 seconds, one
+15 seconds after start, and one when the computer wakes; no scheduled task, no helper process). It
+keeps when each schedule last ran in `schedule-state.json` next to `config.json`. Switching a
+schedule on, or editing it, starts counting from then, so a past time is never run. If the app
+was off or the computer asleep at the scheduled time, the check runs **once** when it next notices
+(the "Run a missed schedule" checkbox, on by default; off: the missed time is dropped). The time is
+marked as run **before** the check starts, so a crash or a slow check never makes it run twice.
+
+A finished check sets the tray tooltip ("git-updater: 3 updates available"), shows a system
+notification when it found updates (a click opens the window), and is kept in memory so the window
+shows what it found next time it opens (`schedule:last`; rows already checked in the window are not
+overwritten). It runs while git-updater is running, so to rely on it turn on **Start at login** and
+**Keep running in the tray**. `config:save` refuses an invalid schedule when it is switched on or
+edited, and only then, so a hand-edited bad value can never block saving every other setting.
+
+### Auto-update column and the Install schedule
+
+Each app row has an **Auto-update** checkbox (`repo.autoUpdate: true` in `config.json`; unticking
+deletes the key rather than storing `false`). It is sortable and filterable (the Auto-update
+dropdown, also remembered with "Remember my filters"), survives editing the app, and is what the
+scheduled install reads. The second cron line in **Settings -> Schedule**, **Install**
+(`scheduleInstallEnabled` / `scheduleInstallCron`, off by default, same parser, hourly floor, local
+time and "Run a missed schedule" as the check), installs updates for the ticked apps. Its default
+suggestion is `47 2 * * 2#1`. The two schedules are independent jobs in the one scheduler
+(`schedule-state.json` keeps `checkLastRun/checkCron` and `installLastRun/installCron`).
+
+What the run does, in `backgroundInstall()` in `electron/main.js` (the choices are pure functions in
+`src/autoupdate.js`, tested in `test/autoupdate.test.js`):
+
+- **Which apps:** only ticked apps that are already installed on this PC (`computeInstalled`); a
+  schedule never installs a new app. Portable apps run first, then installers.
+- **One run at a time:** the scheduler skips the install job while another update is running
+  (`canRun`), and each app takes the same per-app lock a window update takes.
+- **Nothing is forced or prompted.** It calls `runner.run(config, { only, autoClose, unattended: true })`.
+  `unattended` makes the runner treat every installer as non-interactive: no installer window and no
+  UAC prompt. An installer kind it cannot run silently, or one that fails for permission (exit
+  1603 / elevation), is not retried with a window; it throws `needs you: ...`, which the run reports as
+  "needs you" and leaves for you to do from the window.
+- **Running apps follow the existing "Automatically close apps and re-open when complete" setting.**
+  On: a graceful close, the update, then the app is re-opened (`launchApp`). Off: the app is skipped
+  ("is running") and reported. It never force-closes anything.
+- **One notification per run**, e.g. "Updated 4 apps: a, b, c and 1 more. 1 needs you: d. Click to
+  open git-updater." (none when everything was already current), plus a log line with the same
+  counts. The window reloads its list when it receives `schedule:done` for the install kind.
+- **Stopping early:** a GitHub rate limit or a rejected token (`stopRun`) ends the run there, so the
+  rest of the apps are not tried and the log says why.
+
+A real-Electron smoke test (config, data and Chromium user data in a temp folder) ran a catch-up
+install against GitHub: the ticked portable app was downloaded, verified and installed, and the
+unticked app next to it was untouched. Not exercised for real: the notification itself and
+installer (non-portable) apps; both are covered by fakes and unit tests.
+
+The window got a second change with the extra column: `minWidth` is now 720 and the default width
+920, and the grid switches to its narrow layout (Type hidden) when the list is under 800 px wide
+and stacks the header under 680 px (container queries), so the name column is never squeezed.
+
+### The Settings screen
+
+Settings is its own screen, not a collapsed box under the list: a **Settings** button at the top
+right of the list's header opens it, and **Back** or **Esc** returns (Esc is ignored while a
+dropdown has focus, where it closes the dropdown). It is one scrolling page grouped under
+headings: Apps and display, Updating, Schedule, Background, GitHub, Advanced. Both screens stay mounted and
+`showScreen()` (a small pure-ish block in `ui/index.html`) just toggles `hidden`, so the search,
+filters, selection and scroll position of the list are exactly as you left them. The single
+status line (`#msg`: "Saved.", errors) is moved into whichever screen is showing, so a change made
+in Settings reports its result there. Opening Settings fetches the GitHub quota once per visit.
+Adding a portable app with no portable folder set opens Settings and focuses that field.
+`test/ui-settings.test.js` guards which controls live on which screen, that every id the script
+looks up exists, and runs `showScreen()` against a fake page. New settings (the background and
+schedule groups planned in `PROJECT-background-mode.md`) are added as more groups in this screen.
+
+### Search and filters
+
+The search box and the Type / Status dropdowns above the list narrow what is shown; a row has to
+match all of them. Search matches the owner, the app name, or both typed as `owner/app`, ignoring
+case. The matching rules are a pure block in `ui/index.html` (`matchesSearch`, `matchesStatus`,
+`matchesFilters`, between two marker comments) so `test/ui-find.test.js` can run them on their
+own; the Status wording follows what the Status column shows, and "Installed on this PC" /
+"Not installed on this PC" look at whether the app is on the machine, checked or not.
+
+Filtering only changes what is displayed. While a search or filter is active, **Check all**,
+**Update all** and the select-all box act on the rows on screen (`targetKeys()`), and say so
+("Check shown", "Update shown"); **Update selected** skips selected rows that are hidden. During a
+check or update the rows on screen are held (`holdVisible()`), even if their status stops
+matching, and the filter re-applies when the run ends, the same way sorting holds still.
+Check on open still checks every app. The toolbar's "N updates available" label is a button that
+applies the "Update or install available" status filter, which is what it counts.
+
+`config.rememberFilters` (a Settings checkbox, **off by default**) saves the Type and Status
+choices (`filterType`, `filterStatus`) when they change and restores them once at launch, behind
+the same `booted` guard as the startup sort. The search text always starts empty. Turning the
+checkbox off resets the saved choices to All.
+
+### Sort at startup
+
+Clicking a column header saves `config.sortColumn` / `config.sortDirection`, so by default the
+list reopens in the order it was last left. `config.startupSortEnabled` (a Settings checkbox,
+**off by default**, with a column and an Ascending/Descending pick: `startupSortColumn` /
+`startupSortDirection`) makes every launch start from the chosen sort instead.
+`applyStartupSort` copies it over the remembered sort once, in `load()` before the first render,
+behind the same `booted` guard as check-on-open so a config reload cannot undo a sort the user has
+clicked since. Changing the setting saves it but does not re-sort the list on screen. A bad column
+or direction in a hand-edited `config.json` falls back to the remembered sort (or App, ascending).
+
 ## Checking a change actually works
 
 The cross-platform port closed fourteen defects. Twelve would have shipped something that
@@ -456,11 +633,6 @@ bin/watch.js         headless CLI over the same engine
 Adding a platform means adding one file under `src/platform/` and one table in `assets.js`.
 Every parser in those modules is a pure string-in/records-out function, so the whole matrix is
 unit-tested from any host — only the subprocess that produces the string needs the real OS.
-
-The **open-quake drop-in app** vendors `src/*` into its own folder and drives it from the
-panel — same engine, shared config/state, cross-process safe via the engine's state lock.
-`detect.registryVersion` is kept as an alias of `detect.installedVersion` so the vendored copy
-keeps working across the rename.
 
 > Not related to `itzg/github-release-watcher` (a Java release *viewer*). This project supersedes
 > the local `github-release-watcher` engine it grew out of.

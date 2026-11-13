@@ -44,6 +44,11 @@ function parseHive(stdout) {
       };
       if (icon && /\.exe$/i.test(icon) && !/unins/i.test(icon)) rec.path = icon;
       if (cur.InstallLocation) rec.location = cur.InstallLocation.replace(/[\\/]+$/, '');
+      if (/^\d{8}$/.test(cur.InstallDate || '')) {
+        const d = cur.InstallDate;
+        const iso = `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`;
+        if (!Number.isNaN(Date.parse(iso)) && new Date(iso).toISOString().slice(0, 10) === iso) rec.installDate = iso;
+      }
       out.push(rec);
     }
   };
@@ -52,7 +57,7 @@ function parseHive(stdout) {
       push();
       cur = {};
     } else if (cur) {
-      const m = line.match(/^\s+(DisplayName|DisplayVersion|UninstallString|DisplayIcon|InstallLocation)\s+REG_\w+\s+(.*)$/);
+      const m = line.match(/^\s+(DisplayName|DisplayVersion|UninstallString|DisplayIcon|InstallLocation|InstallDate)\s+REG_\w+\s+(.*)$/);
       if (m) cur[m[1]] = m[2].trim();
     }
   }

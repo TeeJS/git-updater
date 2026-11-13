@@ -10,15 +10,24 @@ const { pipeline } = require('stream/promises');
 
 const API = 'https://api.github.com';
 const UA = 'release-watcher';
-const MAX_BYTES = 500 * 1024 * 1024; // 500 MB download cap
+const DEFAULT_MAX_BYTES = 500 * 1024 * 1024; // default download cap; callers pass the configured one (null = no cap)
+const LIMIT_HINT = 'raise the download limit (Settings, or downloadLimitMiB in config.json)';
 
-function apiHeaders() {
+// Unauthenticated API calls get 60/hour per IP address — shared with every other tool and
+// machine behind the same public IP (a corporate VPN egress, a household NAT). A token raises
+// that to 5,000/hour for the account. The GUI sets one from Settings (setToken); the headless
+// CLI falls back to GITHUB_TOKEN. Sent to api.github.com only, never to asset downloads.
+let _token = null;
+function setToken(t) { _token = typeof t === 'string' && t.trim() ? t.trim() : null; }
+function currentToken() { return _token || process.env.GITHUB_TOKEN || null; }
+
+function apiHeaders(token = currentToken()) {
   const h = {
     'User-Agent': UA,
     Accept: 'application/vnd.github+json',
     'X-GitHub-Api-Version': '2022-11-28',
   };
-  if (process.env.GITHUB_TOKEN) h.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
+  if (token) h.Authorization = `Bearer ${token}`;
   return h;
 }
 
@@ -99,12 +108,31 @@ async function withNetRetry(fn, url) {
   throw describeNetworkError(lastErr, url);
 }
 
-async function ghJson(url) {
-  const res = await withNetRetry(() => doFetch(url, { headers: apiHeaders() }), url);
-  if (res.status === 403 && res.headers.get('x-ratelimit-remaining') === '0') {
-    const reset = Number(res.headers.get('x-ratelimit-reset') || 0);
-    const when = reset ? new Date(reset * 1000).toLocaleTimeString() : 'later';
-    const e = new Error(`GitHub rate limit hit (resets ~${when}). Set GITHUB_TOKEN to raise the limit.`);
+async function ghJson(url, token) {
+  const res = await withNetRetry(() => doFetch(url, { headers: apiHeaders(token) }), url);
+  const authed = !!(token || currentToken());
+  if (res.status === 401 && authed) {
+    const where = token || _token ? 'replace or remove it in Settings' : 'check the GITHUB_TOKEN environment variable';
+    const e = new Error(`GitHub rejected the access token (expired or revoked?) — ${where}.`);
+    e.status = 401;
+    e.badToken = true;
+    throw e;
+  }
+  // Primary limit: quota exhausted (remaining 0, resets at x-ratelimit-reset). Secondary limit:
+  // too many requests too fast — 429, or 403 with retry-after, while quota is still left.
+  const retryAfter = Number(res.headers.get('retry-after') || 0);
+  const primary = res.headers.get('x-ratelimit-remaining') === '0';
+  if ((res.status === 403 || res.status === 429) && (primary || retryAfter || res.status === 429)) {
+    let msg;
+    if (primary) {
+      const reset = Number(res.headers.get('x-ratelimit-reset') || 0);
+      const when = reset ? new Date(reset * 1000).toLocaleTimeString() : 'later';
+      const hint = authed ? '' : ' Add a GitHub access token in Settings (or set GITHUB_TOKEN) to raise the limit from 60 to 5,000 an hour.';
+      msg = `GitHub rate limit hit (resets ~${when}).${hint}`;
+    } else {
+      msg = `GitHub is throttling requests — wait ${retryAfter ? `${retryAfter}s` : 'a minute'} and try again.`;
+    }
+    const e = new Error(msg);
     e.rateLimited = true;
     throw e;
   }
@@ -167,6 +195,14 @@ async function getLatestRelease(owner, repo, opts = {}) {
   }
 }
 
+// Current core API quota. /rate_limit itself does not count against the limit. Pass a token
+// to test a candidate before saving it; omitted, it reports whatever the app is using now.
+async function rateLimit(token) {
+  const body = await ghJson(`${API}/rate_limit`, token);
+  const core = (body && body.resources && body.resources.core) || (body && body.rate) || {};
+  return { limit: core.limit, remaining: core.remaining, reset: core.reset };
+}
+
 async function listAssets(owner, repo, opts = {}) {
   const rel = await getLatestRelease(owner, repo, opts);
   return { tag: rel.tag_name, assets: (rel.assets || []).map((a) => a.name) };
@@ -174,7 +210,8 @@ async function listAssets(owner, repo, opts = {}) {
 
 // fetch follows redirects by default; enforce the size cap while streaming.
 // onProgress(pct 0-100) is called as bytes arrive (throttled) when a size is known.
-async function downloadAsset(url, destPath, onProgress) {
+// maxBytes: the cap in bytes (default 500 MiB when omitted); pass null for no cap.
+async function downloadAsset(url, destPath, onProgress, maxBytes = DEFAULT_MAX_BYTES) {
   // Retry the whole download: a reset can hit either the initial connection (fetch rejects)
   // or the body stream (pipeline rejects). Each attempt re-fetches and overwrites destPath,
   // so a partial file from a failed try is never left behind.
@@ -182,7 +219,7 @@ async function downloadAsset(url, destPath, onProgress) {
     const res = await doFetch(url, { headers: { 'User-Agent': UA } });
     if (!res.ok) throw new Error(`download ${res.status} for ${url}`);
     const declared = Number(res.headers.get('content-length') || 0);
-    if (declared && declared > MAX_BYTES) throw new Error(`asset too large: ${declared} bytes (cap ${MAX_BYTES})`);
+    if (maxBytes != null && declared && declared > maxBytes) throw new Error(`asset too large: ${declared} bytes (cap ${maxBytes}) — ${LIMIT_HINT}`);
     let seen = 0;
     let lastPct = -1;
     await pipeline(
@@ -190,7 +227,7 @@ async function downloadAsset(url, destPath, onProgress) {
       async function* (source) {
         for await (const chunk of source) {
           seen += chunk.length;
-          if (seen > MAX_BYTES) throw new Error(`asset exceeded size cap ${MAX_BYTES} bytes`);
+          if (maxBytes != null && seen > maxBytes) throw new Error(`asset exceeded size cap ${maxBytes} bytes — ${LIMIT_HINT}`);
           if (onProgress && declared) {
             const pct = Math.floor((seen / declared) * 100);
             if (pct !== lastPct) {
@@ -248,7 +285,20 @@ function verifyDigest(filePath, digest) {
   const [algo, expected] = String(digest).split(':');
   if (!['sha256', 'sha512'].includes(algo) || !expected) return { skipped: true, note: `unsupported digest "${digest}"; skipped` };
   const hash = crypto.createHash(algo);
-  hash.update(fs.readFileSync(filePath)); // ponytail: whole-file read; stream if assets get very large
+  // Hash in bounded chunks rather than reading the whole file: with the download cap raised
+  // or off, an installer can be several GiB, and a whole-file read both needs that much
+  // memory and fails outright past what one Buffer can hold.
+  // Hand-ported from EstusFlask/git-updater-background (flash201524), commit 4d89769.
+  const fd = fs.openSync(filePath, 'r');
+  try {
+    const chunk = Buffer.allocUnsafe(1024 * 1024);
+    let count;
+    while ((count = fs.readSync(fd, chunk, 0, chunk.length, null)) > 0) {
+      hash.update(chunk.subarray(0, count));
+    }
+  } finally {
+    fs.closeSync(fd);
+  }
   const actual = hash.digest('hex');
   if (actual.toLowerCase() !== expected.toLowerCase()) {
     throw new Error(`checksum mismatch (expected ${expected.slice(0, 12)}…, got ${actual.slice(0, 12)}…)`);
@@ -256,4 +306,4 @@ function verifyDigest(filePath, digest) {
   return { verified: true };
 }
 
-module.exports = { getLatestRelease, listAssets, downloadAsset, verifyDigest, fetchChecksumFromRelease, setFetch };
+module.exports = { getLatestRelease, listAssets, downloadAsset, verifyDigest, fetchChecksumFromRelease, setFetch, setToken, rateLimit };

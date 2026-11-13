@@ -8,7 +8,8 @@
 <style>
   :root {
     --bg: #0d1117; --panel: #161b22; --panel-2: #1c2128; --border: #30363d;
-    --text: #e6edf3; --muted: #8b949e; --faint: #6e7681;
+    /* Text greys: both are at least 4.5:1 (WCAG AA) on --bg, --panel and --panel-2; test/ui-contrast.test.js checks it. */
+    --text: #e6edf3; --muted: #8b949e; --faint: #808a96;
     --accent: #e3a13c; --accent-ink: #1a1206;
     --green: #3fb950; --blue: #58a6ff; --red: #f85149;
     --mono: 'Cascadia Code', 'Cascadia Mono', Consolas, ui-monospace, monospace;
@@ -34,10 +35,11 @@
            border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px;
            margin-bottom: 1rem; box-shadow: 0 8px 24px -18px #000; }
   .row { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
-  input[type=text] { font: 400 14px var(--mono); padding: .5rem .65rem; border-radius: 8px; color: var(--text);
+  input[type=text], input[type=password], input[type=number] { font: 400 14px var(--mono); padding: .5rem .65rem; border-radius: 8px; color: var(--text);
     background: #0d1117; border: 1px solid var(--border); }
-  input[type=text]:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(227,161,60,.18); }
-  input[type=text]::placeholder { color: var(--faint); }
+  input[type=number] { width: 7rem; }
+  input[type=text]:focus, input[type=password]:focus, input[type=number]:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(227,161,60,.18); }
+  input[type=text]::placeholder, input[type=password]::placeholder { color: var(--faint); }
   input[type=checkbox] { width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; }
   button { font: 600 13.5px var(--sans); cursor: pointer; border-radius: 8px; padding: .46rem .78rem;
            border: 1px solid var(--border); background: #21262d; color: var(--text);
@@ -63,7 +65,6 @@
   .add-row button, .scan-row button { height: 35px; }
   .scan-row { display: flex; align-items: center; justify-content: space-between; gap: .75rem; }
   .scan-label { display: inline-flex; align-items: center; gap: .4rem; }
-  details.settings { margin-top: 1rem; }
   @media (max-width: 620px) {
     .add-row { flex-wrap: wrap; }
     .add-row input { min-width: 100%; }
@@ -73,6 +74,22 @@
 
   .toolbar { display: flex; align-items: center; gap: .55rem; margin-bottom: .7rem; }
   .toolbar .count { color: var(--muted); font-size: .92rem; margin-right: auto; font-weight: 600; }
+  [hidden] { display: none !important; }
+  /* Search + filters above the list. */
+  .findbar { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .65rem; margin-bottom: .7rem; }
+  .searchbox { position: relative; flex: 1 1 14rem; min-width: 10rem; }
+  .searchbox input { width: 100%; box-sizing: border-box; padding-right: 2rem; }
+  .searchbox .clear { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); padding: .05rem .45rem; border: 0; background: transparent; font-size: 1.1rem; line-height: 1.4; color: var(--muted); }
+  .searchbox .clear:hover:not(:disabled) { background: transparent; color: var(--text); }
+  .filter { display: inline-flex; align-items: center; gap: .4rem; color: var(--muted); font-size: .85rem; }
+  .filter select { font: 400 13.5px var(--sans); padding: .42rem .5rem; border-radius: 8px; color: var(--text); background: #0d1117; border: 1px solid var(--border); }
+  .filter select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(227,161,60,.18); }
+  .filter select.on { border-color: var(--accent); }
+  .linklike { background: none; border: 0; padding: 0; font: inherit; color: var(--blue); text-decoration: underline; cursor: pointer; }
+  .linklike:hover:not(:disabled) { background: none; color: var(--text); }
+  .toolbar .linklike { font-weight: 600; font-size: .92rem; text-decoration: none; }
+  .toolbar .linklike:hover:not(:disabled) { text-decoration: underline; }
+  .filtered { color: var(--muted); font-size: .85rem; margin: -.2rem 0 .6rem; display: flex; gap: .6rem; align-items: baseline; }
 
   /* One shared grid defines every column for the header AND each row. The App column
      absorbs available space and ellipsizes — no hard minimum, so the table can never
@@ -95,7 +112,8 @@
       66px              /* type */
       94px              /* current */
       94px              /* available */
-      130px             /* status */
+      170px             /* status */
+      64px              /* auto-update */
       100px;            /* actions */
     column-gap: 10px;
     align-items: center;
@@ -110,16 +128,30 @@
   .row-actions { display: flex; justify-content: flex-end; gap: 6px; white-space: nowrap; }
 
   .table-header > span { font: 600 .68rem var(--mono); letter-spacing: .07em; text-transform: uppercase; color: var(--faint); padding-bottom: .5rem; }
-  .app-row { padding: .5rem 0; border-top: 1px solid var(--border); }
+  .table-header .sort-button { display: block; width: 100%; min-height: 24px; padding: 0; border: 0; background: none; color: inherit; font: inherit; letter-spacing: inherit; text-align: left; text-transform: inherit; cursor: pointer; }
+  .table-header .sort-button:hover, .table-header .sort-button:focus-visible { color: var(--text); }
+  .sort-arrow { margin-left: .2rem; }
+  /* "Owner / App" share one column (the rows show owner/repo): two separate sort buttons side by side. */
+  .table-header > .name-header { display: flex; align-items: baseline; gap: .35rem; overflow: hidden; white-space: nowrap; }
+  .name-header .sort-button { width: auto; }  .app-row { padding: .5rem 0; border-top: 1px solid var(--border); }
   .app-name { font: 500 14px var(--mono); }
   .status { display: inline-flex; align-items: center; gap: .4rem; font-size: .88rem; }
   .status .txt { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* The Auto-update column: one checkbox per app, header wraps onto two lines ("Auto-" / "update"). */
+  .auto-cell { display: flex; justify-content: center; align-items: center; }
+  .table-header > .auto-cell .sort-button { text-align: center; }
+  .table-header > .auto-cell .sort-button { line-height: 1.15; }
   /* Narrow card: hide the Type column (container query on the card, not the viewport). */
-  @container (max-width: 720px) {
+  @container (max-width: 800px) {
     .table-header,
-    .app-row { grid-template-columns: 24px minmax(0, 1fr) 88px 88px 120px 100px; column-gap: 8px; }
+    .app-row { grid-template-columns: 24px minmax(0, 1fr) 88px 88px 160px 64px 100px; column-gap: 8px; }
     /* .badge sets display later in the cascade; child selector out-specifies it */
     .table-header > .type-cell, .app-row > .type-cell { display: none; }
+  }
+  /* Narrow card (the window near its 720px minimum): the name column is too thin for "Owner / App" on one line, so stack the two sort buttons. */
+  @container (max-width: 680px) {
+    .table-header > .name-header { flex-direction: column; align-items: flex-start; gap: 0; }
+    .name-header .name-sep { display: none; }
   }
   .badge { display: inline-block; font: 600 .72rem var(--sans); padding: .12rem .5rem; border-radius: 999px; border: 1px solid transparent; }
   .badge.portable { color: var(--blue); background: rgba(88,166,255,.12); border-color: rgba(88,166,255,.3); }
@@ -152,11 +184,14 @@
   #msg.ok { color: var(--green); } #msg.bad { color: var(--red); } #msg.info { color: var(--muted); }
   .empty { color: var(--faint); padding: .7rem .35rem; font-size: .9rem; }
   .divider { height: 1px; background: var(--border); margin: 12px -16px; }
-  details.settings { margin-top: .2rem; }
-  details.settings > summary { cursor: pointer; color: var(--muted); font: 600 .8rem var(--mono); letter-spacing: .08em;
-    text-transform: uppercase; list-style: none; padding: .3rem 0; }
-  details.settings > summary::-webkit-details-marker { display: none; }
-  details.settings > summary::before { content: '⚙  '; }
+  /* Settings is its own screen: a button in the list's header, and a header with Back on the screen. */
+  .topbar { flex-wrap: wrap; }
+  .settings-btn { margin-left: auto; font-size: .85rem; color: var(--muted); }
+  .settings-btn:hover:not(:disabled) { color: var(--text); }
+  .back-btn { color: var(--muted); }
+  .screen-title { font-size: 1.15rem; }
+  .settings-group { margin-bottom: .9rem; }
+  .settings-group > .sec-h { margin-bottom: .7rem; }
   #selfup { display: none; align-items: center; gap: .6rem; margin: 0 0 .8rem; padding: .5rem .7rem;
             font-size: .85rem; color: var(--accent); background: rgba(227,161,60,.1);
             border: 1px solid rgba(227,161,60,.35); border-radius: 8px; }
@@ -170,17 +205,50 @@
 </head>
 <body>
 <div class="wrap">
-  <header>
+  <div id="mainScreen">
+  <header class="topbar">
     <span class="logo" aria-hidden="true"><img src="data:image/png;base64,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" alt="" width="28" height="28"></span>
     <h1><span class="g">git</span>-updater</h1>
+    <button type="button" id="openSettings" class="ghost settings-btn" title="Open Settings"><span aria-hidden="true">⚙</span> Settings</button>
   </header>
   <p class="tagline">Keeps your apps current straight from their GitHub releases.</p>
-  <div id="msg"></div>
+  <div id="msgHome"><div id="msg"></div></div>
   <div id="selfup"><span id="selfupText"></span><button id="selfupBtn" class="primary"></button><button id="selfupDismiss" title="Dismiss">&times;</button></div>
 
   <div class="panel">
+    <div class="findbar" role="search">
+      <div class="searchbox">
+        <input type="text" id="search" placeholder="Search owner or app…" aria-label="Search by owner or app" autocomplete="off" spellcheck="false">
+        <button type="button" class="clear" id="searchClear" title="Clear search (Esc)" aria-label="Clear search" hidden>&times;</button>
+      </div>
+      <label class="filter">Type
+        <select id="filterType" aria-label="Filter by type">
+          <option value="all">All</option><option value="portable">Portable</option><option value="installer">Installer</option>
+        </select>
+      </label>
+      <label class="filter">Status
+        <select id="filterStatus" aria-label="Filter by status">
+          <option value="all">All</option>
+          <option value="unchecked">Not checked yet</option>
+          <option value="uptodate">Checked and up to date</option>
+          <option value="available">Update or install available</option>
+          <option value="update">Update available</option>
+          <option value="installable">Available to install</option>
+          <option value="present">Installed on this PC</option>
+          <option value="absent">Not installed on this PC</option>
+          <option value="failed">Failed</option>
+          <option value="working">Working now</option>
+        </select>
+      </label>
+      <label class="filter">Auto-update
+        <select id="filterAuto" aria-label="Filter by auto-update">
+          <option value="all">All</option><option value="on">On</option><option value="off">Off</option>
+        </select>
+      </label>
+    </div>
+    <div class="filtered" id="filtered" hidden><span id="filteredText"></span><button type="button" class="linklike" id="filterClear">Clear</button></div>
     <div class="toolbar">
-      <span class="count" id="count"></span>
+      <span class="count"><button type="button" class="linklike" id="count" title="Show only the apps with an update" hidden></button></span>
       <button id="checkAll">Check all</button>
       <button id="updateSel" disabled>Update selected</button>
       <button id="updateAll" class="primary">Update all</button>
@@ -189,11 +257,21 @@
     <div class="table-wrapper">
       <div class="table-header">
         <span><input type="checkbox" id="selAll" title="Select all"></span>
-        <span>App</span><span class="type-cell">Type</span><span>Current</span><span>Available</span><span>Status</span><span></span>
+        <span class="name-header">
+          <span role="columnheader" data-sort="owner"><button class="sort-button" type="button">Owner<span class="sort-arrow" aria-hidden="true"></span></button></span>
+          <span class="name-sep" aria-hidden="true">/</span>
+          <span role="columnheader" data-sort="app"><button class="sort-button" type="button">App<span class="sort-arrow" aria-hidden="true"></span></button></span>
+        </span>
+        <span class="type-cell" role="columnheader" data-sort="type"><button class="sort-button" type="button">Type<span class="sort-arrow" aria-hidden="true"></span></button></span>
+        <span role="columnheader" data-sort="current"><button class="sort-button" type="button">Current<span class="sort-arrow" aria-hidden="true"></span></button></span>
+        <span role="columnheader" data-sort="available"><button class="sort-button" type="button">Available<span class="sort-arrow" aria-hidden="true"></span></button></span>
+        <span role="columnheader" data-sort="status"><button class="sort-button" type="button">Status<span class="sort-arrow" aria-hidden="true"></span></button></span>
+        <span class="auto-cell" role="columnheader" data-sort="auto" title="Apps ticked here are updated by the Install schedule"><button class="sort-button" type="button">Auto-update<span class="sort-arrow" aria-hidden="true"></span></button></span><span></span>
       </div>
       <div id="rows"></div>
     </div>
     <div class="empty" id="empty" style="display:none">No apps tracked yet — add one below.</div>
+    <div class="empty" id="noMatch" hidden>No apps match. <button type="button" class="linklike" id="noMatchClear">Clear the search and filters</button></div>
 
     <div class="divider"></div>
 
@@ -227,9 +305,17 @@
     </div>
   </div>
 
-  <details class="settings" id="settings">
-    <summary>Settings</summary>
-    <div class="panel" style="margin-top:.6rem">
+  </div>
+
+  <div id="settingsScreen" hidden>
+    <header class="topbar">
+      <button type="button" id="settingsBack" class="ghost back-btn" title="Back to the list (Esc)">&larr; Back</button>
+      <h1 class="screen-title">Settings</h1>
+    </header>
+    <div class="msg-slot"></div>
+
+    <section class="panel settings-group" aria-labelledby="sg-apps">
+      <h2 class="sec-h" id="sg-apps">Apps and display</h2>
       <div class="row">
         <span style="color:var(--muted);font-size:.9rem;min-width:8rem">Portable apps folder</span>
         <input type="text" id="portableRoot" placeholder="Click Browse to choose" style="flex:1;min-width:12rem">
@@ -238,32 +324,170 @@
       </div>
       <p class="hint">Portable apps unzip into <code>&lt;folder&gt;/&lt;repo&gt;</code>.</p>
       <div class="row" style="margin-top:.6rem">
-        <span style="color:var(--muted);font-size:.9rem;min-width:8rem">Advanced</span>
-        <button id="editJson">Edit config.json</button>
-        <button id="openLog">Open log</button>
+        <span style="color:var(--muted);font-size:.9rem;min-width:8rem">Date format</span>
+        <select id="dateFormat" aria-label="Status date format"><option value="MM/DD">MM/DD</option><option value="DD/MM">DD/MM</option></select>
       </div>
-      <p class="hint">Hand-edit for per-app overrides (asset pattern, install dir, installer kind/args, process name, release tag prefix).</p>
+      <div class="row" style="margin-top:.6rem">
+        <span style="color:var(--muted);font-size:.9rem;min-width:8rem">Sort order</span>
+        <label class="scan-label"><input type="checkbox" id="startupSortEnabled"> Sort the list at startup by</label>
+        <select id="startupSortColumn" aria-label="Column to sort by at startup">
+          <option value="owner">Owner</option><option value="app">App</option><option value="type">Type</option>
+          <option value="current">Current</option><option value="available">Available</option><option value="status">Status</option><option value="auto">Auto-update</option>
+        </select>
+        <select id="startupSortDirection" aria-label="Sort direction at startup"><option value="asc">Ascending</option><option value="desc">Descending</option></select>
+      </div>
+      <p class="hint">Off by default: the list opens in the order you last sorted it. On, every launch starts with this sort instead. You can still click a column header to re-sort while the app is open.</p>
+      <div class="row" style="margin-top:.6rem">
+        <span style="color:var(--muted);font-size:.9rem;min-width:8rem">Filters</span>
+        <label class="scan-label"><input type="checkbox" id="rememberFilters"> Remember my filters between launches</label>
+      </div>
+      <p class="hint">Off by default: the Type and Status filters go back to All every time git-updater opens. On, they come back as you left them. The search box always starts empty.</p>
+    </section>
+
+    <section class="panel settings-group" aria-labelledby="sg-updating">
+      <h2 class="sec-h" id="sg-updating">Updating</h2>
+      <div class="row">
+        <span style="color:var(--muted);font-size:.9rem;min-width:8rem">Automatically</span>
+        <label class="scan-label"><input type="checkbox" id="checkOnOpen"> Check for updates when git-updater opens</label>
+      </div>
+      <p class="hint">Off by default. On, opening the window checks every tracked app — it only checks, and never updates or installs anything.</p>
+      <div class="row" style="margin-top:.6rem">
+        <span style="color:var(--muted);font-size:.9rem;min-width:8rem">Update all</span>
+        <label class="scan-label"><input type="checkbox" id="autoCloseReopen"> Automatically close apps and re-open when complete</label>
+      </div>
+      <p class="hint">Off by default. When Update all runs, close running apps gracefully and re-open those it closed after each update completes. Apps that do not close are skipped.</p>
+      <div class="row" style="margin-top:.6rem">
+        <span style="color:var(--muted);font-size:.9rem;min-width:8rem">Downloads</span>
+        <label class="scan-label"><input type="checkbox" id="downloadLimitEnabled"> Limit each download to</label>
+        <input type="number" id="downloadLimitMiB" min="1" max="1048576" step="1" aria-label="Download limit in MiB">
+        <span style="color:var(--muted);font-size:.9rem">MiB</span>
+        <button id="saveDownloadLimit">Save</button>
+      </div>
+      <p class="hint">Default 500 MiB: a bigger download is refused with a message. Turn the limit off for none; large files still need enough free disk space.</p>
       <div class="row" style="margin-top:.6rem">
         <span style="color:var(--muted);font-size:.9rem;min-width:8rem">git-updater updates</span>
         <label class="scan-label"><input type="checkbox" id="selfPreRel"> Update git-updater to beta (pre-release) versions</label>
       </div>
       <p class="hint">Off by default: git-updater updates itself only to stable releases. This is separate from the per-app beta setting.</p>
-      <div class="row" style="margin-top:.6rem">
-        <span style="color:var(--muted);font-size:.9rem;min-width:8rem">Automatically</span>
-        <label class="scan-label"><input type="checkbox" id="checkOnOpen"> Check for updates when git-updater opens</label>
+    </section>
+
+    <section class="panel settings-group" aria-labelledby="sg-schedule">
+      <h2 class="sec-h" id="sg-schedule">Schedule</h2>
+      <div class="row">
+        <span style="color:var(--muted);font-size:.9rem;min-width:8rem">Check</span>
+        <label class="scan-label"><input type="checkbox" id="scheduleCheckEnabled"> Check for updates on a schedule</label>
+        <input type="text" id="scheduleCheckCron" placeholder="0 9 * * *" aria-label="Check schedule" spellcheck="false" autocomplete="off" style="width:13rem">
       </div>
-      <p class="hint">Off by default: git-updater stays on-demand. On, opening the window checks every tracked app — it never updates or installs anything automatically.</p>
+      <p class="hint" id="scheduleCheckPreview" aria-live="polite"></p>
+      <p class="hint">Off by default. It only checks and tells you with a notification; it never downloads or installs anything. A schedule has five fields in this computer's time: <code>minute hour day-of-month month weekday</code>. For example <code>0 9 * * *</code> is every day at 9:00, <code>0 8 * * MON-FRI</code> is weekdays at 8:00, and <code>47 2 * * 2#1</code> is the 1st Tuesday of every month at 2:47 AM (<code>#</code> means the nth weekday; <code>L</code> in the day-of-month field is the last day). It runs at most once an hour, and only while git-updater is running: turn on <em>Start at login</em> and <em>Keep running in the tray</em> below to keep it running.</p>
+      <div class="row" style="margin-top:.9rem">
+        <span style="color:var(--muted);font-size:.9rem;min-width:8rem">Install</span>
+        <label class="scan-label"><input type="checkbox" id="scheduleInstallEnabled"> Update my Auto-update apps on a schedule</label>
+        <input type="text" id="scheduleInstallCron" placeholder="47 2 * * 2#1" aria-label="Install schedule" spellcheck="false" autocomplete="off" style="width:13rem">
+      </div>
+      <p class="hint" id="scheduleInstallPreview" aria-live="polite"></p>
+      <p class="hint" id="scheduleInstallApps"></p>
+      <p class="hint">Off by default. At the scheduled time git-updater updates <strong>only the apps ticked in the Auto-update column</strong> of the list, and only those already installed: it never installs a new app. Portable apps go first, then installers. It runs unattended, so it never opens an installer window or a permission prompt: an installer that needs administrator permission is skipped and listed in the notification as needing you, and you update it from the window. A running app follows <em>Automatically close apps and re-open when complete</em> above: on, it is closed gracefully, updated and re-opened; off, it is skipped. Nothing is ever force-closed. Same rules for the schedule as above.</p>
+      <div class="row" style="margin-top:.6rem">
+        <span style="color:var(--muted);font-size:.9rem;min-width:8rem">Missed runs</span>
+        <label class="scan-label"><input type="checkbox" id="scheduleCatchUp"> Run a missed schedule when the computer next starts or wakes</label>
+      </div>
+      <p class="hint">On by default. If the computer was off or asleep at the scheduled time, the check runs once as soon as git-updater notices. Off: a missed time is simply skipped.</p>
+    </section>
+
+    <section class="panel settings-group" aria-labelledby="sg-background">
+      <h2 class="sec-h" id="sg-background">Background</h2>
+      <div class="row">
+        <span style="color:var(--muted);font-size:.9rem;min-width:8rem">At login</span>
+        <label class="scan-label"><input type="checkbox" id="startAtLogin"> Start git-updater when I sign in</label>
+      </div>
+      <p class="hint">Off by default. On, git-updater starts when you sign in. With the tray option below it starts hidden in the tray; without it the window opens minimized to the taskbar. Windows lists it under Task Manager &rarr; Startup apps, where you can also turn it off.</p>
+      <div class="row" style="margin-top:.6rem">
+        <span style="color:var(--muted);font-size:.9rem;min-width:8rem">Tray</span>
+        <label class="scan-label"><input type="checkbox" id="keepRunning"> Keep running in the tray when I close the window</label>
+      </div>
+      <p class="hint">Off by default: closing the window quits git-updater. On, closing it hides it to an icon in the tray (the menu bar on a Mac). Click the icon to open it, or right-click for Open, Check now and Quit. On some Linux desktops the tray icon needs an extension; start git-updater again to bring the window back.</p>
+    </section>
+
+    <section class="panel settings-group" aria-labelledby="sg-github">
+      <h2 class="sec-h" id="sg-github">GitHub</h2>
+      <div class="row">
+        <span style="color:var(--muted);font-size:.9rem;min-width:8rem">GitHub token</span>
+        <input type="password" id="ghToken" placeholder="github_pat_… or ghp_…" autocomplete="off" spellcheck="false" style="flex:1;min-width:12rem">
+        <button id="saveToken">Save</button>
+        <button id="clearToken" style="display:none">Remove</button>
+      </div>
+      <p class="hint" id="tokenHint">Optional. Without one GitHub allows 60 requests an hour per network; with one, 5,000. A fine-grained token with <b>Public repositories (read-only)</b> access and no other permissions is enough. Stored encrypted on this computer, never in config.json.</p>
+    </section>
+
+    <section class="panel settings-group" aria-labelledby="sg-advanced">
+      <h2 class="sec-h" id="sg-advanced">Advanced</h2>
+      <div class="row">
+        <span style="color:var(--muted);font-size:.9rem;min-width:8rem">Files</span>
+        <button id="editJson">Edit config.json</button>
+        <button id="openLog">Open log</button>
+      </div>
+      <p class="hint">Hand-edit for per-app overrides (asset pattern, install dir, installer kind/args, process name, release tag prefix).</p>
       <p class="hint">git-updater <span id="appVersion"></span></p>
-    </div>
-  </details>
+    </section>
+  </div>
 </div>
 
 <script>
+// Browser copy of core.cmpVersion. Kept in sync by the parity test in ui-sort.test.js.
+(function () {
+  const normTag = (t) => {
+    const s = String(t == null ? '' : t).trim();
+    return /\d/.test(s) ? s.replace(/^[^0-9]*(?=[0-9])/, '') : s;
+  };
+  const nums = (s) => s.split('.').map((x) => parseInt(x, 10) || 0);
+  function splitVer(t) {
+    let s = normTag(t);
+    const plus = s.indexOf('+');
+    if (plus >= 0) s = s.slice(0, plus);
+    s = s.replace(/\s*\([^)]*\)\s*$/, '');
+    const m = s.match(/^(\d+(?:\.\d+)*)(?:-(.*))?$/);
+    if (m) return { nums: nums(m[1]), pre: m[2] || '' };
+    const lead = s.match(/^(\d+(?:\.\d+)*)/);
+    return lead ? { nums: nums(lead[1]), pre: '' } : { nums: [0], pre: '' };
+  }
+  function cmpNums(a, b) {
+    for (let i = 0; i < Math.max(a.length, b.length); i++) {
+      const x = a[i] || 0, y = b[i] || 0;
+      if (x < y) return -1;
+      if (x > y) return 1;
+    }
+    return 0;
+  }
+  function naturalCmp(a, b) {
+    const ax = a.match(/\d+|\D+/g) || [], bx = b.match(/\d+|\D+/g) || [];
+    for (let i = 0; i < Math.max(ax.length, bx.length); i++) {
+      const as = ax[i], bs = bx[i];
+      if (as === undefined) return -1;
+      if (bs === undefined) return 1;
+      if (/^\d+$/.test(as) && /^\d+$/.test(bs)) {
+        const d = parseInt(as, 10) - parseInt(bs, 10);
+        if (d) return d < 0 ? -1 : 1;
+      } else if (as !== bs) return as < bs ? -1 : 1;
+    }
+    return 0;
+  }
+  window.compareVersions = (a, b) => {
+    const va = splitVer(a), vb = splitVer(b);
+    const c = cmpNums(va.nums, vb.nums);
+    if (c !== 0) return c;
+    if (va.pre && !vb.pre) return -1;
+    if (!va.pre && vb.pre) return 1;
+    if (va.pre === vb.pre) return 0;
+    return naturalCmp(va.pre, vb.pre);
+  };
+})();
 let config = { portableRoot: '', repos: [] };
 const st = {};       // appKey -> { ph, pct, from(current), to(available), reason, present }
 const selected = new Set();
 let busy = false;
 let booted = false; // first window load done — guards the check-on-open from config reloads
+let displayOrder = null; // preserve row positions while a check or update is running
 
 const $ = (id) => document.getElementById(id);
 const keyOf = (r) => `${r.owner}/${r.repo}#${r.type}`;
@@ -282,6 +506,29 @@ function parseRepo(s) {
   return null;
 }
 
+function statusDate(s) {
+  const time = Date.parse(s.date || '');
+  return Number.isFinite(time) ? time : null;
+}
+function formatStatusDate(date, format) {
+  const time = Date.parse(date || '');
+  if (!Number.isFinite(time)) return '';
+  // Registry dates are calendar days; timestamps are instants shown in local time.
+  const calendar = /^\d{4}-\d{2}-\d{2}$/.test(date);
+  const d = new Date(time);
+  const mm = calendar ? date.slice(5, 7) : String(d.getMonth() + 1).padStart(2, '0');
+  const dd = calendar ? date.slice(8, 10) : String(d.getDate()).padStart(2, '0');
+  return format === 'DD/MM' ? `${dd}/${mm}` : `${mm}/${dd}`;
+}
+function datedStatus(s) {
+  const verb = s.lastAction === 'updated' ? 'Updated' : 'Installed';
+  const date = formatStatusDate(s.date, config.dateFormat);
+  return { text: date ? `${verb} ${date}` : verb, cls: 'c-ok' };
+}
+function statusGroup(s) {
+  if (['current', 'installed', 'updated'].includes(s.ph)) return s.ph === 'updated' || (s.ph === 'current' && s.lastAction === 'updated') ? 'Updated' : 'Installed';
+  return statusView(s).text;
+}
 function statusView(s) {
   switch (s.ph) {
     case 'loading': return { text: 'Loading…', cls: 'c-work' };
@@ -291,10 +538,10 @@ function statusView(s) {
     case 'verifying': return { text: 'Verifying SHA-256', cls: 'c-work' };
     case 'installing': return { text: 'Installing…', cls: 'c-work' };
     case 'waiting': return { text: 'Waiting for installer…', cls: 'c-work' };
-    case 'current': return { text: 'Up to date', cls: 'c-ok' };
+    case 'current': return datedStatus(s);
     case 'available': return s.present ? { text: 'Update available', cls: 'c-up' } : { text: 'Available to install', cls: 'c-up' };
-    case 'installed': return { text: 'Installed', cls: 'c-ok' };
-    case 'updated': return { text: 'Updated', cls: 'c-ok' };
+    case 'installed': return datedStatus({ ...s, lastAction: 'installed' });
+    case 'updated': return datedStatus({ ...s, lastAction: 'updated' });
     case 'failed': return { text: s.reason || 'Failed', cls: 'c-bad' };
     default: return s.present ? { text: 'Not checked', cls: 'c-muted' } : { text: 'Not installed', cls: 'c-warn' };
   }
@@ -310,11 +557,193 @@ function primaryAction(s) {
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
 const cell = (node, cls) => { const td = document.createElement('td'); if (cls) td.className = cls; if (node) td.appendChild(node); return td; };
 
+// --- background results ---------------------------------------------------------
+// What the scheduled check found fills in rows that have no status yet, so opening the window
+// shows it without checking again. Rows already checked, and failures, are left alone.
+function mergeBackgroundResults(st, results) {
+  let n = 0;
+  for (const r of results || []) {
+    const s = st[r.id];
+    if (!s || s.ph !== 'idle' || r.status === 'failed') continue;
+    st[r.id] = { ...s, ph: r.status === 'current' ? 'current' : 'available', from: r.from || s.from, to: r.to };
+    n++;
+  }
+  return n;
+}
+// --- end of the background results block ---
+
+// --- screens: the list, and Settings as its own screen --------------------------
+// Both stay mounted and the other is just hidden, so the search, filters, selection and scroll
+// position of the list are exactly as you left them when you come back. The one status line
+// ("Saved.", errors) moves with you, so a change made in Settings shows its result there.
+let mainScrollY = 0;
+function showScreen(name) {
+  const toSettings = name === 'settings';
+  if (toSettings === !$('settingsScreen').hidden) return; // already there
+  if (toSettings) mainScrollY = window.scrollY;
+  $('mainScreen').hidden = toSettings;
+  $('settingsScreen').hidden = !toSettings;
+  (toSettings ? $('settingsScreen').querySelector('.msg-slot') : $('msgHome')).appendChild($('msg'));
+  // preventScroll: focusing the button would otherwise scroll the page to it and undo the restore.
+  if (toSettings) { window.scrollTo(0, 0); refreshToken(); $('settingsBack').focus({ preventScroll: true }); }
+  else { window.scrollTo(0, mainScrollY); $('openSettings').focus({ preventScroll: true }); }
+}
+// --- end of the screens block ---
+
+// --- find and filter ------------------------------------------------------------
+// The search box and the Type / Status filters. A row is shown only when it matches ALL of
+// them. This block is pure (no DOM, no globals) so the tests can run it on its own.
+const TYPE_FILTERS = ['all', 'portable', 'installer'];
+const STATUS_FILTERS = ['all', 'unchecked', 'uptodate', 'available', 'update', 'installable', 'present', 'absent', 'failed', 'working'];
+const AUTO_FILTERS = ['all', 'on', 'off'];
+const WORKING_PHASES = ['loading', 'checking', 'queued', 'downloading', 'verifying', 'installing', 'waiting'];
+// Case-insensitive, matches the owner, the app name, or both typed together as owner/app.
+function matchesSearch(r, text) {
+  const q = String(text || '').trim().toLowerCase();
+  if (!q) return true;
+  const owner = String(r.owner).toLowerCase();
+  const repo = String(r.repo).toLowerCase();
+  return owner.includes(q) || repo.includes(q) || `${owner}/${repo}`.includes(q);
+}
+// The wording follows what the Status column shows. "present" is whether the app is on this
+// machine, independent of whether it has been checked.
+function matchesStatus(s, choice) {
+  s = s || {};
+  switch (choice) {
+    case 'unchecked': return s.ph === 'idle' || s.ph == null;
+    case 'uptodate': return ['current', 'installed', 'updated'].includes(s.ph);
+    case 'available': return s.ph === 'available'; // what the toolbar's "N updates available" counts
+    case 'update': return s.ph === 'available' && !!s.present;
+    case 'installable': return s.ph === 'available' && !s.present;
+    case 'present': return !!s.present;
+    case 'absent': return !s.present;
+    case 'failed': return s.ph === 'failed';
+    case 'working': return WORKING_PHASES.includes(s.ph);
+    default: return true;
+  }
+}
+// The Auto-update column: "on" is the apps ticked for the Install schedule. A missing choice is All.
+function matchesAuto(r, choice) {
+  if (choice === 'on') return r.autoUpdate === true;
+  if (choice === 'off') return r.autoUpdate !== true;
+  return true;
+}
+function matchesFilters(r, s, f) {
+  return matchesSearch(r, f.text) && (f.type === 'all' || r.type === f.type) && matchesStatus(s, f.status) && matchesAuto(r, f.auto);
+}
+function filtersActive(f) {
+  return !!String(f.text || '').trim() || f.type !== 'all' || f.status !== 'all' || (!!f.auto && f.auto !== 'all');
+}
+function cleanChoice(value, allowed) { return allowed.includes(value) ? value : 'all'; }
+// What to start from at launch: the saved choices only when "Remember my filters" is on.
+function savedFilters(cfg) {
+  if (!cfg.rememberFilters) return { type: 'all', status: 'all', auto: 'all' };
+  return { type: cleanChoice(cfg.filterType, TYPE_FILTERS), status: cleanChoice(cfg.filterStatus, STATUS_FILTERS), auto: cleanChoice(cfg.filterAuto, AUTO_FILTERS) };
+}
+// --- end of the pure find helpers ---
+
+const filter = { text: '', type: 'all', status: 'all', auto: 'all' };
+let heldVisible = null; // while a check or update runs: the rows on screen when it started
+let shownKeys = new Set(); // keys of the rows on screen right now (what the toolbar buttons act on)
+// Rows hold still during a run, even if their status stops matching, and the filter re-applies
+// when it finishes: the same way sorting already holds still, so the list never jumps.
+function holdVisible() {
+  heldVisible = filtersActive(filter) ? new Set(config.repos.filter((r) => matchesFilters(r, st[keyOf(r)], filter)).map(keyOf)) : null;
+}
+function visibleRepos(sorted) {
+  if (!filtersActive(filter)) { heldVisible = null; return sorted; }
+  if (busy && heldVisible) return sorted.filter((r) => heldVisible.has(keyOf(r)));
+  return sorted.filter((r) => matchesFilters(r, st[keyOf(r)], filter));
+}
+
+// Settings -> "Sort the list at startup by": the columns the header can sort on, and the
+// helper that makes a launch start from the chosen one. Without it the list opens in whatever
+// order the last header click left behind (config.sortColumn / sortDirection are saved).
+const SORT_COLUMNS = ['owner', 'app', 'type', 'current', 'available', 'status', 'auto'];
+function startupSortChoice(cfg) {
+  const column = SORT_COLUMNS.includes(cfg.startupSortColumn) ? cfg.startupSortColumn
+    : SORT_COLUMNS.includes(cfg.sortColumn) ? cfg.sortColumn : 'app';
+  const direction = cfg.startupSortDirection != null ? cfg.startupSortDirection : cfg.sortDirection;
+  return { column, direction: direction === 'desc' ? 'desc' : 'asc' };
+}
+// Called once per app start (see load()): returns true when it replaced the remembered sort.
+function applyStartupSort(cfg) {
+  if (!cfg.startupSortEnabled) return false;
+  const { column, direction } = startupSortChoice(cfg);
+  cfg.sortColumn = column;
+  cfg.sortDirection = direction;
+  return true;
+}
+
+function sortedRepos() {
+  const repos = [...config.repos];
+  if (busy && displayOrder) {
+    const rank = new Map(displayOrder.map((key, i) => [key, i]));
+    return repos.sort((a, b) => (rank.get(keyOf(a)) ?? Infinity) - (rank.get(keyOf(b)) ?? Infinity));
+  }
+  const col = config.sortColumn;
+  const direction = config.sortDirection === 'desc' ? -1 : 1;
+  if (['owner', 'app', 'type', 'current', 'available', 'status', 'auto'].includes(col)) {
+    repos.sort((a, b) => {
+      const sa = st[keyOf(a)] || {}, sb = st[keyOf(b)] || {};
+      let result;
+      // Owner sorts by owner then name; App sorts by the repo name alone (TeeJS/bedrock-panel files under B), owner breaks ties.
+      if (col === 'owner') result = a.owner.localeCompare(b.owner) || a.repo.localeCompare(b.repo);
+      else if (col === 'app') result = a.repo.localeCompare(b.repo) || a.owner.localeCompare(b.owner);
+      else if (col === 'type') result = a.type.localeCompare(b.type);
+      else if (col === 'auto') result = (b.autoUpdate ? 1 : 0) - (a.autoUpdate ? 1 : 0); // ascending: ticked apps first
+      else if (col === 'current' || col === 'available') {
+        const va = col === 'current' ? sa.from : sa.to, vb = col === 'current' ? sb.from : sb.to;
+        if (!va && vb) return 1;
+        if (!vb && va) return -1;
+        result = window.compareVersions(va, vb);
+      }
+      else {
+        result = statusGroup(sa).localeCompare(statusGroup(sb));
+        if (result) return direction * result;
+        const dated = ['current', 'installed', 'updated'];
+        const da = dated.includes(sa.ph) ? statusDate(sa) : null;
+        const db = dated.includes(sb.ph) ? statusDate(sb) : null;
+        if (da == null && db != null) return 1;
+        if (db == null && da != null) return -1;
+        if (da != null && db != null && da !== db) return direction * (da - db);
+        result = 0;
+      }
+      return direction * result || `${a.owner}/${a.repo}`.localeCompare(`${b.owner}/${b.repo}`);
+    });
+  }
+  displayOrder = repos.map(keyOf);
+  return repos;
+}
+
+function renderSortHeaders() {
+  document.querySelectorAll('.table-header [data-sort]').forEach((header) => {
+    const active = header.dataset.sort === config.sortColumn;
+    header.setAttribute('aria-sort', active ? (config.sortDirection === 'desc' ? 'descending' : 'ascending') : 'none');
+    header.querySelector('.sort-arrow').textContent = active ? (config.sortDirection === 'desc' ? ' ↓' : ' ↑') : '';
+  });
+}
+document.querySelectorAll('.table-header [data-sort]').forEach((header) => {
+  header.querySelector('button').onclick = async () => {
+    if (busy) return;
+    const col = header.dataset.sort;
+    config.sortDirection = config.sortColumn === col && config.sortDirection !== 'desc' ? 'desc' : 'asc';
+    config.sortColumn = col;
+    renderRepos();
+    await saveConfig();
+  };
+});
+
 function renderRepos() {
   const tb = $('rows');
   tb.innerHTML = '';
   $('empty').style.display = config.repos.length ? 'none' : '';
-  config.repos.forEach((r) => {
+  renderSortHeaders();
+  const shown = visibleRepos(sortedRepos());
+  shownKeys = new Set(shown.map(keyOf));
+  $('noMatch').hidden = !(config.repos.length && !shown.length);
+  renderFindState(shown.length, config.repos.length);
+  shown.forEach((r) => {
     const key = keyOf(r);
     const s = st[key] || (st[key] = { ph: 'idle' });
     const row = el('div', 'app-row'); // 7 grid children, same template as the header
@@ -347,6 +776,20 @@ function renderRepos() {
     const stEl = el('span', 'status st ' + sv.cls); stEl.append(el('span', 'dot'), stTxt);
     row.appendChild(stEl);
 
+    // Auto-update: ticked apps are the ones the Install schedule updates.
+    const autoCell = el('span', 'auto-cell');
+    const ac = el('input'); ac.type = 'checkbox'; ac.checked = !!r.autoUpdate;
+    ac.title = 'Include this app in the Install schedule';
+    ac.setAttribute('aria-label', `Auto-update ${r.owner}/${r.repo}`);
+    ac.onchange = () => {
+      if (ac.checked) r.autoUpdate = true; else delete r.autoUpdate;
+      saveConfig();
+      renderInstallInfo();
+      if (filter.auto !== 'all' || config.sortColumn === 'auto') renderRepos();
+    };
+    autoCell.appendChild(ac);
+    row.appendChild(autoCell);
+
     // Actions
     const act = el('div', 'row-actions');
     const runningFail = s.ph === 'failed' && /is running/.test(s.reason || '');
@@ -365,13 +808,57 @@ function renderRepos() {
   syncBar();
 }
 
+// What the toolbar buttons act on: every app, or only the rows on screen while a search or
+// filter is active. Hidden rows are never touched by "Update all" or "Update selected".
+function targetKeys() {
+  return filtersActive(filter) ? [...shownKeys] : config.repos.map(keyOf);
+}
+function selectedTargets() {
+  return [...selected].filter((k) => !filtersActive(filter) || shownKeys.has(k));
+}
 function syncBar() {
   const avail = config.repos.filter((r) => st[keyOf(r)]?.ph === 'available').length;
   $('count').textContent = avail ? `${avail} update${avail > 1 ? 's' : ''} available` : '';
-  $('updateSel').disabled = busy || selected.size === 0;
-  $('updateAll').disabled = busy || config.repos.length === 0;
-  $('checkAll').disabled = busy || config.repos.length === 0;
-  $('selAll').checked = config.repos.length > 0 && selected.size === config.repos.length;
+  $('count').hidden = !avail;
+  const targets = targetKeys().length;
+  $('updateSel').disabled = busy || selectedTargets().length === 0;
+  $('updateAll').disabled = busy || targets === 0;
+  $('checkAll').disabled = busy || targets === 0;
+  $('selAll').checked = targets > 0 && targetKeys().every((k) => selected.has(k));
+}
+// The "Showing 5 of 23" line, the clear buttons, the highlighted filters and the toolbar labels.
+function renderFindState(shown, total) {
+  const active = filtersActive(filter);
+  $('filtered').hidden = !active;
+  if (active) $('filteredText').textContent = `Showing ${shown} of ${total} app${total === 1 ? '' : 's'}`;
+  $('searchClear').hidden = !filter.text;
+  $('filterType').classList.toggle('on', filter.type !== 'all');
+  $('filterStatus').classList.toggle('on', filter.status !== 'all');
+  $('filterAuto').classList.toggle('on', filter.auto !== 'all');
+  $('checkAll').textContent = active ? 'Check shown' : 'Check all';
+  $('updateAll').textContent = active ? 'Update shown' : 'Update all';
+}
+function syncFilterControls() {
+  $('search').value = filter.text;
+  $('filterType').value = filter.type;
+  $('filterStatus').value = filter.status;
+  $('filterAuto').value = filter.auto;
+}
+// Any change to the search or a filter: re-render, and keep the choices when "remember" is on.
+function filtersChanged() {
+  heldVisible = null;
+  renderRepos();
+  if (config.rememberFilters) {
+    config.filterType = filter.type;
+    config.filterStatus = filter.status;
+    config.filterAuto = filter.auto;
+    saveConfig();
+  }
+}
+function clearFilters() {
+  filter.text = ''; filter.type = 'all'; filter.status = 'all'; filter.auto = 'all';
+  syncFilterControls();
+  filtersChanged();
 }
 
 // --- overflow menu ---
@@ -426,7 +913,7 @@ async function saveConfig() {
 async function refreshInstalled() {
   try {
     const inst = await window.api.getInstalled();
-    config.repos.forEach((r) => { const k = keyOf(r); const i = inst[k]; const s = (st[k] = st[k] || { ph: 'idle' }); if (i) { s.from = i.current || null; s.present = !!i.present; } });
+    config.repos.forEach((r) => { const k = keyOf(r); const i = inst[k]; const s = (st[k] = st[k] || { ph: 'idle' }); if (i) { s.from = i.current || null; s.present = !!i.present; s.date = i.date || null; s.lastAction = i.lastAction || 'installed'; } });
   } catch {}
 }
 async function load() {
@@ -436,11 +923,43 @@ async function load() {
   $('portableRoot').value = config.portableRoot || '';
   $('selfPreRel').checked = !!config.selfUpdatePrerelease;
   $('checkOnOpen').checked = !!config.checkOnOpen;
+  $('autoCloseReopen').checked = !!config.autoCloseReopen;
+  $('downloadLimitEnabled').checked = config.downloadLimitEnabled !== false;
+  $('downloadLimitMiB').value = config.downloadLimitMiB == null ? 500 : config.downloadLimitMiB;
+  $('downloadLimitMiB').disabled = !$('downloadLimitEnabled').checked;
+  $('dateFormat').value = config.dateFormat === 'DD/MM' ? 'DD/MM' : 'MM/DD';
+  // The Settings controls start on the current sort so turning the checkbox on changes nothing yet.
+  const startup = startupSortChoice(config);
+  $('startupSortEnabled').checked = !!config.startupSortEnabled;
+  $('startupSortColumn').value = startup.column;
+  $('startupSortDirection').value = startup.direction;
+  $('startupSortColumn').disabled = $('startupSortDirection').disabled = !config.startupSortEnabled;
+  // Once per app start, before the first render: load() re-runs on config changes (scan window,
+  // folder save), and those must not throw away a sort the user has clicked since.
+  $('rememberFilters').checked = !!config.rememberFilters;
+  $('startAtLogin').checked = !!config.startAtLogin;
+  $('keepRunning').checked = !!config.keepRunning;
+  $('scheduleCheckEnabled').checked = !!config.scheduleCheckEnabled;
+  $('scheduleCheckCron').value = config.scheduleCheckCron || '';
+  $('scheduleInstallEnabled').checked = !!config.scheduleInstallEnabled;
+  $('scheduleInstallCron').value = config.scheduleInstallCron || '';
+  $('scheduleCatchUp').checked = config.scheduleCatchUp !== false; // on unless switched off
+  renderSchedulePreview();
+  renderInstallInfo();
+  if (!booted) {
+    applyStartupSort(config);
+    // Same once-per-start rule: the saved filters (only with "Remember my filters" on) come back
+    // before the first render; the search box always starts empty.
+    const saved = savedFilters(config);
+    filter.text = ''; filter.type = saved.type; filter.status = saved.status; filter.auto = saved.auto;
+    syncFilterControls();
+  }
   config.repos.forEach((r) => { st[keyOf(r)] = { ph: 'loading' }; }); // show rows instantly
   renderRepos();
   await refreshInstalled(); // slower registry/manifest detection
   config.repos.forEach((r) => { const s = st[keyOf(r)]; if (s && s.ph === 'loading') s.ph = 'idle'; });
   renderRepos();
+  applyBackgroundResults();
   // No GitHub calls at startup — fast launch. Repo validity (deleted/renamed) and
   // available updates surface when the user runs Check.
   const lastApply = await window.api.selfUpdateLastApply().catch(() => null);
@@ -460,9 +979,76 @@ async function load() {
   }
 }
 
+// GitHub token: the renderer only ever sends a new token in; status comes back as
+// saved/not-saved plus the quota, never the token itself.
+const TOKEN_HELP = $('tokenHint').innerHTML;
+async function refreshToken() {
+  try {
+    const { saved, unreadable, env, quota } = await window.api.tokenStatus();
+    $('clearToken').style.display = saved || unreadable ? '' : 'none';
+    $('ghToken').placeholder = saved ? 'Saved — paste a new token to replace it' : 'github_pat_… or ghp_…';
+    const q = quota && !quota.error && quota.limit ? ` ${quota.remaining}/${quota.limit} requests left this hour.` : '';
+    if (saved) $('tokenHint').textContent = `Token saved.${q}`;
+    else if (unreadable) $('tokenHint').textContent = `The saved token could not be read on this computer and is not being used — paste it again.${q}`;
+    else if (env) $('tokenHint').textContent = `Using the GITHUB_TOKEN environment variable.${q}`;
+    else $('tokenHint').innerHTML = TOKEN_HELP + (q ? ` Now:${q}` : '');
+  } catch {}
+}
+$('saveToken').onclick = async () => {
+  const t = $('ghToken').value.trim();
+  if (!t) return msg('Paste a GitHub token first.', 'bad');
+  $('saveToken').disabled = true;
+  msg('Checking token with GitHub…', 'info');
+  try { await window.api.setToken(t); $('ghToken').value = ''; msg('Token saved.', 'ok'); await refreshToken(); }
+  catch (e) { msg(`Token not saved — ${clean(e)}`, 'bad'); }
+  finally { $('saveToken').disabled = false; }
+};
+$('ghToken').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('saveToken').click(); });
+$('clearToken').onclick = async () => {
+  if (!confirm('Remove the saved GitHub token?')) return;
+  try { await window.api.clearToken(); msg('Token removed.', 'ok'); await refreshToken(); } catch (e) { msg(clean(e), 'bad'); }
+};
+// Quota is fetched when Settings is opened (the /rate_limit call is free) — not at startup.
+// Settings button, Back button and Esc. (The quota is fetched when the screen opens: /rate_limit is free.)
+$('openSettings').onclick = () => showScreen('settings');
+$('settingsBack').onclick = () => showScreen('main');
+document.addEventListener('keydown', (e) => {
+  // Esc goes back, except in a dropdown, where it closes the dropdown first.
+  if (e.key === 'Escape' && !$('settingsScreen').hidden && !e.defaultPrevented && document.activeElement?.tagName !== 'SELECT') {
+    e.preventDefault();
+    showScreen('main');
+  }
+});
+
 $('saveRoot').onclick = () => saveConfig().then(() => { msg('Saved.', 'ok'); refreshInstalled().then(renderRepos); });
 $('selfPreRel').onchange = () => { config.selfUpdatePrerelease = $('selfPreRel').checked; saveConfig().then(() => msg('Saved.', 'ok')); };
 $('checkOnOpen').onchange = () => { config.checkOnOpen = $('checkOnOpen').checked; saveConfig().then(() => msg('Saved.', 'ok')); };
+$('autoCloseReopen').onchange = () => { config.autoCloseReopen = $('autoCloseReopen').checked; saveConfig().then(() => msg('Saved.', 'ok')); };
+$('dateFormat').onchange = () => { config.dateFormat = $('dateFormat').value; renderRepos(); saveConfig().then(() => msg('Saved.', 'ok')); };
+// Startup sort: saved as soon as it changes, and only read at the next launch, so changing it
+// does not re-sort the list that is on screen now.
+function saveStartupSort() {
+  config.startupSortEnabled = $('startupSortEnabled').checked;
+  config.startupSortColumn = $('startupSortColumn').value;
+  config.startupSortDirection = $('startupSortDirection').value;
+  $('startupSortColumn').disabled = $('startupSortDirection').disabled = !config.startupSortEnabled;
+  saveConfig().then(() => msg('Saved. The list will start sorted this way next time.', 'ok'));
+}
+['startupSortEnabled', 'startupSortColumn', 'startupSortDirection'].forEach((id) => { $(id).onchange = saveStartupSort; });
+// Download limit: ported from EstusFlask/git-updater-background. Saved with its own button
+// (not on every keystroke); validated here and again by the main process on save.
+$('downloadLimitEnabled').onchange = () => { $('downloadLimitMiB').disabled = !$('downloadLimitEnabled').checked; };
+$('saveDownloadLimit').onclick = async () => {
+  const enabled = $('downloadLimitEnabled').checked;
+  const mib = enabled ? Number($('downloadLimitMiB').value) : (config.downloadLimitMiB || 500);
+  if (!Number.isSafeInteger(mib) || mib < 1 || mib > 1048576) {
+    msg('Enter a whole number from 1 to 1048576 MiB.', 'bad');
+    return;
+  }
+  const next = { ...config, downloadLimitEnabled: enabled, downloadLimitMiB: mib };
+  try { await window.api.saveConfig(next); config = next; $('downloadLimitMiB').value = mib; msg('Saved.', 'ok'); }
+  catch (e) { msg(clean(e), 'bad'); }
+};
 $('browse').onclick = async () => {
   try { const { path } = await window.api.pickFolder(); if (path) { $('portableRoot').value = path; await saveConfig(); msg('Saved.', 'ok'); refreshInstalled().then(renderRepos); } }
   catch (e) { msg(clean(e), 'bad'); }
@@ -499,7 +1085,7 @@ $('addRepo').onclick = async () => {
   const parsed = parseRepo($('newRepo').value);
   if (!parsed) return msg('Paste a GitHub releases URL or owner/repo.', 'bad');
   const type = selectedType();
-  if (type === 'portable' && !$('portableRoot').value.trim()) { $('settings').open = true; return msg('Set the portable apps folder first — see Settings.', 'bad'); }
+  if (type === 'portable' && !$('portableRoot').value.trim()) { showScreen('settings'); $('portableRoot').focus(); return msg('Set the portable apps folder first.', 'bad'); }
   const dup = config.repos.some((r) => r.owner === parsed.owner && r.repo === parsed.repo && r.type === type && keyOf(r) !== editingKey);
   if (dup) return msg(`${parsed.owner}/${parsed.repo} (${type}) is already in your list.`, 'bad');
 
@@ -513,12 +1099,14 @@ $('addRepo').onclick = async () => {
   }
   $('addRepo').disabled = false;
 
+  const wasAutoUpdate = !!(editingKey && config.repos.find((r) => keyOf(r) === editingKey)?.autoUpdate);
   if (editingKey) { // replace the edited entry
     delete st[editingKey]; selected.delete(editingKey);
     config.repos = config.repos.filter((r) => keyOf(r) !== editingKey);
   }
   const entry = { owner: parsed.owner, repo: parsed.repo, type };
   if ($('preRel').checked) entry.prerelease = true;
+  if (wasAutoUpdate) entry.autoUpdate = true; // editing an app must not quietly drop its Auto-update tick
   config.repos.push(entry);
   const wasEditing = !!editingKey;
   cancelEdit();
@@ -535,36 +1123,48 @@ async function removeRepo(r) {
 
 // After opening an interactive installer, watch the registry until the installed
 // version changes, then refresh that row automatically (10-minute timeout).
-async function watchInstall(key, fromVersion) {
+async function watchInstall(key, fromVersion, wasInstall, onComplete) {
   const deadline = Date.now() + 10 * 60 * 1000;
   while (Date.now() < deadline) {
     await new Promise((r) => setTimeout(r, 5000));
-    if (st[key]?.ph !== 'waiting') return; // user did something else with this row
+    if (st[key]?.ph !== 'waiting') {
+      if (onComplete) msg(`${key.split('#')[0]} left the installer wait state — completion was not confirmed, so it was not re-opened.`, 'bad');
+      return;
+    }
     try {
       const inst = await window.api.getInstalled();
       const cur = inst[key]?.current;
       if (cur && cur !== fromVersion) {
-        st[key] = { ...st[key], from: cur, present: true };
+        // The runner may still be saving another row in this batch. Record only after it
+        // releases its state lock, so a later runner save cannot overwrite this entry.
+        while (busy) await new Promise((r) => setTimeout(r, 250));
+        let recorded;
+        try { recorded = await window.api.recordInstall(key, fromVersion, wasInstall); }
+        catch (e) { msg(`Installer finished, but its date could not be saved: ${clean(e)}`, 'bad'); }
+        st[key] = { ...st[key], from: cur, present: true, date: recorded?.installedAt || inst[key]?.date || null, lastAction: recorded?.lastAction || inst[key]?.lastAction || 'installed' };
         if (!busy) await checkApps([key]); // confirms Up to date / sets final state
         else { st[key].ph = 'installed'; renderRepos(); }
+        if (onComplete) await onComplete();
         return;
       }
     } catch {}
   }
-  if (st[key]?.ph === 'waiting') { st[key].ph = 'failed'; st[key].reason = 'installer not finished — Retry when done'; renderRepos(); }
+  if (st[key]?.ph === 'waiting') { st[key].ph = 'failed'; st[key].reason = onComplete ? 'installer completion not detected — app was not re-opened' : 'installer not finished — Retry when done'; renderRepos(); }
 }
 
 // Close the running app (graceful first, force on a second confirm), then retry the update.
 async function closeAndRetry(r, key) {
   if (busy) return;
-  if (!confirm(`Close ${r.repo} and update it? Unsaved work in ${r.repo} may be lost.`)) return;
-  msg(`Closing ${r.repo}…`, 'info');
   try {
-    let res = await window.api.closeApp(key, false);
-    if (res.stillRunning && confirm(`${r.repo} did not close. Force-close it? Unsaved work WILL be lost.`)) {
-      res = await window.api.closeApp(key, true);
+    if (await window.api.isAppRunning(key)) {
+      if (!confirm(`Close ${r.repo} and update it? Unsaved work in ${r.repo} may be lost.`)) return;
+      msg(`Closing ${r.repo}…`, 'info');
+      let res = await window.api.closeApp(key, false);
+      if (res.stillRunning && confirm(`${r.repo} did not close. Force-close it? Unsaved work WILL be lost.`)) {
+        res = await window.api.closeApp(key, true);
+      }
+      if (res.stillRunning) return msg(`${r.repo} is still running — close it manually, then Retry.`, 'bad');
     }
-    if (res.stillRunning) return msg(`${r.repo} is still running — close it manually, then Retry.`, 'bad');
   } catch (e) { return msg(clean(e), 'bad'); }
   runBatch([key]);
 }
@@ -572,8 +1172,10 @@ async function closeAndRetry(r, key) {
 // --- check / update ---
 async function checkApps(keys) {
   if (busy) return;
+  holdVisible(); // before the statuses change, so rows do not vanish from a filtered list mid-run
   busy = true; keys.forEach((k) => (st[k] = { ...(st[k] || {}), ph: 'checking' })); renderRepos();
   const retyped = { portable: [], installer: [] }; // type corrections — reported, never silent
+  let stopped = null; // rate-limit / bad-token reason that ended the run early
   try {
     for (const k of keys) {
       const { results } = await window.api.check({ only: k });
@@ -585,6 +1187,13 @@ async function checkApps(keys) {
         else st[k] = { ...s, ph: r.status === 'current' ? 'current' : 'available', from: r.from || s.from, to: r.to, present: s.present };
       }
       renderRepos();
+      // Rate-limited (or a bad token): every remaining call would fail the same way and
+      // only burn more of the quota. Stop here and say why once.
+      if (r && r.stopRun) {
+        keys.slice(keys.indexOf(k) + 1).forEach((x) => (st[x] = { ...(st[x] || {}), ph: 'failed', reason: r.reason }));
+        stopped = r.reason;
+        break;
+      }
     }
     // Say what changed AND what it means. Going portable, a copy sits beside whatever the
     // system package manager already installed rather than replacing it. Going installer,
@@ -599,28 +1208,47 @@ async function checkApps(keys) {
       parts.push(
         `${retyped.installer.join(', ')} switched to Installer — ${retyped.installer.length > 1 ? 'these publish' : 'this publishes'} no portable build, so updates install system-wide and will ask for authorization.`
       );
-    msg(parts.length ? `Check complete. ${parts.join(' ')}` : 'Check complete.', 'ok');
+    if (stopped) msg(parts.length ? `${stopped} ${parts.join(' ')}` : stopped, 'bad');
+    else msg(parts.length ? `Check complete. ${parts.join(' ')}` : 'Check complete.', 'ok');
   } catch (e) { keys.forEach((k) => (st[k] = { ...(st[k] || {}), ph: 'failed', reason: clean(e) })); msg(clean(e), 'bad'); }
   finally { busy = false; renderRepos(); }
 }
 
-async function runBatch(keys, force) {
+async function runBatch(keys, force, autoClose = false) {
   if (busy || !keys.length) return;
+  holdVisible(); // before the statuses change, so rows do not vanish from a filtered list mid-run
   busy = true;
   keys.forEach((k) => (st[k] = { ...(st[k] || {}), ph: 'queued' })); renderRepos();
   let done = 0, installed = 0, failed = 0;
+  const reopenErrors = [];
+  async function reopen(k) {
+    try { await window.api.openApp(k); }
+    catch (e) { reopenErrors.push(`${k.split('#')[0]}: ${clean(e)}`); msg(`Could not re-open ${k.split('#')[0]}: ${clean(e)}`, 'bad'); }
+  }
   for (const k of keys) {
     const wasInstall = !(st[k] && st[k].present); // fresh install vs update, for the right wording
+    let closed = false, installerPending = false;
     try {
-      const { results } = await window.api.update({ only: k, force: !!force });
+      const { results } = await window.api.update({ only: k, force: !!force, autoClose });
       const r = results.find((x) => (x.id || x.repo) === k) || results[0];
+      closed = !!r?.closed;
       const s = st[k] || {};
       if (!r) { st[k] = { ...s, ph: 'failed', reason: 'no result' }; failed++; }
-      else if (r.status === 'updated') { st[k] = { ...s, ph: wasInstall ? 'installed' : 'updated', from: r.to, to: r.to, present: true }; wasInstall ? installed++ : done++; }
+      else if (r.status === 'updated') { st[k] = { ...s, ph: wasInstall ? 'installed' : 'updated', from: r.to, to: r.to, present: true, date: r.installedAt || new Date().toISOString(), lastAction: r.lastAction || (wasInstall ? 'installed' : 'updated') }; wasInstall ? installed++ : done++; }
       else if (r.status === 'current') { st[k] = { ...s, ph: 'current', to: r.to }; }
-      else if (/installer window opened/.test(r.reason || '')) { st[k] = { ...s, ph: 'waiting', to: r.to }; watchInstall(k, s.from); }
+      else if (/installer window opened/.test(r.reason || '')) {
+        st[k] = { ...s, ph: 'waiting', to: r.to };
+        installerPending = true;
+        watchInstall(k, s.from, wasInstall, closed ? () => reopen(k) : undefined);
+      }
       else { st[k] = { ...s, ph: 'failed', reason: r.reason }; failed++; }
+      if (r && r.stopRun) { // same as checkApps: the rest would only fail the same way
+        keys.slice(keys.indexOf(k) + 1).forEach((x) => { st[x] = { ...(st[x] || {}), ph: 'failed', reason: r.reason }; failed++; });
+        renderRepos();
+        break;
+      }
     } catch (e) { st[k] = { ...(st[k] || {}), ph: 'failed', reason: clean(e) }; failed++; }
+    finally { if (closed && !installerPending) await reopen(k); }
     renderRepos();
   }
   busy = false; renderRepos();
@@ -630,7 +1258,8 @@ async function runBatch(keys, force) {
   if (installed) parts.push(`${installed} installed`);
   if (waiting) parts.push(`${waiting} waiting for its installer window`);
   if (failed) parts.push(`${failed} failed`);
-  msg(parts.length ? parts.join(', ') + '.' : 'Nothing to update.', failed ? 'bad' : 'ok');
+  if (reopenErrors.length) parts.push(`${reopenErrors.length} could not be re-opened: ${reopenErrors.join('; ')}`);
+  msg(parts.length ? parts.join(', ') + '.' : 'Nothing to update.', failed || reopenErrors.length ? 'bad' : 'ok');
 }
 
 window.api.onProgress(({ id, phase, pct }) => {
@@ -713,10 +1342,139 @@ $('selfupDismiss').onclick = () => {
   $('selfup').classList.remove('show');
 };
 
-$('checkAll').onclick = () => { selfCheck(); checkApps(config.repos.map(keyOf)); };
-$('updateAll').onclick = () => runBatch(config.repos.map(keyOf));
-$('updateSel').onclick = () => runBatch([...selected]);
-$('selAll').onchange = (e) => { selected.clear(); if (e.target.checked) config.repos.forEach((r) => selected.add(keyOf(r))); renderRepos(); };
+// With a search or filter active these act on the rows on screen only (see targetKeys()).
+$('checkAll').onclick = () => { if (!filtersActive(filter)) selfCheck(); checkApps(targetKeys()); };
+$('updateAll').onclick = () => runBatch(targetKeys(), false, !!config.autoCloseReopen);
+$('updateSel').onclick = () => runBatch(selectedTargets());
+$('selAll').onchange = (e) => {
+  if (e.target.checked) targetKeys().forEach((k) => selected.add(k));
+  else targetKeys().forEach((k) => selected.delete(k));
+  renderRepos();
+};
+
+// --- search and filters (wiring; the matching rules are the pure helpers above) ---
+$('search').addEventListener('input', () => { filter.text = $('search').value; filtersChanged(); });
+$('search').addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && $('search').value) { e.preventDefault(); filter.text = ''; $('search').value = ''; filtersChanged(); }
+});
+$('searchClear').onclick = () => { filter.text = ''; $('search').value = ''; filtersChanged(); $('search').focus(); };
+$('filterType').onchange = () => { filter.type = cleanChoice($('filterType').value, TYPE_FILTERS); filtersChanged(); };
+$('filterStatus').onchange = () => { filter.status = cleanChoice($('filterStatus').value, STATUS_FILTERS); filtersChanged(); };
+$('filterAuto').onchange = () => { filter.auto = cleanChoice($('filterAuto').value, AUTO_FILTERS); filtersChanged(); };
+$('filterClear').onclick = clearFilters;
+$('noMatchClear').onclick = clearFilters;
+// The "N updates available" label is a shortcut for the filter that shows exactly those apps.
+$('count').onclick = () => { filter.status = 'available'; syncFilterControls(); filtersChanged(); };
+// Ctrl+F (Cmd+F on a Mac) jumps to the search box.
+document.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && String(e.key).toLowerCase() === 'f') {
+    e.preventDefault();
+    $('search').focus();
+    $('search').select();
+  }
+});
+// Background: start at login and keep running in the tray. The main process applies them (the
+// system's login list, the tray icon) and refuses with a reason when it cannot, in which case the
+// checkboxes go back to what is really set.
+async function saveBackgroundSettings() {
+  const next = { ...config, startAtLogin: $('startAtLogin').checked, keepRunning: $('keepRunning').checked };
+  try {
+    await window.api.saveConfig(next);
+    config = next;
+    msg('Saved.', 'ok');
+  } catch (e) {
+    $('startAtLogin').checked = !!config.startAtLogin;
+    $('keepRunning').checked = !!config.keepRunning;
+    msg(clean(e), 'bad');
+  }
+}
+// Schedules (Check and Install). The preview comes from the main process (the same parser that runs the
+// schedule), so what you see under the box is what will happen. A bad schedule is refused with the reason.
+const SCHEDULE_KINDS = ['Check', 'Install'];
+const SCHEDULE_DEFAULTS = { Check: '0 9 * * *', Install: '47 2 * * 2#1' };
+const previewTimers = {};
+async function renderSchedulePreview(kind) {
+  if (!kind) { SCHEDULE_KINDS.forEach(renderSchedulePreview); return; }
+  const p = $(`schedule${kind}Preview`);
+  const expr = $(`schedule${kind}Cron`).value.trim();
+  if (!expr) { p.textContent = ''; p.style.color = ''; return; }
+  try {
+    const v = await window.api.schedulePreview(expr);
+    if (v.ok) {
+      p.style.color = '';
+      p.textContent = 'Next runs: ' + v.runs.map((iso) => new Date(iso).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })).join('  ·  ');
+    } else {
+      p.style.color = 'var(--red)';
+      p.textContent = v.error;
+    }
+  } catch { p.textContent = ''; }
+}
+// How many apps the Install schedule would touch right now, so an empty tick list is never a surprise.
+function renderInstallInfo() {
+  const n = config.repos.filter((r) => r.autoUpdate === true).length;
+  $('scheduleInstallApps').textContent = n
+    ? `${n} app${n === 1 ? ' is' : 's are'} ticked in the Auto-update column.`
+    : 'No apps are ticked in the Auto-update column yet, so there is nothing for this schedule to update.';
+}
+async function saveSchedule() {
+  const next = { ...config, scheduleCatchUp: $('scheduleCatchUp').checked };
+  for (const kind of SCHEDULE_KINDS) {
+    const enabled = $(`schedule${kind}Enabled`).checked;
+    let expr = $(`schedule${kind}Cron`).value.trim();
+    if (enabled && !expr) { expr = SCHEDULE_DEFAULTS[kind]; $(`schedule${kind}Cron`).value = expr; renderSchedulePreview(kind); } // a sensible start
+    next[`schedule${kind}Enabled`] = enabled;
+    next[`schedule${kind}Cron`] = expr;
+  }
+  try {
+    await window.api.saveConfig(next);
+    config = next;
+    msg('Saved.', 'ok');
+  } catch (e) {
+    for (const kind of SCHEDULE_KINDS) {
+      $(`schedule${kind}Enabled`).checked = !!config[`schedule${kind}Enabled`];
+      $(`schedule${kind}Cron`).value = config[`schedule${kind}Cron`] || '';
+    }
+    $('scheduleCatchUp').checked = config.scheduleCatchUp !== false;
+    renderSchedulePreview();
+    msg(clean(e), 'bad');
+  }
+}
+for (const kind of SCHEDULE_KINDS) {
+  const box = $(`schedule${kind}Cron`);
+  box.addEventListener('input', () => { clearTimeout(previewTimers[kind]); previewTimers[kind] = setTimeout(() => renderSchedulePreview(kind), 250); });
+  box.addEventListener('change', saveSchedule); // on leaving the box or pressing Enter
+  box.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); box.blur(); } });
+  $(`schedule${kind}Enabled`).onchange = saveSchedule;
+}
+$('scheduleCatchUp').onchange = saveSchedule;
+$('startAtLogin').onchange = saveBackgroundSettings;
+$('keepRunning').onchange = saveBackgroundSettings;
+// A scheduled check finished (while the window was hidden, or open): show what it found.
+async function applyBackgroundResults() {
+  try {
+    const last = await window.api.scheduleLast();
+    if (last && !busy && mergeBackgroundResults(st, last.results)) renderRepos();
+  } catch {}
+}
+// A scheduled install changed versions and dates, so the list is read again; a scheduled check only
+// fills in rows that have no status yet.
+window.api.onScheduleDone((d) => { if (d && d.kind === 'install') { if (!busy) load(); } else applyBackgroundResults(); });
+// The tray's "Check now": same as Check all. It may arrive before the first load has finished.
+function trayCheck(tries = 0) {
+  if (!booted) { if (tries < 100) setTimeout(() => trayCheck(tries + 1), 300); return; }
+  if (busy) return;
+  selfCheck();
+  checkApps(config.repos.map(keyOf));
+}
+window.api.onTrayCheck(() => trayCheck());
+$('rememberFilters').onchange = () => {
+  config.rememberFilters = $('rememberFilters').checked;
+  // On: save what is set now. Off: forget the saved choices (the ones on screen stay until you change them).
+  config.filterType = config.rememberFilters ? filter.type : 'all';
+  config.filterStatus = config.rememberFilters ? filter.status : 'all';
+  config.filterAuto = config.rememberFilters ? filter.auto : 'all';
+  saveConfig().then(() => msg('Saved.', 'ok'));
+};
 
 load().catch((e) => msg(clean(e), 'bad'));
 </script>

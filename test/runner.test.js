@@ -26,16 +26,18 @@ const detect = require('../src/detect');
 const runner = require('../src/runner');
 
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'gu-runner-'));
+let seenMaxBytes; // the size cap the runner handed to the (stubbed) download
 
 // `running` is consulted per call, so a test can say "idle at download time, launched by
 // install time" — which is the race the second check exists for.
-async function withStubs({ running }, fn) {
+async function withStubs({ running, closeApp }, fn) {
   const real = {
     getLatestRelease: github.getLatestRelease,
     downloadAsset: github.downloadAsset,
     verifyDigest: github.verifyDigest,
     fetchChecksumFromRelease: github.fetchChecksumFromRelease,
     isRunning: detect.isRunning,
+    closeApp: detect.closeApp,
     clearCache: detect.clearCache,
   };
   let call = 0;
@@ -43,7 +45,8 @@ async function withStubs({ running }, fn) {
     tag_name: 'v2.0.0',
     assets: [{ name: 'payload.zip', browser_download_url: 'https://example.invalid/payload.zip' }],
   });
-  github.downloadAsset = async (_url, file) => {
+  github.downloadAsset = async (_url, file, _onProgress, maxBytes) => {
+    seenMaxBytes = maxBytes;
     const zip = new AdmZip();
     zip.addFile('app.txt', Buffer.from('v2'));
     zip.writeZip(file);
@@ -52,6 +55,7 @@ async function withStubs({ running }, fn) {
   github.fetchChecksumFromRelease = async () => null;
   detect.clearCache = () => {};
   detect.isRunning = async () => running[Math.min(call++, running.length - 1)];
+  if (closeApp) detect.closeApp = closeApp;
   try {
     return await fn(() => call);
   } finally {
@@ -62,6 +66,7 @@ async function withStubs({ running }, fn) {
       fetchChecksumFromRelease: real.fetchChecksumFromRelease,
     });
     detect.isRunning = real.isRunning;
+    detect.closeApp = real.closeApp;
     detect.clearCache = real.clearCache;
   }
 }
@@ -95,6 +100,55 @@ test('runner: an app launched DURING the download is not overwritten', async () 
   }
 });
 
+test('runner: each download is held to the configured size limit (default 500 MiB, none when off)', async () => {
+  const cases = [
+    [{}, 500 * 1024 * 1024],
+    [{ downloadLimitMiB: 2048 }, 2048 * 1024 * 1024],
+    [{ downloadLimitEnabled: false }, null],
+  ];
+  for (const [limits, expected] of cases) {
+    const dir = tmp();
+    try {
+      seenMaxBytes = undefined;
+      await withStubs({ running: [false, false] }, async () => {
+        const { results } = await runner.run({ ...configFor(dir), ...limits }, { statePath: path.join(dir, 'state.json') });
+        assert.equal(results[0].status, 'updated', results[0].reason);
+      });
+      assert.strictEqual(seenMaxBytes, expected, JSON.stringify(limits));
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  }
+});
+
+// An unattended (scheduled) run never opens an installer window or an authorization prompt: nobody
+// is there to answer it. An installer that needs one is reported as "needs you", not run.
+test('runner: an unattended run reports an installer that needs permission as "needs you" and opens nothing', async () => {
+  const install = require('../src/install');
+  const real = install.installInstaller;
+  const dir = tmp();
+  try {
+    install.installInstaller = () => { throw Object.assign(new Error('requires elevation'), { elevation: true }); };
+    const cfg = { portableRoot: dir, repos: [{ owner: 'acme', repo: 'widget', type: 'installer', asset: 'payload.zip', install: { kind: 'nsis' } }] };
+    const opened = [];
+    await withStubs({ running: [false, false] }, async () => {
+      const { results } = await runner.run(cfg, { statePath: path.join(dir, 'state.json'), unattended: true, openFile: (f) => opened.push(f) });
+      assert.equal(results[0].status, 'failed');
+      assert.match(results[0].reason, /^needs you: widget's installer needs administrator permission/);
+    });
+    assert.deepEqual(opened, [], 'no installer window was opened');
+    // The same failure in an interactive run still falls back to the installer's own window (unchanged).
+    await withStubs({ running: [false, false] }, async () => {
+      const { results } = await runner.run(cfg, { statePath: path.join(dir, 'state2.json'), openFile: (f) => opened.push(f) });
+      assert.match(results[0].reason, /installer window opened/);
+    });
+    assert.equal(opened.length, 1);
+  } finally {
+    install.installInstaller = real;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('runner: an app that stays closed throughout is updated normally', async () => {
   const dir = tmp();
   try {
@@ -113,6 +167,66 @@ test('runner: an app that stays closed throughout is updated normally', async ()
   }
 });
 
+test('runner: state records distinguish initial install from later update', async () => {
+  const dir = tmp();
+  const statePath = path.join(dir, 'state.json');
+  try {
+    await withStubs({ running: [false, false] }, async () => {
+      const { results } = await runner.run(configFor(dir), { statePath });
+      assert.equal(results[0].lastAction, 'installed');
+      assert.equal(JSON.parse(fs.readFileSync(statePath, 'utf8'))['acme/widget#portable'].lastAction, 'installed');
+    });
+    const previous = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+    previous['acme/widget#portable'].version = '1.0.0';
+    previous['acme/widget#portable'].tag = 'v1.0.0';
+    fs.writeFileSync(statePath, JSON.stringify(previous));
+    await withStubs({ running: [false, false] }, async () => {
+      const { results } = await runner.run(configFor(dir), { statePath });
+      assert.equal(results[0].lastAction, 'updated');
+      assert.equal(JSON.parse(fs.readFileSync(statePath, 'utf8'))['acme/widget#portable'].lastAction, 'updated');
+    });
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('runner: failed staging cleanup does not replace a successful install', async () => {
+  const dir = tmp();
+  const statePath = path.join(dir, 'state.json');
+  const realRm = fs.promises.rm;
+  fs.promises.rm = async (_path, options) => {
+    assert.equal(options.maxRetries, 5);
+    assert.equal(options.retryDelay, 200);
+    const e = new Error('locked'); e.code = 'EPERM'; throw e;
+  };
+  try {
+    await withStubs({ running: [false, false] }, async () => {
+      const { results } = await runner.run(configFor(dir), { statePath });
+      assert.equal(results[0].status, 'updated', results[0].reason);
+      assert.equal(JSON.parse(fs.readFileSync(statePath, 'utf8'))['acme/widget#portable'].version, '2.0.0');
+    });
+  } finally {
+    fs.promises.rm = realRm;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('runner: failed staging cleanup preserves the original install error', async () => {
+  const dir = tmp();
+  const realRm = fs.promises.rm;
+  fs.promises.rm = async () => { const e = new Error('locked'); e.code = 'EPERM'; throw e; };
+  try {
+    await withStubs({ running: [false] }, async () => {
+      github.downloadAsset = async () => { throw new Error('original download failure'); };
+      const { results } = await runner.run(configFor(dir), { statePath: path.join(dir, 'state.json') });
+      assert.equal(results[0].status, 'failed');
+      assert.match(results[0].reason, /original download failure/);
+      assert.doesNotMatch(results[0].reason, /locked|EPERM/);
+    });
+  } finally {
+    fs.promises.rm = realRm;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('runner: an app already running is refused before anything is downloaded', async () => {
   const dir = tmp();
   try {
@@ -124,6 +238,47 @@ test('runner: an app already running is refused before anything is downloaded', 
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('runner: auto-close closes a running app only when an update exists', async () => {
+  const dir = tmp();
+  try {
+    const statePath = path.join(dir, 'state.json');
+    const dest = path.join(dir, 'widget');
+    fs.mkdirSync(dest, { recursive: true });
+    fs.writeFileSync(path.join(dest, 'app.txt'), 'v2');
+    fs.writeFileSync(statePath, JSON.stringify({ 'acme/widget#portable': { version: '2.0.0', tag: 'v2.0.0', files: ['app.txt'] } }));
+    await withStubs({ running: [true], closeApp: async () => { throw new Error('closed an up-to-date app'); } }, async (calls) => {
+      const { results } = await runner.run(configFor(dir), { statePath, autoClose: true });
+      assert.equal(results[0].status, 'current');
+      assert.equal(results[0].closed, undefined);
+      assert.equal(calls(), 0);
+    });
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('runner: auto-close marks an app closed before installing an update', async () => {
+  const dir = tmp();
+  try {
+    let closes = 0;
+    await withStubs({ running: [true, false], closeApp: async () => { closes++; return { closed: 1, stillRunning: false }; } }, async () => {
+      const { results } = await runner.run(configFor(dir), { statePath: path.join(dir, 'state.json'), autoClose: true });
+      assert.equal(results[0].status, 'updated', results[0].reason);
+      assert.equal(results[0].closed, true);
+      assert.equal(closes, 1);
+    });
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('runner: app exiting before close does not block update or trigger reopen', async () => {
+  const dir = tmp();
+  try {
+    await withStubs({ running: [true, false], closeApp: async () => ({ closed: 0, stillRunning: false }) }, async () => {
+      const { results } = await runner.run(configFor(dir), { statePath: path.join(dir, 'state.json'), autoClose: true });
+      assert.equal(results[0].status, 'updated', results[0].reason);
+      assert.equal(results[0].closed, undefined);
+    });
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
 // A .dmg guarded by a click-through licence agreement can't be unpacked unattended.

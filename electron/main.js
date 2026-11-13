@@ -2,9 +2,11 @@
 
 // Electron main process — the standalone GUI. Replaces the localhost web server:
 // the renderer talks to the engine over IPC (no socket), the engine runs in-process
-// (no shell, no self-elevation), and closing the window exits everything (on-demand).
+// (no shell, no self-elevation). Quiet by default: nothing runs at startup and closing the
+// window exits everything. Two opt-in settings change that (src/background.js): start at login,
+// and keep running in the tray when the window is closed.
 
-const { app, BrowserWindow, ipcMain, dialog, shell, screen, net } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, screen, net, safeStorage, Tray, Menu, nativeImage, Notification, powerMonitor } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const core = require('../src/core');
@@ -16,6 +18,10 @@ const platform = require('../src/platform');
 const paths = require('../src/paths');
 const catalog = require('../src/catalog');
 const selfupdate = require('../src/selfupdate');
+const background = require('../src/background');
+const cron = require('../src/cron');
+const schedule = require('../src/schedule');
+const autoupdate = require('../src/autoupdate');
 const { log, LOG_FILE } = require('../src/log');
 
 // macOS self-updates in place via Squirrel.Mac (electron/macupdate.js), not the launcher model
@@ -77,6 +83,7 @@ function readConfig() {
 // Light structural check; the portable-folder requirement is enforced at check/update.
 function saveConfigFile(cfg) {
   if (!cfg || !Array.isArray(cfg.repos)) throw new Error('config: "repos" must be an array');
+  core.downloadLimitBytes(cfg); // rejects a bad limit here rather than at the next update
   cfg.repos.forEach((r, i) => {
     if (!r.owner || !r.repo) throw new Error(`app ${i + 1}: owner and repo are required`);
     if (r.type !== 'portable' && r.type !== 'installer') throw new Error(`app ${i + 1}: type must be portable or installer`);
@@ -91,17 +98,47 @@ function saveConfigFile(cfg) {
   fs.renameSync(tmp, CONFIG_PATH);
 }
 
+// GitHub access token (Settings). Kept out of config.json on purpose: that file is roamed,
+// backed up on every save (*.bak), opened in an editor from Settings and round-tripped
+// through the renderer. The token lives in its own file, encrypted with the OS credential
+// store (DPAPI / Keychain / libsecret) via safeStorage, and never crosses the IPC bridge.
+const TOKEN_PATH = path.join(DATA_DIR, 'github-token.bin');
+
+let tokenInUse = false; // a saved token was actually decrypted and handed to the engine
+function loadToken() {
+  try {
+    if (!fs.existsSync(TOKEN_PATH) || !safeStorage.isEncryptionAvailable()) return null;
+    return safeStorage.decryptString(fs.readFileSync(TOKEN_PATH)) || null;
+  } catch (e) {
+    log(`github token: could not read saved token: ${e && e.message ? e.message : e}`);
+    return null;
+  }
+}
+function saveToken(token) {
+  if (!safeStorage.isEncryptionAvailable()) {
+    throw new Error("this system has no secure credential store to keep the token in — set the GITHUB_TOKEN environment variable instead");
+  }
+  fs.mkdirSync(path.dirname(TOKEN_PATH), { recursive: true });
+  fs.writeFileSync(TOKEN_PATH, safeStorage.encryptString(token), { mode: 0o600 });
+}
+function clearToken() {
+  try { fs.rmSync(TOKEN_PATH, { force: true }); } catch {}
+}
+
 let win;
-function createWindow() {
+let pendingCheck = false; // "Check now" from the tray arrived before the window finished loading
+// opts.minimized: a login start with no tray icon opens minimized to the taskbar, so it is visible.
+function createWindow(opts = {}) {
   // Tall enough for the whole UI without scrolling, capped at the screen's work area.
   const wa = screen.getPrimaryDisplay().workAreaSize;
   win = new BrowserWindow({
-    width: 840,
+    width: Math.min(920, wa.width), // wide enough for the Type column to show next to Auto-update (it hides below ~890)
     height: Math.min(1000, wa.height),
-    minWidth: 640,
+    minWidth: 720, // the list has an Auto-update column now; below this the app name would have no room
     minHeight: 480,
     backgroundColor: '#0d1117',
     autoHideMenuBar: true,
+    show: !opts.minimized,
     icon: path.join(__dirname, 'icon.png'), // dev + packaged Linux; Win/mac use the bundled app icon
 
     webPreferences: {
@@ -110,7 +147,154 @@ function createWindow() {
       nodeIntegration: false,
     },
   });
+  if (opts.minimized) win.once('ready-to-show', () => { win.showInactive(); win.minimize(); });
+  // With "keep running" on, closing the window hides it to the tray instead of quitting; Quit in the
+  // tray menu, Cmd+Q and a system shutdown are really quitting and are never intercepted.
+  win.on('close', (e) => {
+    if (background.shouldHideOnClose(readConfig(), bg.isQuitting())) {
+      e.preventDefault();
+      win.hide();
+    }
+  });
+  win.on('session-end', () => bg.markQuitting());
+  win.webContents.once('did-finish-load', () => {
+    if (pendingCheck) { pendingCheck = false; win.webContents.send('tray:check'); }
+  });
   win.loadFile(path.join(__dirname, '..', 'ui', 'index.html'));
+}
+
+// Bring the window back (creating it if there is none), from the tray or a second launch.
+function showWindow() {
+  if (!win || win.isDestroyed()) { createWindow(); return; }
+  if (win.isMinimized()) win.restore();
+  win.show();
+  win.focus();
+}
+
+// The tray's "Check now": show the window and run the same check as "Check all".
+function requestCheck() {
+  if (!win || win.isDestroyed()) { pendingCheck = true; createWindow(); return; }
+  showWindow();
+  if (win.webContents.isLoading()) pendingCheck = true;
+  else win.webContents.send('tray:check');
+}
+
+const bg = background.createBackground({
+  app, Tray, Menu, nativeImage, readConfig, log,
+  iconPath: path.join(__dirname, 'icon.png'),
+  openWindow: showWindow,
+  checkNow: requestCheck,
+});
+
+// --- scheduled check (Settings -> Schedule) --------------------------------------
+// A timer inside this one running process: no scheduled task, no helper. It only CHECKS and tells
+// you; it never downloads or installs anything. The schedule engine is src/schedule.js.
+let lastBackground = null; // what the last scheduled check found, for the window to show when it opens
+
+function notify(body) {
+  try {
+    if (!Notification.isSupported()) return;
+    const n = new Notification({ title: 'git-updater', body });
+    n.on('click', showWindow);
+    n.show();
+  } catch (e) {
+    log(`notification failed: ${e && e.message ? e.message : e}`);
+  }
+}
+
+async function backgroundCheck() {
+  const config = core.validateConfig(readConfig());
+  const out = await runner.run(config, { mode: 'check' });
+  applyRetypes(out.results);
+  const results = (out.results || []).map((r) => ({ id: r.id, status: r.status, from: r.from, to: r.to, reason: r.reason }));
+  // In a check, "current" is up to date, "failed" is an error and anything else is an update.
+  const updates = results.filter((r) => r.status !== 'failed' && r.status !== 'current').length;
+  const failed = results.filter((r) => r.status === 'failed').length;
+  lastBackground = { at: new Date().toISOString(), results };
+  log(`scheduled check: ${results.length} apps, ${updates} with updates, ${failed} failed`);
+  bg.setTooltip(updates ? `git-updater: ${updates} update${updates > 1 ? 's' : ''} available` : '');
+  if (updates) notify(`${updates} update${updates > 1 ? 's' : ''} available. Click to open git-updater.`);
+  else if (results.length && failed === results.length) notify(`The scheduled check could not finish: ${results[0].reason || 'see the log'}`);
+  if (win && !win.isDestroyed()) win.webContents.send('schedule:done');
+}
+
+// The scheduled install (Settings -> Schedule -> Install): updates only the apps ticked in the
+// Auto-update column that are already installed, portable apps first. Unattended means it never
+// opens an installer window or a permission prompt (an installer that needs one is reported as
+// "needs you" and left for the window), and a running app follows "Automatically close apps and
+// re-open when complete": on, it is closed gracefully and re-opened; off, it is skipped. Nothing is
+// ever force-closed. The rules are in src/autoupdate.js; the runner records dates like any update.
+async function backgroundInstall() {
+  if (updating) return; // an update started from the window is running; the scheduler tries again next tick
+  updating = true;
+  const entries = [];
+  try {
+    const cfg = readConfig();
+    const config = core.validateConfig(cfg);
+    const installed = await computeInstalled(cfg);
+    const { targets, skipped } = autoupdate.pickTargets(config.repos, installed);
+    for (const s of skipped) log(`scheduled install: skipping ${s.name} (${s.why})`);
+    if (!targets.length) { log('scheduled install: no ticked apps that are installed'); return; }
+    log(`scheduled install: ${targets.map((r) => `${r.owner}/${r.repo}`).join(', ')}`);
+    const autoClose = !!cfg.autoCloseReopen;
+    for (const r of targets) {
+      const key = autoupdate.keyOf(r);
+      const name = `${r.owner}/${r.repo}`;
+      let lock = null;
+      let result;
+      try {
+        lock = state.acquireLock();
+        const out = await runner.run(config, { only: key, autoClose, unattended: true });
+        result = out.results[0];
+      } catch (e) {
+        result = { status: 'failed', reason: e && e.message ? e.message : String(e) };
+      } finally {
+        state.releaseLock(lock);
+      }
+      entries.push({ name, result });
+      if (result && result.closed && autoClose) {
+        try { await launchApp(key); log(`scheduled install: re-opened ${name}`); } catch (e) { log(`scheduled install: could not re-open ${name}: ${e && e.message ? e.message : e}`); }
+      }
+      if (result && result.stopRun) { log('scheduled install: stopping (GitHub rate limit or a rejected token)'); break; }
+    }
+    const s = autoupdate.summarize(entries);
+    log(`scheduled install: updated ${s.updated.length}, already current ${s.current}, need you ${s.needsYou.length + s.running.length}, failed ${s.failed.length}`);
+    for (const x of s.needsYou) log(`scheduled install: ${x.name} needs you: ${x.reason}`);
+    for (const x of s.failed) log(`scheduled install: ${x.name} failed: ${x.reason}`);
+    const text = autoupdate.summaryText(s);
+    if (text) notify(text);
+  } finally {
+    updating = false;
+    if (win && !win.isDestroyed()) win.webContents.send('schedule:done', { kind: 'install' });
+  }
+}
+
+const scheduleState = schedule.fileState(path.join(DATA_DIR, 'schedule-state.json'));
+const scheduler = schedule.createScheduler({
+  readConfig, log,
+  loadState: scheduleState.load,
+  saveState: scheduleState.save,
+  canRun: (name) => name !== 'install' || !updating,
+  jobs: [
+    { name: 'check', run: backgroundCheck },
+    { name: 'install', run: backgroundInstall },
+  ],
+});
+
+// The stable launcher (never a versioned app-x.y.z folder) is what the login entry starts.
+const loginLauncher = () => background.launcherPath(ROOT, process.platform, process.env);
+// At launch: if "start at login" is on, make sure the system's entry still matches (a moved
+// install, or an entry removed by hand). Written only when it differs; never touched when off.
+function reconcileLogin() {
+  try {
+    if (!readConfig().startAtLogin) return;
+    if (!background.isStartAtLoginApplied(app, true, loginLauncher())) {
+      background.setStartAtLogin(app, true, loginLauncher());
+      log('start at login: entry refreshed');
+    }
+  } catch (e) {
+    log(`start at login: ${e && e.message ? e.message : e}`);
+  }
 }
 
 // --- IPC: the only bridge between the renderer and the engine -----------------
@@ -119,22 +303,23 @@ ipcMain.handle('state:get', () => state.load());
 
 // Locally-installed version + presence per app, BEFORE checking GitHub.
 // Installer -> uninstall-registry DisplayVersion; Portable -> our manifest + folder.
-ipcMain.handle('installed:get', async () => {
+async function computeInstalled(cfg) {
   detect.clearCache(); // fresh scan — versions change after installs
-  const cfg = readConfig();
   const stt = state.load();
   const out = {};
   for (const r of cfg.repos) {
     const key = `${r.owner}/${r.repo}#${r.type}`;
+    const rec = stt[key] || {};
     if (r.type === 'installer') {
       let v = null;
       try {
         v = await detect.installedVersion(r.detect || r.repo);
       } catch {}
-      out[key] = { current: v, present: !!v };
+      let date = rec.installedAt || null;
+      if (!date && v) try { date = await detect.installedDate(r.detect || r.repo); } catch {}
+      out[key] = { current: v, present: !!v, date: v ? date : null, lastAction: rec.lastAction || 'installed' };
     } else {
       const dir = portableDir(cfg, r);
-      const rec = stt[key];
       let current = (rec && rec.version) || null;
       let present = dirHasFiles(dir);
       // Neither a managed copy nor a git-updater record: fall back to the OS inventory. The
@@ -152,10 +337,29 @@ ipcMain.handle('installed:get', async () => {
           present = true;
         }
       }
-      out[key] = { current, present };
+      let date = rec.installedAt || null;
+      if (!date && present) try { date = await detect.installedDate(r.detect || r.repo); } catch {}
+      out[key] = { current, present, date: present ? date : null, lastAction: rec.lastAction || 'installed' };
     }
   }
   return out;
+}
+ipcMain.handle('installed:get', () => computeInstalled(readConfig()));
+// The renderer calls this only after an interactive installer changes the OS version.
+ipcMain.handle('installed:record-completion', async (_e, { appKey, fromVersion, wasInstall }) => {
+  const r = readConfig().repos.find((x) => `${x.owner}/${x.repo}#${x.type}` === appKey);
+  if (!r || r.type !== 'installer') throw new Error('installer app not found');
+  detect.clearCache();
+  const version = await detect.installedVersion(r.detect || r.repo);
+  if (!version || version === fromVersion) throw new Error('installer completion not detected');
+  const stt = state.load();
+  const installedAt = new Date().toISOString();
+  const lastAction = wasInstall ? 'installed' : 'updated';
+  // An interactive install supplies status provenance, not a release tag. The registry
+  // may use a different version scheme; treating it as a tag can block a later reinstall.
+  stt[appKey] = { ...(stt[appKey] || {}), repo: `${r.owner}/${r.repo}`, type: r.type, installedAt, lastAction };
+  state.save(stt);
+  return { installedAt, lastAction };
 });
 ipcMain.handle('folder:open', (_e, appKey) => {
   const cfg = readConfig();
@@ -194,7 +398,7 @@ function shallowFiles(dir, depth = 2, prefix = '') {
 // exception, and has to be: its launch target is a .desktop entry, and openPath sends
 // that to the user's association for application/x-desktop, which on KDE is the text
 // editor. The platform layer launches it properly there; see linux.launchApp.
-ipcMain.handle('app:launch', async (_e, appKey) => {
+async function launchApp(appKey) {
   const cfg = readConfig();
   const r = cfg.repos.find((x) => `${x.owner}/${x.repo}#${x.type}` === appKey);
   if (!r) throw new Error('app not found');
@@ -238,9 +442,41 @@ ipcMain.handle('app:launch', async (_e, appKey) => {
   const err = await shell.openPath(target); // '' on success, else an OS error string
   if (err) throw new Error(err);
   return { ok: true, path: target };
+}
+ipcMain.handle('app:launch', (_e, appKey) => launchApp(appKey));
+// The Settings screen's "Next runs" preview, and what the last scheduled check found.
+ipcMain.handle('schedule:preview', (_e, expr) => {
+  const v = cron.validate(String(expr || ''));
+  return { ok: v.ok, error: v.error, runs: v.runs.map((d) => d.toISOString()) };
 });
+ipcMain.handle('schedule:last', () => lastBackground);
+
 ipcMain.handle('config:save', (_e, cfg) => {
-  saveConfigFile(cfg);
+  const previous = readConfig();
+  // A schedule that is switched on (or edited) must be valid. Only checked when those fields changed,
+  // so a hand-edited bad value can never block saving every other setting.
+  for (const k of ['Check', 'Install']) {
+    const sched = (c) => `${!!(c && c[`schedule${k}Enabled`])}|${(c && c[`schedule${k}Cron`]) || ''}`;
+    if (cfg && cfg[`schedule${k}Enabled`] && sched(cfg) !== sched(previous)) {
+      const v = cron.validate(cfg[`schedule${k}Cron`]);
+      if (!v.ok) throw new Error(`${k} schedule: ${v.error}`);
+    }
+  }
+  const wasStartAtLogin = !!previous.startAtLogin;
+  const wantsStartAtLogin = !!(cfg && cfg.startAtLogin);
+  // The system's login list is written first, so a refusal (a development run, a system that
+  // ignores it) reaches the Settings checkbox before anything is saved.
+  if (wantsStartAtLogin !== wasStartAtLogin) {
+    background.setStartAtLogin(app, wantsStartAtLogin, loginLauncher());
+    log(`start at login: ${wantsStartAtLogin ? 'on' : 'off'}`);
+  }
+  try {
+    saveConfigFile(cfg);
+  } catch (e) {
+    if (wantsStartAtLogin !== wasStartAtLogin) { try { background.setStartAtLogin(app, wasStartAtLogin, loginLauncher()); } catch {} }
+    throw e;
+  }
+  bg.syncTray(); // the tray icon follows "keep running" at once, no restart
   return { ok: true };
 });
 ipcMain.handle('config:open', () => shell.openPath(CONFIG_PATH));
@@ -314,7 +550,12 @@ ipcMain.handle('scan:add', (_e, items) => {
   if (scanWin && !scanWin.isDestroyed()) scanWin.close();
   return { added };
 });
-// Close a tracked app's running processes (graceful; force on request).
+// Running check and close for a tracked app.
+ipcMain.handle('app:is-running', async (_e, appKey) => {
+  const r = readConfig().repos.find((x) => `${x.owner}/${x.repo}#${x.type}` === appKey);
+  if (!r) throw new Error('app not found');
+  return detect.isRunning(r.process || r.repo);
+});
 ipcMain.handle('app:close', async (_e, { appKey, force }) => {
   const r = readConfig().repos.find((x) => `${x.owner}/${x.repo}#${x.type}` === appKey);
   if (!r) throw new Error('app not found');
@@ -366,6 +607,37 @@ ipcMain.handle('selfupdate:openRelease', () =>
   shell.openExternal(`https://github.com/${selfupdate.REPO.owner}/${selfupdate.REPO.repo}/releases`)
 );
 ipcMain.handle('app:version', () => app.getVersion());
+
+// Token status for Settings: whether one is saved, plus the live quota. Never the token itself.
+// `unreadable`: the file exists but could not be decrypted (OS credential key changed), so
+// requests are going out without it — Settings must say so rather than claim it is saved.
+ipcMain.handle('token:status', async () => {
+  const saved = tokenInUse;
+  const unreadable = !saved && fs.existsSync(TOKEN_PATH);
+  const env = !saved && !!process.env.GITHUB_TOKEN;
+  let quota = null;
+  try { quota = await github.rateLimit(); } catch (e) { quota = { error: e.message }; }
+  return { saved, unreadable, env, quota };
+});
+// Test the token against GitHub before keeping it, so a typo is caught here rather than as
+// a wall of failed checks later.
+ipcMain.handle('token:set', async (_e, token) => {
+  const t = typeof token === 'string' ? token.trim() : '';
+  if (!t) throw new Error('paste a token first');
+  const quota = await github.rateLimit(t);
+  saveToken(t);
+  github.setToken(t);
+  tokenInUse = true;
+  log(`github token saved (limit ${quota.limit}/h)`);
+  return { ok: true, quota };
+});
+ipcMain.handle('token:clear', () => {
+  clearToken();
+  github.setToken(null);
+  tokenInUse = false;
+  log('github token removed');
+  return { ok: true };
+});
 
 ipcMain.handle('pick-folder', async () => {
   const r = await dialog.showOpenDialog(win, {
@@ -424,7 +696,7 @@ ipcMain.handle('update', async (e, body = {}) => {
     // Stream per-app progress to the renderer as it happens.
     const onProgress = (id, phase, pct) => e.sender.send('update:progress', { id, phase, pct });
     const openFile = (f) => shell.openPath(f); // ShellExecute: an installer's UAC manifest works
-    return await runner.run(config, { only: body.only, force: !!body.force, dryRun: !!body.dryRun, onProgress, openFile });
+    return await runner.run(config, { only: body.only, force: !!body.force, dryRun: !!body.dryRun, autoClose: !!body.autoClose, onProgress, openFile });
   } finally {
     state.releaseLock(lock);
     updating = false;
@@ -439,7 +711,8 @@ ipcMain.handle('selfupdate:apply', async (e) => {
   updating = true;
   try {
     const onProgress = (phase, pct) => e.sender.send('update:progress', { id: 'self', phase, pct });
-    const prerelease = !!readConfig().selfUpdatePrerelease; // self-update beta channel (Settings)
+    const cfg = readConfig();
+    const prerelease = !!cfg.selfUpdatePrerelease; // self-update beta channel (Settings)
     if (IS_MAC) {
       // Squirrel.Mac downloads+verifies the signed zip, swaps the bundle and relaunches; it
       // owns the restart, so there is no launcher hand-off or app.exit here.
@@ -447,7 +720,7 @@ ipcMain.handle('selfupdate:apply', async (e) => {
       log(`self-update(mac): restarting into ${r.version}`);
       return r;
     }
-    const { tag } = await selfupdate.prepareUpdate(ROOT, app.getVersion(), onProgress, { prerelease });
+    const { tag } = await selfupdate.prepareUpdate(ROOT, app.getVersion(), onProgress, { prerelease, maxBytes: core.downloadLimitBytes(cfg) });
     selfupdate.writeApplyMarker({ expectVersion: tag });
     selfupdate.relaunchViaLauncher(ROOT, process.pid);
     log(`self-update: restarting into ${tag}`);
@@ -461,7 +734,7 @@ ipcMain.handle('selfupdate:apply', async (e) => {
   }
 });
 
-// --- lifecycle: launcher hand-off, single instance, on-demand -------------------
+// --- lifecycle: launcher hand-off, single instance, quiet by default ------------
 (async () => {
   // Relaunch after a self-update: the updating process still holds the single-instance lock
   // until it exits, so wait for it before handing off.
@@ -473,7 +746,7 @@ ipcMain.handle('selfupdate:apply', async (e) => {
   const target = app.isPackaged ? selfupdate.handoffTarget(process.execPath, app.getVersion()) : null;
   if (target) {
     log(`launcher: handing off to ${target.dir}`);
-    selfupdate.launch(target.dir);
+    selfupdate.launch(target.dir, background.forwardArgs(process.argv)); // the login flag must survive the hand-off
     app.exit(0);
     return;
   }
@@ -482,11 +755,9 @@ ipcMain.handle('selfupdate:apply', async (e) => {
     app.quit();
     return;
   }
-  app.on('second-instance', () => {
-    if (win) {
-      if (win.isMinimized()) win.restore();
-      win.focus();
-    }
+  app.on('second-instance', (_event, argv) => {
+    if (argv.includes(background.AUTO_START_ARG)) return; // a login start while already running: nothing to do
+    showWindow(); // also brings back a window hidden in the tray
   });
   app.whenReady().then(() => {
     // Route the engine's HTTP through Chromium's network stack (Electron net.fetch): it trusts
@@ -494,16 +765,32 @@ ipcMain.handle('selfupdate:apply', async (e) => {
     // one the browser already trusts — is honored here too. Node's own fetch ignores that store
     // and fails with UNABLE_TO_GET_ISSUER_CERT_LOCALLY on such networks.
     github.setFetch((url, init) => net.fetch(url, init));
+    const savedToken = loadToken(); // safeStorage is only usable once the app is ready
+    github.setToken(savedToken);
+    tokenInUse = !!savedToken;
     migrateConfig();
     if (app.isPackaged) selfupdate.cleanupLeftovers(ROOT, app.getVersion()).catch(() => {});
-    createWindow();
+    bg.syncTray();
+    reconcileLogin();
+    if (process.platform === 'win32') app.setAppUserModelId('com.teejs.gitupdater'); // the same id as the build's appId, so notifications carry the app's name
+    // The scheduled check: a tick every half minute, one shortly after start (a missed run is caught
+    // up then), and one when the computer wakes (timers pause while it sleeps).
+    setInterval(() => { scheduler.tick(); }, schedule.TICK_MS).unref();
+    setTimeout(() => { scheduler.tick(); }, 15 * 1000).unref();
+    powerMonitor.on('resume', () => { scheduler.tick(); });
+    const loginLaunch = background.isLoginLaunch(process.argv, { macWasOpenedAtLogin: IS_MAC && app.getLoginItemSettings().wasOpenedAtLogin });
+    const mode = background.startupWindow(readConfig(), loginLaunch, process.platform);
+    if (mode === 'hidden') log('started at login: hidden in the tray');
+    else createWindow({ minimized: mode === 'minimized' });
   });
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    if (BrowserWindow.getAllWindows().length === 0) showWindow();
   });
-  // Close the window -> everything exits, on every platform INCLUDING macOS, where the
-  // convention is normally to stay resident in the dock. That convention is declined on
-  // purpose: git-updater runs nothing at startup, keeps no background service and phones
-  // home never, and a process lingering after the window closes would contradict that.
-  app.on('window-all-closed', () => app.quit());
+  app.on('before-quit', () => bg.markQuitting());
+  // Closing the last window quits, on every platform INCLUDING macOS, where the convention is to
+  // stay resident in the dock. That convention is declined: this app is quiet by default. The one
+  // exception is the opt-in "keep running in the tray", which keeps it alive for its icon.
+  app.on('window-all-closed', () => {
+    if (!background.keepAliveWithoutWindows(readConfig(), bg.isQuitting())) app.quit();
+  });
 })();
