@@ -391,6 +391,40 @@ auto-update or auto-install, so the app keeps its "no network at startup unless 
 posture. The `booted` flag in the UI script makes it a one-shot per app start: `load()`
 re-runs on config changes (scan window adds, folder save) and those must not re-trigger it.
 
+### Background mode (start at login, keep running in the tray)
+
+git-updater is quiet by default: nothing runs at startup, and closing the window quits (on macOS
+too). Two opt-in settings in **Settings -> Background**, both off by default, change that; the
+logic is in `src/background.js`, which has no Electron import (the decisions are pure and the
+stateful parts take Electron's `app`, `Tray`, `Menu` and `nativeImage` as arguments, so
+`test/background.test.js` runs them with fakes).
+
+- **`config.startAtLogin`** registers a login item. Windows and macOS use Electron's
+  `app.setLoginItemSettings` (a registry Run value on Windows, a login item on macOS, so it shows
+  in Task Manager's Startup apps list); Linux writes an XDG autostart entry
+  (`~/.config/autostart/git-updater.desktop`). It points at the **stable launcher**
+  (`launcherPath(ROOT)`, or `$APPIMAGE`), never an `app-<version>` folder, because a self-update
+  swaps versions. The entry passes `--auto-start`, and the launcher forwards that one flag when it
+  hands off to the newest version. At launch `reconcileLogin()` rewrites the entry only if it no
+  longer matches, and never touches the system when the setting is off. `config:save` writes the
+  login list before saving the config, so a refusal (a development run, a system that ignores it)
+  reaches the checkbox and nothing is saved.
+- **`config.keepRunning`** shows a tray icon (menu bar on a Mac) whenever it is on, live, no
+  restart. Closing the window then hides it instead of quitting (`shouldHideOnClose`); Quit in the
+  tray menu, Cmd+Q and a system shutdown set a `quitting` flag so they are never intercepted. The
+  icon's menu is Open, Check now (the window runs the same check as "Check all") and Quit; a click
+  opens the window except on Linux, where indicators ignore clicks and the menu does the work.
+  Launching git-updater again also brings the window back.
+
+A login start with the tray on starts **hidden** (no window, just the icon); without the tray it
+opens **minimized to the taskbar**, so it is never an invisible process. On Linux it is always
+minimized, because a tray icon needs a desktop extension on some desktops.
+
+No shell, no scheduled task, no second process and no listening port is involved. A real-Electron
+smoke test of `electron/main.js` (window hides on close with the tray on, quits with it off, the
+login-start modes, the tray following `config:save`) was run with config, data and Chromium user
+data redirected to a temp folder.
+
 ### The Settings screen
 
 Settings is its own screen, not a collapsed box under the list: a **Settings** button at the top

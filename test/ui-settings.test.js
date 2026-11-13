@@ -24,6 +24,7 @@ const SETTINGS_IDS = [
   'portableRoot', 'browse', 'saveRoot', 'dateFormat',
   'startupSortEnabled', 'startupSortColumn', 'startupSortDirection', 'rememberFilters',
   'checkOnOpen', 'autoCloseReopen', 'downloadLimitEnabled', 'downloadLimitMiB', 'saveDownloadLimit', 'selfPreRel',
+  'startAtLogin', 'keepRunning',
   'ghToken', 'saveToken', 'clearToken', 'tokenHint',
   'editJson', 'openLog', 'appVersion',
 ];
@@ -49,7 +50,7 @@ test('the list screen keeps the list, the search, Add an app and Known apps', ()
 });
 
 test('Settings is grouped under headings so it scales', () => {
-  for (const heading of ['Apps and display', 'Updating', 'GitHub', 'Advanced']) {
+  for (const heading of ['Apps and display', 'Updating', 'Background', 'GitHub', 'Advanced']) {
     assert.match(settingsScreen, new RegExp(`<h2 class="sec-h" id="sg-[a-z]+">${heading}</h2>`), heading);
   }
 });
