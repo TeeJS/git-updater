@@ -425,12 +425,93 @@ smoke test of `electron/main.js` (window hides on close with the tray on, quits 
 login-start modes, the tray following `config:save`) was run with config, data and Chromium user
 data redirected to a temp folder.
 
+### Scheduled check (cron-style)
+
+**Settings -> Schedule** can check for updates on a schedule, off by default. It only **checks and
+tells you**; it never downloads or installs anything (the scheduled install is separate, below, and
+only touches apps you tick). The schedule is a cron line in this computer's local time:
+
+```
+minute hour day-of-month month day-of-week
+47 2 * * 2#1        the 1st Tuesday of every month at 2:47 AM
+0 9 * * *           every day at 9:00
+0 8 * * MON-FRI     weekdays at 8:00
+0 23 L * *          the last day of the month at 23:00
+```
+
+`src/cron.js` is a small parser with no dependency: `*`, numbers, `a-b`, `a-b/n`, `*/n`, comma lists,
+month and weekday names, plus two extensions, `weekday#n` (the nth weekday of the month) and `L`
+(day-of-month: the last day). The classic rule is kept on purpose: when **both** day fields are
+restricted, a day matches when **either** does, which is why "the first Tuesday" is written
+`2#1` and not `1-7 * 2` (that would also run every Tuesday). A time that does not exist on a
+daylight-saving day (2:47 AM on the spring-forward day) is skipped. `validate()` refuses a bad
+schedule with a message, refuses one that never runs, and refuses one that fires **more often than
+once an hour** (GitHub allows 60 requests an hour without a token). The Settings screen shows the
+next three run times, computed by the same parser through the `schedule:preview` IPC, so what you
+see is what will happen.
+
+`src/schedule.js` is the engine: a timer inside the one running app (a tick every 30 seconds, one
+15 seconds after start, and one when the computer wakes; no scheduled task, no helper process). It
+keeps when each schedule last ran in `schedule-state.json` next to `config.json`. Switching a
+schedule on, or editing it, starts counting from then, so a past time is never run. If the app
+was off or the computer asleep at the scheduled time, the check runs **once** when it next notices
+(the "Run a missed schedule" checkbox, on by default; off: the missed time is dropped). The time is
+marked as run **before** the check starts, so a crash or a slow check never makes it run twice.
+
+A finished check sets the tray tooltip ("git-updater: 3 updates available"), shows a system
+notification when it found updates (a click opens the window), and is kept in memory so the window
+shows what it found next time it opens (`schedule:last`; rows already checked in the window are not
+overwritten). It runs while git-updater is running, so to rely on it turn on **Start at login** and
+**Keep running in the tray**. `config:save` refuses an invalid schedule when it is switched on or
+edited, and only then, so a hand-edited bad value can never block saving every other setting.
+
+### Auto-update column and the Install schedule
+
+Each app row has an **Auto-update** checkbox (`repo.autoUpdate: true` in `config.json`; unticking
+deletes the key rather than storing `false`). It is sortable and filterable (the Auto-update
+dropdown, also remembered with "Remember my filters"), survives editing the app, and is what the
+scheduled install reads. The second cron line in **Settings -> Schedule**, **Install**
+(`scheduleInstallEnabled` / `scheduleInstallCron`, off by default, same parser, hourly floor, local
+time and "Run a missed schedule" as the check), installs updates for the ticked apps. Its default
+suggestion is `47 2 * * 2#1`. The two schedules are independent jobs in the one scheduler
+(`schedule-state.json` keeps `checkLastRun/checkCron` and `installLastRun/installCron`).
+
+What the run does, in `backgroundInstall()` in `electron/main.js` (the choices are pure functions in
+`src/autoupdate.js`, tested in `test/autoupdate.test.js`):
+
+- **Which apps:** only ticked apps that are already installed on this PC (`computeInstalled`); a
+  schedule never installs a new app. Portable apps run first, then installers.
+- **One run at a time:** the scheduler skips the install job while another update is running
+  (`canRun`), and each app takes the same per-app lock a window update takes.
+- **Nothing is forced or prompted.** It calls `runner.run(config, { only, autoClose, unattended: true })`.
+  `unattended` makes the runner treat every installer as non-interactive: no installer window and no
+  UAC prompt. An installer kind it cannot run silently, or one that fails for permission (exit
+  1603 / elevation), is not retried with a window; it throws `needs you: ...`, which the run reports as
+  "needs you" and leaves for you to do from the window.
+- **Running apps follow the existing "Automatically close apps and re-open when complete" setting.**
+  On: a graceful close, the update, then the app is re-opened (`launchApp`). Off: the app is skipped
+  ("is running") and reported. It never force-closes anything.
+- **One notification per run**, e.g. "Updated 4 apps: a, b, c and 1 more. 1 needs you: d. Click to
+  open git-updater." (none when everything was already current), plus a log line with the same
+  counts. The window reloads its list when it receives `schedule:done` for the install kind.
+- **Stopping early:** a GitHub rate limit or a rejected token (`stopRun`) ends the run there, so the
+  rest of the apps are not tried and the log says why.
+
+A real-Electron smoke test (config, data and Chromium user data in a temp folder) ran a catch-up
+install against GitHub: the ticked portable app was downloaded, verified and installed, and the
+unticked app next to it was untouched. Not exercised for real: the notification itself and
+installer (non-portable) apps; both are covered by fakes and unit tests.
+
+The window got a second change with the extra column: `minWidth` is now 720 and the default width
+920, and the grid switches to its narrow layout (Type hidden) when the list is under 800 px wide
+and stacks the header under 680 px (container queries), so the name column is never squeezed.
+
 ### The Settings screen
 
 Settings is its own screen, not a collapsed box under the list: a **Settings** button at the top
 right of the list's header opens it, and **Back** or **Esc** returns (Esc is ignored while a
 dropdown has focus, where it closes the dropdown). It is one scrolling page grouped under
-headings: Apps and display, Updating, GitHub, Advanced. Both screens stay mounted and
+headings: Apps and display, Updating, Schedule, Background, GitHub, Advanced. Both screens stay mounted and
 `showScreen()` (a small pure-ish block in `ui/index.html`) just toggles `hidden`, so the search,
 filters, selection and scroll position of the list are exactly as you left them. The single
 status line (`#msg`: "Saved.", errors) is moved into whichever screen is showing, so a change made

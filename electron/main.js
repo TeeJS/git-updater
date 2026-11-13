@@ -6,7 +6,7 @@
 // window exits everything. Two opt-in settings change that (src/background.js): start at login,
 // and keep running in the tray when the window is closed.
 
-const { app, BrowserWindow, ipcMain, dialog, shell, screen, net, safeStorage, Tray, Menu, nativeImage } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, screen, net, safeStorage, Tray, Menu, nativeImage, Notification, powerMonitor } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const core = require('../src/core');
@@ -19,6 +19,9 @@ const paths = require('../src/paths');
 const catalog = require('../src/catalog');
 const selfupdate = require('../src/selfupdate');
 const background = require('../src/background');
+const cron = require('../src/cron');
+const schedule = require('../src/schedule');
+const autoupdate = require('../src/autoupdate');
 const { log, LOG_FILE } = require('../src/log');
 
 // macOS self-updates in place via Squirrel.Mac (electron/macupdate.js), not the launcher model
@@ -129,9 +132,9 @@ function createWindow(opts = {}) {
   // Tall enough for the whole UI without scrolling, capped at the screen's work area.
   const wa = screen.getPrimaryDisplay().workAreaSize;
   win = new BrowserWindow({
-    width: 840,
+    width: Math.min(920, wa.width), // wide enough for the Type column to show next to Auto-update (it hides below ~890)
     height: Math.min(1000, wa.height),
-    minWidth: 640,
+    minWidth: 720, // the list has an Auto-update column now; below this the app name would have no room
     minHeight: 480,
     backgroundColor: '#0d1117',
     autoHideMenuBar: true,
@@ -183,6 +186,101 @@ const bg = background.createBackground({
   checkNow: requestCheck,
 });
 
+// --- scheduled check (Settings -> Schedule) --------------------------------------
+// A timer inside this one running process: no scheduled task, no helper. It only CHECKS and tells
+// you; it never downloads or installs anything. The schedule engine is src/schedule.js.
+let lastBackground = null; // what the last scheduled check found, for the window to show when it opens
+
+function notify(body) {
+  try {
+    if (!Notification.isSupported()) return;
+    const n = new Notification({ title: 'git-updater', body });
+    n.on('click', showWindow);
+    n.show();
+  } catch (e) {
+    log(`notification failed: ${e && e.message ? e.message : e}`);
+  }
+}
+
+async function backgroundCheck() {
+  const config = core.validateConfig(readConfig());
+  const out = await runner.run(config, { mode: 'check' });
+  applyRetypes(out.results);
+  const results = (out.results || []).map((r) => ({ id: r.id, status: r.status, from: r.from, to: r.to, reason: r.reason }));
+  // In a check, "current" is up to date, "failed" is an error and anything else is an update.
+  const updates = results.filter((r) => r.status !== 'failed' && r.status !== 'current').length;
+  const failed = results.filter((r) => r.status === 'failed').length;
+  lastBackground = { at: new Date().toISOString(), results };
+  log(`scheduled check: ${results.length} apps, ${updates} with updates, ${failed} failed`);
+  bg.setTooltip(updates ? `git-updater: ${updates} update${updates > 1 ? 's' : ''} available` : '');
+  if (updates) notify(`${updates} update${updates > 1 ? 's' : ''} available. Click to open git-updater.`);
+  else if (results.length && failed === results.length) notify(`The scheduled check could not finish: ${results[0].reason || 'see the log'}`);
+  if (win && !win.isDestroyed()) win.webContents.send('schedule:done');
+}
+
+// The scheduled install (Settings -> Schedule -> Install): updates only the apps ticked in the
+// Auto-update column that are already installed, portable apps first. Unattended means it never
+// opens an installer window or a permission prompt (an installer that needs one is reported as
+// "needs you" and left for the window), and a running app follows "Automatically close apps and
+// re-open when complete": on, it is closed gracefully and re-opened; off, it is skipped. Nothing is
+// ever force-closed. The rules are in src/autoupdate.js; the runner records dates like any update.
+async function backgroundInstall() {
+  if (updating) return; // an update started from the window is running; the scheduler tries again next tick
+  updating = true;
+  const entries = [];
+  try {
+    const cfg = readConfig();
+    const config = core.validateConfig(cfg);
+    const installed = await computeInstalled(cfg);
+    const { targets, skipped } = autoupdate.pickTargets(config.repos, installed);
+    for (const s of skipped) log(`scheduled install: skipping ${s.name} (${s.why})`);
+    if (!targets.length) { log('scheduled install: no ticked apps that are installed'); return; }
+    log(`scheduled install: ${targets.map((r) => `${r.owner}/${r.repo}`).join(', ')}`);
+    const autoClose = !!cfg.autoCloseReopen;
+    for (const r of targets) {
+      const key = autoupdate.keyOf(r);
+      const name = `${r.owner}/${r.repo}`;
+      let lock = null;
+      let result;
+      try {
+        lock = state.acquireLock();
+        const out = await runner.run(config, { only: key, autoClose, unattended: true });
+        result = out.results[0];
+      } catch (e) {
+        result = { status: 'failed', reason: e && e.message ? e.message : String(e) };
+      } finally {
+        state.releaseLock(lock);
+      }
+      entries.push({ name, result });
+      if (result && result.closed && autoClose) {
+        try { await launchApp(key); log(`scheduled install: re-opened ${name}`); } catch (e) { log(`scheduled install: could not re-open ${name}: ${e && e.message ? e.message : e}`); }
+      }
+      if (result && result.stopRun) { log('scheduled install: stopping (GitHub rate limit or a rejected token)'); break; }
+    }
+    const s = autoupdate.summarize(entries);
+    log(`scheduled install: updated ${s.updated.length}, already current ${s.current}, need you ${s.needsYou.length + s.running.length}, failed ${s.failed.length}`);
+    for (const x of s.needsYou) log(`scheduled install: ${x.name} needs you: ${x.reason}`);
+    for (const x of s.failed) log(`scheduled install: ${x.name} failed: ${x.reason}`);
+    const text = autoupdate.summaryText(s);
+    if (text) notify(text);
+  } finally {
+    updating = false;
+    if (win && !win.isDestroyed()) win.webContents.send('schedule:done', { kind: 'install' });
+  }
+}
+
+const scheduleState = schedule.fileState(path.join(DATA_DIR, 'schedule-state.json'));
+const scheduler = schedule.createScheduler({
+  readConfig, log,
+  loadState: scheduleState.load,
+  saveState: scheduleState.save,
+  canRun: (name) => name !== 'install' || !updating,
+  jobs: [
+    { name: 'check', run: backgroundCheck },
+    { name: 'install', run: backgroundInstall },
+  ],
+});
+
 // The stable launcher (never a versioned app-x.y.z folder) is what the login entry starts.
 const loginLauncher = () => background.launcherPath(ROOT, process.platform, process.env);
 // At launch: if "start at login" is on, make sure the system's entry still matches (a moved
@@ -205,9 +303,8 @@ ipcMain.handle('state:get', () => state.load());
 
 // Locally-installed version + presence per app, BEFORE checking GitHub.
 // Installer -> uninstall-registry DisplayVersion; Portable -> our manifest + folder.
-ipcMain.handle('installed:get', async () => {
+async function computeInstalled(cfg) {
   detect.clearCache(); // fresh scan — versions change after installs
-  const cfg = readConfig();
   const stt = state.load();
   const out = {};
   for (const r of cfg.repos) {
@@ -246,7 +343,8 @@ ipcMain.handle('installed:get', async () => {
     }
   }
   return out;
-});
+}
+ipcMain.handle('installed:get', () => computeInstalled(readConfig()));
 // The renderer calls this only after an interactive installer changes the OS version.
 ipcMain.handle('installed:record-completion', async (_e, { appKey, fromVersion, wasInstall }) => {
   const r = readConfig().repos.find((x) => `${x.owner}/${x.repo}#${x.type}` === appKey);
@@ -300,7 +398,7 @@ function shallowFiles(dir, depth = 2, prefix = '') {
 // exception, and has to be: its launch target is a .desktop entry, and openPath sends
 // that to the user's association for application/x-desktop, which on KDE is the text
 // editor. The platform layer launches it properly there; see linux.launchApp.
-ipcMain.handle('app:launch', async (_e, appKey) => {
+async function launchApp(appKey) {
   const cfg = readConfig();
   const r = cfg.repos.find((x) => `${x.owner}/${x.repo}#${x.type}` === appKey);
   if (!r) throw new Error('app not found');
@@ -344,9 +442,27 @@ ipcMain.handle('app:launch', async (_e, appKey) => {
   const err = await shell.openPath(target); // '' on success, else an OS error string
   if (err) throw new Error(err);
   return { ok: true, path: target };
+}
+ipcMain.handle('app:launch', (_e, appKey) => launchApp(appKey));
+// The Settings screen's "Next runs" preview, and what the last scheduled check found.
+ipcMain.handle('schedule:preview', (_e, expr) => {
+  const v = cron.validate(String(expr || ''));
+  return { ok: v.ok, error: v.error, runs: v.runs.map((d) => d.toISOString()) };
 });
+ipcMain.handle('schedule:last', () => lastBackground);
+
 ipcMain.handle('config:save', (_e, cfg) => {
-  const wasStartAtLogin = !!readConfig().startAtLogin;
+  const previous = readConfig();
+  // A schedule that is switched on (or edited) must be valid. Only checked when those fields changed,
+  // so a hand-edited bad value can never block saving every other setting.
+  for (const k of ['Check', 'Install']) {
+    const sched = (c) => `${!!(c && c[`schedule${k}Enabled`])}|${(c && c[`schedule${k}Cron`]) || ''}`;
+    if (cfg && cfg[`schedule${k}Enabled`] && sched(cfg) !== sched(previous)) {
+      const v = cron.validate(cfg[`schedule${k}Cron`]);
+      if (!v.ok) throw new Error(`${k} schedule: ${v.error}`);
+    }
+  }
+  const wasStartAtLogin = !!previous.startAtLogin;
   const wantsStartAtLogin = !!(cfg && cfg.startAtLogin);
   // The system's login list is written first, so a refusal (a development run, a system that
   // ignores it) reaches the Settings checkbox before anything is saved.
@@ -656,6 +772,12 @@ ipcMain.handle('selfupdate:apply', async (e) => {
     if (app.isPackaged) selfupdate.cleanupLeftovers(ROOT, app.getVersion()).catch(() => {});
     bg.syncTray();
     reconcileLogin();
+    if (process.platform === 'win32') app.setAppUserModelId('com.teejs.gitupdater'); // the same id as the build's appId, so notifications carry the app's name
+    // The scheduled check: a tick every half minute, one shortly after start (a missed run is caught
+    // up then), and one when the computer wakes (timers pause while it sleeps).
+    setInterval(() => { scheduler.tick(); }, schedule.TICK_MS).unref();
+    setTimeout(() => { scheduler.tick(); }, 15 * 1000).unref();
+    powerMonitor.on('resume', () => { scheduler.tick(); });
     const loginLaunch = background.isLoginLaunch(process.argv, { macWasOpenedAtLogin: IS_MAC && app.getLoginItemSettings().wasOpenedAtLogin });
     const mode = background.startupWindow(readConfig(), loginLaunch, process.platform);
     if (mode === 'hidden') log('started at login: hidden in the tray');

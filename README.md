@@ -59,8 +59,14 @@ The tarball has no such requirement, which is why it is the recommended Linux do
   closing the window quits — on macOS too, where it does not linger in the dock. If you would
   rather it stayed available, Settings has two switches, both off until you turn them on:
   *start at login*, and *keep running in the tray* (closing the window hides it to an icon
-  instead of quitting; right-click the icon for Open, Check now and Quit). It never updates or
-  installs anything on its own. It even tells you when git-updater itself has a new release.
+  instead of quitting; right-click the icon for Open, Check now and Quit). It can also check for
+  updates on a schedule you write cron-style, such as `47 2 * * 2#1` for the first Tuesday of
+  each month at 2:47 AM, and tell you with a notification. It never installs anything on its
+  own unless you turn on the separate **Install** schedule, and even then it only touches apps
+  you ticked in the **Auto-update** column that are already installed. It never force-closes
+  a running app and never opens an installer window or permission prompt: an installer that
+  needs your permission is skipped and reported as "needs you". It even tells you when
+  git-updater itself has a new release.
 
 ## On macOS
 

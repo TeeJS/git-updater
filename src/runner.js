@@ -281,6 +281,9 @@ async function handleRepo(repo, id, st, opts) {
       //   macOS .pkg:  opts.openFile hands it to Installer.app, which prompts for admin.
       //   Linux .deb/.rpm: opts.openFile hands it to the desktop's package installer.
       const interactive = (keepName) => {
+        // An unattended (scheduled) run never opens an installer window or an authorization
+        // prompt: nobody is there to answer it. Such an installer is reported as "needs you".
+        if (opts.unattended) return false;
         const keep = path.join(stageBase, keepName); // outlives the tmp cleanup below
         fs.copyFileSync(file, keep);
         log(`  -> opening interactive installer: ${keep}`);
@@ -301,6 +304,7 @@ async function handleRepo(repo, id, st, opts) {
       if (!kind) {
         // Unidentifiable installer: never guess silent switches — run its window instead.
         if (interactive(asset.name)) return interactiveResult;
+        if (opts.unattended) throw new Error(`needs you: ${repo.repo}'s installer cannot run silently, so it was not run unattended. Update it from the window.`);
         throw new Error(
           `could not identify the installer type for ${asset.name} — add "install":{"kind":"nsis|inno|msi"} for ${id} in config.json`
         );
@@ -311,6 +315,9 @@ async function handleRepo(repo, id, st, opts) {
         // Silent installs can't show a UAC prompt, so unelevated they fail — MSI with
         // exit 1603, EXE installers with an elevation spawn error. Fall back to the
         // installer's own window in both cases. (No PowerShell, no self-elevation.)
+        if ((e.status === 1603 || e.elevation) && opts.unattended) {
+          throw new Error(`needs you: ${repo.repo}'s installer needs administrator permission, so it was not run unattended. Update it from the window.`);
+        }
         if ((e.status === 1603 || e.elevation) && interactive(asset.name)) return interactiveResult;
         throw e;
       }
