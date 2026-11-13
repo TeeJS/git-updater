@@ -27,7 +27,9 @@ const SETTINGS_IDS = [
   'selfCheckOnOpen', 'selfAutoUpdate', 'selfPreRel',
   'startAtLogin', 'keepRunning',
   'scheduleCheckEnabled', 'scheduleCheckCron', 'scheduleCheckPreview', 'scheduleCatchUp',
+  'repeatCheckHours', 'repeatCheckDays', 'repeatCheckWeeks', 'repeatCheckMonths', 'repeatCheckNote',
   'scheduleInstallEnabled', 'scheduleInstallCron', 'scheduleInstallPreview', 'scheduleInstallApps',
+  'repeatInstallHours', 'repeatInstallDays', 'repeatInstallWeeks', 'repeatInstallMonths', 'repeatInstallNote',
   'ghToken', 'saveToken', 'clearToken', 'tokenHint',
   'editJson', 'openLog', 'appVersion',
 ];
