@@ -37,6 +37,7 @@
       "src/**/*",
       "node_modules/**/*"
     ],
+    "beforePack": "./build/preflight-mac.js",
     "afterAllArtifactBuild": "./build/verify-mac-build.js",
     "win": {
       "signtoolOptions": {
