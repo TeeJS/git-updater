@@ -634,10 +634,5 @@ Adding a platform means adding one file under `src/platform/` and one table in `
 Every parser in those modules is a pure string-in/records-out function, so the whole matrix is
 unit-tested from any host — only the subprocess that produces the string needs the real OS.
 
-The **open-quake drop-in app** vendors `src/*` into its own folder and drives it from the
-panel — same engine, shared config/state, cross-process safe via the engine's state lock.
-`detect.registryVersion` is kept as an alias of `detect.installedVersion` so the vendored copy
-keeps working across the rename.
-
 > Not related to `itzg/github-release-watcher` (a Java release *viewer*). This project supersedes
 > the local `github-release-watcher` engine it grew out of.
