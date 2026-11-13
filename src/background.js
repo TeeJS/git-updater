@@ -60,7 +60,10 @@ function launcherPath(root, platform = process.platform, env = process.env) {
 }
 
 function trayMenuTemplate(h) {
+  // The first line is the running version (greyed out: it is a label, not a command).
+  const head = h.version ? [{ label: `git-updater v${h.version}`, enabled: false }, { type: 'separator' }] : [];
   return [
+    ...head,
     { label: 'Open git-updater', click: h.open },
     { label: 'Check now', click: h.checkNow },
     { type: 'separator' },
@@ -156,7 +159,8 @@ function createBackground(deps) {
     const image = nativeImage.createFromPath(iconPath).resize({ width: size, height: size });
     tray = new Tray(image);
     tray.setToolTip('git-updater');
-    tray.setContextMenu(Menu.buildFromTemplate(trayMenuTemplate({ open: openWindow, checkNow, quit })));
+    const version = typeof app.getVersion === 'function' ? app.getVersion() : '';
+    tray.setContextMenu(Menu.buildFromTemplate(trayMenuTemplate({ version, open: openWindow, checkNow, quit })));
     // Linux indicators ignore click events (the menu does the work there); elsewhere a click opens.
     if (platform !== 'linux') tray.on('click', openWindow);
     log('tray: icon shown');
