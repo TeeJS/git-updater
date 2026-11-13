@@ -90,6 +90,30 @@ test('writeApplyMarker/consumeApplyMarker: round-trips, is consumed once, detect
   assert.equal(selfupdate.consumeApplyMarker('1.9.9').ok, false);
 });
 
+test('takeQuietRestart: only after a quiet update, only once, only while fresh', () => {
+  consumeAny();
+  assert.equal(selfupdate.takeQuietRestart('1.2.3'), null, 'no marker -> a normal start');
+
+  selfupdate.writeApplyMarker({ expectVersion: '1.2.3' }); // a manual update: not quiet
+  assert.equal(selfupdate.takeQuietRestart('1.2.3'), null);
+  assert.deepEqual(selfupdate.consumeApplyMarker('1.2.3'), { ok: true, expectVersion: '1.2.3', actualVersion: '1.2.3' });
+
+  selfupdate.writeApplyMarker({ expectVersion: '1.2.3', quiet: true });
+  assert.deepEqual(selfupdate.takeQuietRestart('1.2.3'), { expectVersion: '1.2.3', ok: true });
+  assert.equal(selfupdate.takeQuietRestart('1.2.3'), null, 'one-shot: the quiet flag is cleared');
+  assert.equal(selfupdate.consumeApplyMarker('1.2.3').ok, true, 'the window still gets its own version check afterwards');
+
+  selfupdate.writeApplyMarker({ expectVersion: '2.0.0', quiet: true });
+  assert.deepEqual(selfupdate.takeQuietRestart('1.9.9'), { expectVersion: '2.0.0', ok: false }, 'an update that did not take is reported, not hidden');
+  consumeAny();
+
+  selfupdate.writeApplyMarker({ expectVersion: '3.0.0', quiet: true });
+  assert.equal(selfupdate.takeQuietRestart('3.0.0', Date.now() + selfupdate.QUIET_RESTART_MS + 60 * 1000), null, 'a stale marker is not a quiet restart');
+  consumeAny();
+});
+
+function consumeAny() { selfupdate.consumeApplyMarker('0'); }
+
 test('checkForUpdate: the beta channel (prerelease:true) offers the newest prerelease', async () => {
   const orig = global.fetch;
   const calls = [];

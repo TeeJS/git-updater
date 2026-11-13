@@ -259,11 +259,35 @@ function relaunchViaLauncher(root, pid) {
 
 // --- post-relaunch version check ----------------------------------------------
 
-function writeApplyMarker({ expectVersion }) {
+// `quiet` marks an unattended (scheduled) update: the new process should come back the way the old
+// one was (hidden in the tray, or minimized) instead of putting a window on screen. See takeQuietRestart.
+function writeApplyMarker({ expectVersion, quiet = false }) {
   try {
     fs.mkdirSync(SELF_ROOT, { recursive: true });
-    fs.writeFileSync(APPLY_MARKER, JSON.stringify({ expectVersion, appliedAt: new Date().toISOString() }));
+    fs.writeFileSync(APPLY_MARKER, JSON.stringify({ expectVersion, appliedAt: new Date().toISOString(), quiet: !!quiet }));
   } catch {}
+}
+
+// How long after an update a quiet restart still counts. A later, manual launch is never one.
+const QUIET_RESTART_MS = 5 * 60 * 1000;
+
+// Called once at startup by the NEW process. Returns { expectVersion, ok } when this start follows a
+// quiet self-update, otherwise null. One-shot: it clears the quiet flag but leaves the rest of the
+// marker for consumeApplyMarker (the window's own version check) to read later.
+function takeQuietRestart(actualVersion, now = Date.now()) {
+  let data;
+  try {
+    data = JSON.parse(fs.readFileSync(APPLY_MARKER, 'utf8'));
+  } catch {
+    return null;
+  }
+  if (!data || !data.quiet || !data.expectVersion) return null;
+  try {
+    fs.writeFileSync(APPLY_MARKER, JSON.stringify({ ...data, quiet: false }));
+  } catch {}
+  const age = now - Date.parse(data.appliedAt);
+  if (!(age >= 0 && age <= QUIET_RESTART_MS)) return null;
+  return { expectVersion: data.expectVersion, ok: core.normTag(actualVersion) === core.normTag(data.expectVersion) };
 }
 
 // Reads + deletes the marker once. null when none is present (the normal case).
@@ -338,5 +362,7 @@ module.exports = {
   relaunchViaLauncher,
   writeApplyMarker,
   consumeApplyMarker,
+  takeQuietRestart,
+  QUIET_RESTART_MS,
   cleanupLeftovers,
 };

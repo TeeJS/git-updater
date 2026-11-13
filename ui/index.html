@@ -368,7 +368,17 @@
       </div>
       <p class="hint">Bigger downloads are refused. Default 500 MiB.</p>
       <div class="row" style="margin-top:.6rem">
-        <span style="color:var(--muted);font-size:.9rem;min-width:8rem">git-updater updates</span>
+        <span style="color:var(--muted);font-size:.9rem;min-width:8rem">git-updater</span>
+        <label class="scan-label"><input type="checkbox" id="selfCheckOnOpen"> Check for git-updater updates when it opens</label>
+      </div>
+      <p class="hint">The apps check above does this too.</p>
+      <div class="row" style="margin-top:.6rem">
+        <span style="color:var(--muted);font-size:.9rem;min-width:8rem">Auto-update</span>
+        <label class="scan-label"><input type="checkbox" id="selfAutoUpdate"> Auto-update git-updater</label>
+      </div>
+      <p class="hint">Like an app ticked in the list: updated on the Install schedule, then it restarts.</p>
+      <div class="row" style="margin-top:.6rem">
+        <span style="color:var(--muted);font-size:.9rem;min-width:8rem">Beta versions</span>
         <label class="scan-label"><input type="checkbox" id="selfPreRel"> Update git-updater to beta (pre-release) versions</label>
       </div>
       <p class="hint">Otherwise git-updater updates itself to stable releases only.</p>
@@ -926,6 +936,8 @@ async function load() {
   $('portableRoot').value = config.portableRoot || '';
   $('selfPreRel').checked = !!config.selfUpdatePrerelease;
   $('checkOnOpen').checked = !!config.checkOnOpen;
+  $('selfCheckOnOpen').checked = !!config.selfCheckOnOpen;
+  $('selfAutoUpdate').checked = !!config.selfAutoUpdate;
   $('autoCloseReopen').checked = !!config.autoCloseReopen;
   $('downloadLimitEnabled').checked = config.downloadLimitEnabled !== false;
   $('downloadLimitMiB').value = config.downloadLimitMiB == null ? 500 : config.downloadLimitMiB;
@@ -978,6 +990,8 @@ async function load() {
       msg('Checking for updates…', 'info');
       selfCheck();
       checkApps(config.repos.map(keyOf));
+    } else if (config.selfCheckOnOpen) {
+      selfCheck(); // git-updater's own update only; the apps are left alone
     }
   }
 }
@@ -1026,6 +1040,8 @@ document.addEventListener('keydown', (e) => {
 $('saveRoot').onclick = () => saveConfig().then(() => { msg('Saved.', 'ok'); refreshInstalled().then(renderRepos); });
 $('selfPreRel').onchange = () => { config.selfUpdatePrerelease = $('selfPreRel').checked; saveConfig().then(() => msg('Saved.', 'ok')); };
 $('checkOnOpen').onchange = () => { config.checkOnOpen = $('checkOnOpen').checked; saveConfig().then(() => msg('Saved.', 'ok')); };
+$('selfCheckOnOpen').onchange = () => { config.selfCheckOnOpen = $('selfCheckOnOpen').checked; saveConfig().then(() => msg('Saved.', 'ok')); };
+$('selfAutoUpdate').onchange = () => { config.selfAutoUpdate = $('selfAutoUpdate').checked; renderInstallInfo(); saveConfig().then(() => msg('Saved.', 'ok')); };
 $('autoCloseReopen').onchange = () => { config.autoCloseReopen = $('autoCloseReopen').checked; saveConfig().then(() => msg('Saved.', 'ok')); };
 $('dateFormat').onchange = () => { config.dateFormat = $('dateFormat').value; renderRepos(); saveConfig().then(() => msg('Saved.', 'ok')); };
 // Startup sort: saved as soon as it changes, and only read at the next launch, so changing it
@@ -1415,9 +1431,12 @@ async function renderSchedulePreview(kind) {
 // How many apps the Install schedule would touch right now, so an empty tick list is never a surprise.
 function renderInstallInfo() {
   const n = config.repos.filter((r) => r.autoUpdate === true).length;
+  const self = !!config.selfAutoUpdate; // git-updater itself, ticked in Settings -> Updating
   $('scheduleInstallApps').textContent = n
-    ? `${n} app${n === 1 ? ' is' : 's are'} ticked in the Auto-update column.`
-    : 'No apps are ticked in the Auto-update column yet, so there is nothing for this schedule to update.';
+    ? `${n} app${n === 1 ? ' is' : 's are'} ticked in the Auto-update column${self ? ', plus git-updater itself' : ''}.`
+    : self
+      ? 'Only git-updater itself is set to auto-update.'
+      : 'No apps are ticked in the Auto-update column yet, so there is nothing for this schedule to update.';
 }
 async function saveSchedule() {
   const next = { ...config, scheduleCatchUp: $('scheduleCatchUp').checked };
