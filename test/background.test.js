@@ -41,6 +41,16 @@ test('the login flag survives the launcher hand-off, and nothing else is forward
   assert.deepEqual(bg.forwardArgs(['x', '--wait-pid', '12']), []);
 });
 
+test('a development run never uses the installed app\'s AppUserModelID', () => {
+  assert.equal(bg.appUserModelId(true), 'com.teejs.gitupdater', 'the installed app: the same as the build\'s appId');
+  assert.equal(bg.appUserModelId(false), 'com.teejs.gitupdater.dev');
+  const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
+  assert.equal(bg.appUserModelId(true), pkg.build.appId, 'it must stay in step with electron-builder\'s appId');
+  const main = fs.readFileSync(path.join(__dirname, '..', 'electron', 'main.js'), 'utf8');
+  assert.match(main, /app\.setAppUserModelId\(background\.appUserModelId\(app\.isPackaged\)\)/);
+  assert.doesNotMatch(main, /setAppUserModelId\('com\.teejs/, 'no hard-coded id that dev runs would share');
+});
+
 test('the login item points at the stable launcher, never a versioned folder', () => {
   assert.equal(bg.launcherPath('C:\\Apps\\git-updater', 'win32'), path.join('C:\\Apps\\git-updater', 'git-updater.exe'));
   assert.equal(bg.launcherPath('/opt/gu', 'linux', {}), path.join('/opt/gu', 'git-updater'));
