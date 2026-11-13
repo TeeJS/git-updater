@@ -455,7 +455,7 @@ see is what will happen.
 keeps when each schedule last ran in `schedule-state.json` next to `config.json`. Switching a
 schedule on, or editing it, starts counting from then, so a past time is never run. If the app
 was off or the computer asleep at the scheduled time, the check runs **once** when it next notices
-(the "Run a missed schedule" checkbox, on by default; off: the missed time is dropped). The time is
+(the "Run a missed schedule" checkbox, **off by default**: the missed time is dropped). The time is
 marked as run **before** the check starts, so a crash or a slow check never makes it run twice.
 
 A finished check sets the tray tooltip ("git-updater: 3 updates available"), shows a system
@@ -472,8 +472,9 @@ deletes the key rather than storing `false`). It is sortable and filterable (the
 dropdown, also remembered with "Remember my filters"), survives editing the app, and is what the
 scheduled install reads. The second cron line in **Settings -> Schedule**, **Install**
 (`scheduleInstallEnabled` / `scheduleInstallCron`, off by default, same parser, hourly floor, local
-time and "Run a missed schedule" as the check), installs updates for the ticked apps. Its default
-suggestion is `47 2 * * 2#1`. The two schedules are independent jobs in the one scheduler
+time and "Run a missed schedule" as the check), installs updates for the ticked apps. The default
+lines suggested when a schedule is first switched on are `0 12 * * *` (Check: every day at noon) and
+`0 13 * * MON` (Install: Mondays at 1 PM), hours a computer is likely to be on. The two schedules are independent jobs in the one scheduler
 (`schedule-state.json` keeps `checkLastRun/checkCron` and `installLastRun/installCron`).
 
 What the run does, in `backgroundInstall()` in `electron/main.js` (the choices are pure functions in

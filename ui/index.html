@@ -336,12 +336,12 @@
         </select>
         <select id="startupSortDirection" aria-label="Sort direction at startup"><option value="asc">Ascending</option><option value="desc">Descending</option></select>
       </div>
-      <p class="hint">Off by default: the list opens in the order you last sorted it. On, every launch starts with this sort instead. You can still click a column header to re-sort while the app is open.</p>
+      <p class="hint">Otherwise the list opens in the order you last sorted it.</p>
       <div class="row" style="margin-top:.6rem">
         <span style="color:var(--muted);font-size:.9rem;min-width:8rem">Filters</span>
         <label class="scan-label"><input type="checkbox" id="rememberFilters"> Remember my filters between launches</label>
       </div>
-      <p class="hint">Off by default: the Type and Status filters go back to All every time git-updater opens. On, they come back as you left them. The search box always starts empty.</p>
+      <p class="hint">Otherwise the Type and Status filters reset to All each launch.</p>
     </section>
 
     <section class="panel settings-group" aria-labelledby="sg-updating">
@@ -350,12 +350,12 @@
         <span style="color:var(--muted);font-size:.9rem;min-width:8rem">Automatically</span>
         <label class="scan-label"><input type="checkbox" id="checkOnOpen"> Check for updates when git-updater opens</label>
       </div>
-      <p class="hint">Off by default. On, opening the window checks every tracked app — it only checks, and never updates or installs anything.</p>
+      <p class="hint">Only checks; nothing is installed.</p>
       <div class="row" style="margin-top:.6rem">
         <span style="color:var(--muted);font-size:.9rem;min-width:8rem">Update all</span>
         <label class="scan-label"><input type="checkbox" id="autoCloseReopen"> Automatically close apps and re-open when complete</label>
       </div>
-      <p class="hint">Off by default. When Update all runs, close running apps gracefully and re-open those it closed after each update completes. Apps that do not close are skipped.</p>
+      <p class="hint">Running apps are closed gracefully, then re-opened. Apps that won't close are skipped.</p>
       <div class="row" style="margin-top:.6rem">
         <span style="color:var(--muted);font-size:.9rem;min-width:8rem">Downloads</span>
         <label class="scan-label"><input type="checkbox" id="downloadLimitEnabled"> Limit each download to</label>
@@ -363,12 +363,12 @@
         <span style="color:var(--muted);font-size:.9rem">MiB</span>
         <button id="saveDownloadLimit">Save</button>
       </div>
-      <p class="hint">Default 500 MiB: a bigger download is refused with a message. Turn the limit off for none; large files still need enough free disk space.</p>
+      <p class="hint">Bigger downloads are refused. Default 500 MiB.</p>
       <div class="row" style="margin-top:.6rem">
         <span style="color:var(--muted);font-size:.9rem;min-width:8rem">git-updater updates</span>
         <label class="scan-label"><input type="checkbox" id="selfPreRel"> Update git-updater to beta (pre-release) versions</label>
       </div>
-      <p class="hint">Off by default: git-updater updates itself only to stable releases. This is separate from the per-app beta setting.</p>
+      <p class="hint">Otherwise git-updater updates itself to stable releases only.</p>
     </section>
 
     <section class="panel settings-group" aria-labelledby="sg-schedule">
@@ -376,23 +376,23 @@
       <div class="row">
         <span style="color:var(--muted);font-size:.9rem;min-width:8rem">Check</span>
         <label class="scan-label"><input type="checkbox" id="scheduleCheckEnabled"> Check for updates on a schedule</label>
-        <input type="text" id="scheduleCheckCron" placeholder="0 9 * * *" aria-label="Check schedule" spellcheck="false" autocomplete="off" style="width:13rem">
+        <input type="text" id="scheduleCheckCron" placeholder="0 12 * * *" aria-label="Check schedule" spellcheck="false" autocomplete="off" style="width:13rem">
       </div>
       <p class="hint" id="scheduleCheckPreview" aria-live="polite"></p>
-      <p class="hint">Off by default. It only checks and tells you with a notification; it never downloads or installs anything. A schedule has five fields in this computer's time: <code>minute hour day-of-month month weekday</code>. For example <code>0 9 * * *</code> is every day at 9:00, <code>0 8 * * MON-FRI</code> is weekdays at 8:00, and <code>47 2 * * 2#1</code> is the 1st Tuesday of every month at 2:47 AM (<code>#</code> means the nth weekday; <code>L</code> in the day-of-month field is the last day). It runs at most once an hour, and only while git-updater is running: turn on <em>Start at login</em> and <em>Keep running in the tray</em> below to keep it running.</p>
+      <p class="hint">Cron format: <code>minute hour day-of-month month weekday</code>, e.g. <code>0 8 * * MON-FRI</code> is weekdays at 8:00. Only checks and notifies. Runs only while git-updater is running.</p>
       <div class="row" style="margin-top:.9rem">
         <span style="color:var(--muted);font-size:.9rem;min-width:8rem">Install</span>
         <label class="scan-label"><input type="checkbox" id="scheduleInstallEnabled"> Update my Auto-update apps on a schedule</label>
-        <input type="text" id="scheduleInstallCron" placeholder="47 2 * * 2#1" aria-label="Install schedule" spellcheck="false" autocomplete="off" style="width:13rem">
+        <input type="text" id="scheduleInstallCron" placeholder="0 13 * * MON" aria-label="Install schedule" spellcheck="false" autocomplete="off" style="width:13rem">
       </div>
       <p class="hint" id="scheduleInstallPreview" aria-live="polite"></p>
       <p class="hint" id="scheduleInstallApps"></p>
-      <p class="hint">Off by default. At the scheduled time git-updater updates <strong>only the apps ticked in the Auto-update column</strong> of the list, and only those already installed: it never installs a new app. Portable apps go first, then installers. It runs unattended, so it never opens an installer window or a permission prompt: an installer that needs administrator permission is skipped and listed in the notification as needing you, and you update it from the window. A running app follows <em>Automatically close apps and re-open when complete</em> above: on, it is closed gracefully, updated and re-opened; off, it is skipped. Nothing is ever force-closed. Same rules for the schedule as above.</p>
+      <p class="hint">Updates only ticked, already-installed apps, unattended: installers that need permission are skipped and reported. Running apps follow <em>Automatically close apps and re-open when complete</em>; nothing is force-closed.</p>
       <div class="row" style="margin-top:.6rem">
         <span style="color:var(--muted);font-size:.9rem;min-width:8rem">Missed runs</span>
         <label class="scan-label"><input type="checkbox" id="scheduleCatchUp"> Run a missed schedule when the computer next starts or wakes</label>
       </div>
-      <p class="hint">On by default. If the computer was off or asleep at the scheduled time, the check runs once as soon as git-updater notices. Off: a missed time is simply skipped.</p>
+      <p class="hint">Otherwise a missed time is skipped.</p>
     </section>
 
     <section class="panel settings-group" aria-labelledby="sg-background">
@@ -401,12 +401,12 @@
         <span style="color:var(--muted);font-size:.9rem;min-width:8rem">At login</span>
         <label class="scan-label"><input type="checkbox" id="startAtLogin"> Start git-updater when I sign in</label>
       </div>
-      <p class="hint">Off by default. On, git-updater starts when you sign in. With the tray option below it starts hidden in the tray; without it the window opens minimized to the taskbar. Windows lists it under Task Manager &rarr; Startup apps, where you can also turn it off.</p>
+      <p class="hint">Starts hidden in the tray if that is on, otherwise minimized.</p>
       <div class="row" style="margin-top:.6rem">
         <span style="color:var(--muted);font-size:.9rem;min-width:8rem">Tray</span>
         <label class="scan-label"><input type="checkbox" id="keepRunning"> Keep running in the tray when I close the window</label>
       </div>
-      <p class="hint">Off by default: closing the window quits git-updater. On, closing it hides it to an icon in the tray (the menu bar on a Mac). Click the icon to open it, or right-click for Open, Check now and Quit. On some Linux desktops the tray icon needs an extension; start git-updater again to bring the window back.</p>
+      <p class="hint">Closing the window hides it to the tray (menu bar on a Mac) instead of quitting. Right-click the icon for Open, Check now and Quit. Some Linux desktops need an extension for the tray icon.</p>
     </section>
 
     <section class="panel settings-group" aria-labelledby="sg-github">
@@ -417,7 +417,7 @@
         <button id="saveToken">Save</button>
         <button id="clearToken" style="display:none">Remove</button>
       </div>
-      <p class="hint" id="tokenHint">Optional. Without one GitHub allows 60 requests an hour per network; with one, 5,000. A fine-grained token with <b>Public repositories (read-only)</b> access and no other permissions is enough. Stored encrypted on this computer, never in config.json.</p>
+      <p class="hint" id="tokenHint">Optional: raises GitHub's limit from 60 to 5,000 requests an hour. A fine-grained token with <b>Public repositories (read-only)</b> is enough. Stored encrypted.</p>
     </section>
 
     <section class="panel settings-group" aria-labelledby="sg-advanced">
@@ -427,7 +427,7 @@
         <button id="editJson">Edit config.json</button>
         <button id="openLog">Open log</button>
       </div>
-      <p class="hint">Hand-edit for per-app overrides (asset pattern, install dir, installer kind/args, process name, release tag prefix).</p>
+      <p class="hint">For per-app overrides such as asset pattern, install folder and installer arguments.</p>
       <p class="hint">git-updater <span id="appVersion"></span></p>
     </section>
   </div>
@@ -943,7 +943,7 @@ async function load() {
   $('scheduleCheckCron').value = config.scheduleCheckCron || '';
   $('scheduleInstallEnabled').checked = !!config.scheduleInstallEnabled;
   $('scheduleInstallCron').value = config.scheduleInstallCron || '';
-  $('scheduleCatchUp').checked = config.scheduleCatchUp !== false; // on unless switched off
+  $('scheduleCatchUp').checked = config.scheduleCatchUp === true; // off unless switched on
   renderSchedulePreview();
   renderInstallInfo();
   if (!booted) {
@@ -1391,7 +1391,7 @@ async function saveBackgroundSettings() {
 // Schedules (Check and Install). The preview comes from the main process (the same parser that runs the
 // schedule), so what you see under the box is what will happen. A bad schedule is refused with the reason.
 const SCHEDULE_KINDS = ['Check', 'Install'];
-const SCHEDULE_DEFAULTS = { Check: '0 9 * * *', Install: '47 2 * * 2#1' };
+const SCHEDULE_DEFAULTS = { Check: '0 12 * * *', Install: '0 13 * * MON' }; // daily at noon; Mondays at 1 PM
 const previewTimers = {};
 async function renderSchedulePreview(kind) {
   if (!kind) { SCHEDULE_KINDS.forEach(renderSchedulePreview); return; }
@@ -1434,7 +1434,7 @@ async function saveSchedule() {
       $(`schedule${kind}Enabled`).checked = !!config[`schedule${kind}Enabled`];
       $(`schedule${kind}Cron`).value = config[`schedule${kind}Cron`] || '';
     }
-    $('scheduleCatchUp').checked = config.scheduleCatchUp !== false;
+    $('scheduleCatchUp').checked = config.scheduleCatchUp === true;
     renderSchedulePreview();
     msg(clean(e), 'bad');
   }
