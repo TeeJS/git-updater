@@ -1,0 +1,91 @@
+Commands:
+- git
+Copyright: Copyright (C) 1989, 1991 Free Software Foundation, Inc.
+Description: 'Git is a free and open source distributed version control system designed
+  to handle everything from small to very large projects with speed and efficiency.
+
+  Git for Windows focuses on offering a lightweight, native set of tools that bring
+  the full feature set of the Git SCM to Windows while providing appropriate user
+  interfaces for experienced Git users and novices alike.'
+Documentations:
+- DocumentLabel: Wiki
+  DocumentUrl: https://github.com/git-for-windows/git/wiki
+ElevationRequirement: elevatesSelf
+FileExtensions:
+- gitattributes
+- gitignore
+- gitmodules
+- sh
+InstallerSwitches:
+  Silent: /SP- /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
+  SilentWithProgress: /SP- /SILENT /SUPPRESSMSGBOXES /NORESTART
+InstallerType: inno
+Installers:
+- Architecture: x64
+  InstallerSha256: 4961A4A8CC778D8B6E00A5819E5FE4D078B754555AFF7AEDC2D77A5D74C2DE80
+  InstallerUrl: https://github.com/git-for-windows/git/releases/download/v2.56.0.windows.4/Git-2.56.0.4-64-bit.exe
+  Scope: user
+- Architecture: x64
+  InstallerSha256: 4961A4A8CC778D8B6E00A5819E5FE4D078B754555AFF7AEDC2D77A5D74C2DE80
+  InstallerUrl: https://github.com/git-for-windows/git/releases/download/v2.56.0.windows.4/Git-2.56.0.4-64-bit.exe
+  Scope: machine
+- Architecture: arm64
+  InstallerSha256: E7DCC4ADBB0EB373064598CD18BC75E60128707D816EAD51CD9BD98E356F0075
+  InstallerUrl: https://github.com/git-for-windows/git/releases/download/v2.56.0.windows.4/Git-2.56.0.4-arm64.exe
+  Scope: user
+- Architecture: arm64
+  InstallerSha256: E7DCC4ADBB0EB373064598CD18BC75E60128707D816EAD51CD9BD98E356F0075
+  InstallerUrl: https://github.com/git-for-windows/git/releases/download/v2.56.0.windows.4/Git-2.56.0.4-arm64.exe
+  Scope: machine
+License: GPL-2.0
+LicenseUrl: https://github.com/git-for-windows/build-extra/blob/HEAD/LICENSE.txt
+Localization:
+- Copyright: Copyright (C) Free Software Foundation, Inc.
+  Description: "Git \u662F\u4E00\u4E2A\u514D\u8D39\u5F00\u6E90\u7684\u5206\u5E03\u5F0F\u7248\u672C\u63A7\u5236\u7CFB\u7EDF\uFF0C\u65E8\u5728\u5FEB\u901F\u9AD8\u6548\u5730\u5904\u7406\u4ECE\u5C0F\u578B\u5230\u8D85\u5927\u578B\u7684\u5404\u79CD\u9879\u76EE\u3002\nGit
+    for Windows \u7684\u91CD\u70B9\u662F\u63D0\u4F9B\u4E00\u5957\u8F7B\u91CF\u7EA7\u7684\u672C\u5730\u5DE5\u5177\uFF0C\u5C06
+    Git SCM \u7684\u5168\u90E8\u529F\u80FD\u96C6\u5F15\u5165 Windows\uFF0C\u540C\u65F6\u4E3A\u6709\u7ECF\u9A8C\u7684
+    Git \u7528\u6237\u548C\u65B0\u624B\u63D0\u4F9B\u5408\u9002\u7684\u7528\u6237\u754C\u9762\u3002"
+  Documentations:
+  - DocumentLabel: "\u7EF4\u57FA"
+    DocumentUrl: https://github.com/git-for-windows/git/wiki
+  License: GPL-2.0
+  LicenseUrl: https://github.com/git-for-windows/build-extra/blob/HEAD/LICENSE.txt
+  PackageLocale: zh-CN
+  PackageName: Git
+  PackageUrl: https://gitforwindows.org/
+  Publisher: The Git Development Community
+  PublisherSupportUrl: https://github.com/git-for-windows/git/issues
+  PublisherUrl: https://gitforwindows.org/
+  ReleaseNotesUrl: https://github.com/git-for-windows/git/releases/tag/v2.56.0.windows.4
+  ShortDescription: "\u514D\u8D39\u5F00\u6E90\u7684\u5206\u5E03\u5F0F\u7248\u672C\u63A7\u5236\u7CFB\u7EDF"
+  Tags:
+  - git
+  - "\u7248\u672C\u63A7\u5236\u7CFB\u7EDF"
+ManifestType: merged
+ManifestVersion: 1.12.0
+Moniker: git
+PackageIdentifier: Git.Git
+PackageLocale: en-US
+PackageName: Git
+PackageUrl: https://gitforwindows.org/
+PackageVersion: 2.56.0.4
+Publisher: The Git Development Community
+PublisherSupportUrl: https://github.com/git-for-windows/git/issues
+PublisherUrl: https://gitforwindows.org/
+ReleaseDate: 2026-10-26
+ReleaseNotes: 'Changes since Git for Windows v2.56.0(3) (October 22nd 2026)
+
+  This is another urgent security bug fix release, addressing CVE-2026-111497.
+
+  Bug Fixes
+
+  - The executables included in the 32-bit MinGit had corrupt code-signatures, which
+  has been fixed.
+
+  - Upgrades the included brotli component to v1.2.1 to address CVE-2026-111497.'
+ReleaseNotesUrl: https://github.com/git-for-windows/git/releases/tag/v2.56.0.windows.4
+ShortDescription: A free and open source distributed version control system
+Tags:
+- git
+- vcs
+UpgradeBehavior: install

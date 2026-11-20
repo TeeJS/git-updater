@@ -1,0 +1,218 @@
+AppsAndFeaturesEntries:
+- UpgradeCode: '{4B17E523-5D91-4E69-BD96-7FD81CFA81BB}'
+Author: The Document Foundation
+Copyright: "Copyright \xA9 2000-2026 LibreOffice contributors."
+Documentations:
+- DocumentLabel: Documentation
+  DocumentUrl: https://documentation.libreoffice.org/en/english-documentation/
+- DocumentLabel: Frequently Asked Questions
+  DocumentUrl: https://www.libreoffice.org/get-help/frequently-asked-questions/
+FileExtensions:
+- 123
+- 602
+- bau
+- cdr
+- cgm
+- cmx
+- csv
+- dbf
+- dif
+- doc
+- docm
+- docx
+- dot
+- dotm
+- dotx
+- dxf
+- emf
+- eps
+- fodg
+- fodp
+- fods
+- fodt
+- hwp
+- iqy
+- key
+- lwp
+- met
+- mml
+- numbers
+- odb
+- odf
+- odg
+- odm
+- odp
+- ods
+- odt
+- otg
+- oth
+- otm
+- otp
+- ots
+- ott
+- oxt
+- pages
+- pbm
+- pcd
+- pct
+- pcx
+- pgm
+- pot
+- potm
+- potx
+- ppm
+- pps
+- ppsx
+- ppt
+- pptm
+- pptx
+- psd
+- pub
+- ras
+- rtf
+- sdg
+- sdv
+- slk
+- sob
+- soc
+- sod
+- soe
+- sog
+- soh
+- sop
+- stc
+- std
+- sti
+- stw
+- sxc
+- sxd
+- sxg
+- sxi
+- sxm
+- sxw
+- tga
+- thm
+- txt
+- uop
+- uos
+- uot
+- vdx
+- vor
+- vsd
+- vsdm
+- vsdx
+- vst
+- wb2
+- wk1
+- wks
+- wmf
+- wpd
+- wpg
+- wps
+- wri
+- xba
+- xbm
+- xcs
+- xcu
+- xdl
+- xlr
+- xls
+- xlsb
+- xlsm
+- xlsx
+- xlt
+- xltm
+- xltx
+- xlw
+- xpm
+InstallerSwitches:
+  InstallLocation: INSTALLLOCATION="<INSTALLPATH>"
+InstallerType: msi
+Installers:
+- Architecture: x86
+  Dependencies:
+    PackageDependencies:
+    - PackageIdentifier: Microsoft.VCRedist.2015+.x86
+  InstallerSha256: 8E8EE9B6BE9F7314F67254A83B4313648F9785EB89B42A5118FBCBFEA61887A0
+  InstallerUrl: https://download.documentfoundation.org/libreoffice/stable/26.8.3/win/x86/LibreOffice_26.8.3_Win_x86.msi
+  ProductCode: '{7339D9EA-7320-4FE2-B415-FAB963F6D8F9}'
+- Architecture: x64
+  Dependencies:
+    PackageDependencies:
+    - PackageIdentifier: Microsoft.VCRedist.2015+.x64
+  InstallerSha256: 0E6918C273EABBDBBD800EE0DACBBF130A14C13C2E4CEC861B06DD59E015BF94
+  InstallerUrl: https://download.documentfoundation.org/libreoffice/stable/26.8.3/win/x86_64/LibreOffice_26.8.3_Win_x86-64.msi
+  ProductCode: '{2E138BFE-5DFE-4CCB-B34D-56308CCE5097}'
+- Architecture: arm64
+  Dependencies:
+    PackageDependencies:
+    - PackageIdentifier: Microsoft.VCRedist.2015+.arm64
+  InstallerSha256: 8EE2EF81CA4103D3EEB06CA9F4EF0B5CBB83357D21D14A449F767BFB29183158
+  InstallerUrl: https://download.documentfoundation.org/libreoffice/stable/26.8.3/win/aarch64/LibreOffice_26.8.3_Win_aarch64.msi
+  ProductCode: '{3DD769BD-73EA-494A-8503-BA1551E52CD1}'
+License: MPL-2.0
+LicenseUrl: https://www.libreoffice.org/licenses/
+Localization:
+- Copyright: "\u7248\u6743\u6240\u6709 \xA9 2000-2026 LibreOffice \u7684\u8D21\u732E\u8005\u3002"
+  Documentations:
+  - DocumentLabel: "\u5E38\u89C1\u95EE\u9898"
+    DocumentUrl: https://www.libreoffice.org/get-help/frequently-asked-questions/
+  - DocumentLabel: "\u6587\u6863"
+    DocumentUrl: https://documentation.libreoffice.org/zh-cn/docs/
+  PackageLocale: zh-CN
+  PackageUrl: https://zh-cn.libreoffice.org/
+  PublisherSupportUrl: https://zh-cn.libreoffice.org/get-help/feedback/
+  ShortDescription: "LibreOffice \u662F\u4E00\u5957\u73B0\u4EE3\u5316\u3001\u6613\u7528\u3001\u5F00\u6E90\u7684\u529E\u516C\u8F6F\u4EF6\uFF0C\u53EF\u5E2E\u52A9\u60A8\u8FDB\u884C\u6587\u5B57\u5904\u7406\u3001\u7535\u5B50\u8868\u683C\u3001\u6F14\u793A\u6587\u7A3F\u7B49\u5DE5\u4F5C\u3002"
+  Tags:
+  - excel
+  - odf
+  - office
+  - openoffice
+  - powerpoint
+  - ppt
+  - word
+  - "\u529E\u516C"
+  - "\u5E7B\u706F\u7247"
+  - "\u6587\u6863"
+  - "\u6F14\u793A"
+  - "\u7F16\u8F91\u5668"
+  - "\u8868\u683C"
+ManifestType: merged
+ManifestVersion: 1.28.0
+Moniker: libreoffice
+PackageIdentifier: TheDocumentFoundation.LibreOffice
+PackageLocale: en-US
+PackageName: LibreOffice
+PackageUrl: https://www.libreoffice.org/
+PackageVersion: 26.8.3.1
+PrivacyUrl: https://www.libreoffice.org/about-us/privacy/
+Protocols:
+- ms-excel
+- ms-powerpoint
+- ms-visio
+- ms-word
+Publisher: The Document Foundation
+PublisherSupportUrl: https://www.libreoffice.org/get-help/feedback/
+PublisherUrl: https://www.documentfoundation.org/
+ReleaseDate: 2026-11-11
+ReleaseNotesUrl: https://www.libreoffice.org/download/release-notes/
+Scope: machine
+ShortDescription: LibreOffice is a free and powerful office suite, and a successor
+  to OpenOffice.org (commonly known as OpenOffice). Its clean interface and feature-rich
+  tools help you unleash your creativity and enhance your productivity.
+Tags:
+- docs
+- document
+- editor
+- excel
+- odf
+- office
+- openoffice
+- powerpoint
+- presentation
+- sheet
+- slide
+- spreadsheet
+- word
+- work
+UpgradeBehavior: install

@@ -1,0 +1,380 @@
+Author: Mozilla Foundation
+Copyright: "\xA9 Firefox and Mozilla Developers; available under the MPL 2 license."
+CopyrightUrl: https://www.mozilla.org/foundation/trademarks/policy
+Description: Firefox Browser, also known as Mozilla Firefox or simply Firefox, is
+  a free and open-source web browser developed by the Mozilla Foundation and its subsidiary,
+  the Mozilla Corporation. Firefox uses the Gecko layout engine to render web pages,
+  which implements current and anticipated web standards. In 2017, Firefox began incorporating
+  new technology under the code name Quantum to promote parallelism and a more intuitive
+  user interface. Firefox is officially available for Windows 7 or newer, macOS, and
+  Linux. Its unofficial ports are available for various Unix and Unix-like operating
+  systems including FreeBSD, OpenBSD, NetBSD, illumos, and Solaris Unix.
+FileExtensions:
+- avif
+- htm
+- html
+- pdf
+- shtml
+- svg
+- webp
+- xht
+- xhtml
+Icons:
+- IconFileType: ico
+  IconResolution: custom
+  IconSha256: fc73cd8d65c449fefaa5fe5f18b4e800e3ef73e63908a375686bd2db2c0adab4
+  IconTheme: default
+  IconUrl: https://cdn.winget.microsoft.com/icons/fc73cd8d65c449fefaa5fe5f18b4e800e3ef73e63908a375686bd2db2c0adab4.ico
+InstallerSwitches:
+  InstallLocation: /InstallDirectoryPath="<INSTALLPATH>"
+  Silent: /S /PreventRebootRequired=true
+  SilentWithProgress: /S /PreventRebootRequired=true
+InstallerType: nullsoft
+Installers:
+- Architecture: x86
+  InstallerSha256: 812E92FD57E53F67A38DE114678AF4A185AA17B095E3D9BB80DDCDE1F5F5E4B4
+  InstallerUrl: https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/win32/en-US/Firefox%20Setup%20160.0.1.exe
+- Architecture: x64
+  InstallerSha256: 768E29619F3463C157F20C5AB1E4D480ACFB0D84F1A39EE60EF3151FED91CEB2
+  InstallerUrl: https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/win64/en-US/Firefox%20Setup%20160.0.1.exe
+- Architecture: arm64
+  InstallerSha256: EA224E8DD160D007D7B1075A5E129127F551728915DD1800F29EDC27EC9C9145
+  InstallerUrl: https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/win64-aarch64/en-US/Firefox%20Setup%20160.0.1.exe
+License: MPL-2.0
+LicenseUrl: https://www.mozilla.org/MPL/2.0
+Localization:
+- Description: "Mozilla Firefox je svobodn\xFD multiplatformn\xED webov\xFD prohl\xED\u017Ee\u010D,
+    kter\xFD vyv\xEDj\xED ve spolupr\xE1ci se stovkami dobrovoln\xEDk\u016F Mozilla
+    Corporation, dce\u0159in\xE1 spole\u010Dnost nadace Mozilla Foundation. Prvn\xED
+    fin\xE1ln\xED verze 1.0 byla vyd\xE1na i v \u010De\u0161tin\u011B 9. listopadu
+    2004 za velk\xE9ho z\xE1jmu u\u017Eivatel\u016F i m\xE9di\xED a stala se jedn\xEDm
+    z nejpou\u017E\xEDvan\u011Bj\u0161\xEDch program\u016F s otev\u0159en\xFDm k\xF3dem.
+    Krom\u011B ofici\xE1ln\u011B podporovan\xFDch platforem, kter\xFDmi jsou Microsoft
+    Windows, Android, Linux a macOS, je Firefox dostupn\xFD i pro FreeBSD, OS/2, RISC
+    OS, SkyOS \u010Di BeOS."
+  PackageLocale: cs-CZ
+  PackageUrl: https://www.mozilla.org/cs/firefox/
+  PrivacyUrl: https://www.mozilla.org/cs/privacy/firefox/
+  PublisherSupportUrl: https://support.mozilla.org/cs/
+  PublisherUrl: https://www.mozilla.org/cs/
+  ShortDescription: "Mozilla Firefox je svobodn\xFD multiplatformn\xED webov\xFD prohl\xED\u017Ee\u010D,
+    kter\xFD vyv\xEDj\xED ve spolupr\xE1ci se stovkami dobrovoln\xEDk\u016F Mozilla
+    Corporation, dce\u0159in\xE1 spole\u010Dnost nadace Mozilla Foundation."
+- Description: "Firefox Browser, ogs\xE5 kendt som Mozilla Firefox eller bare Firefox,
+    er en gratis og open-source webbrowser udviklet af Mozilla Foundation og dens
+    datterselskab, Mozilla Corporation. Firefox bruger Gecko-layoutmotoren til at
+    gengive websider, som implementerer aktuelle og forventede webstandarder. I 2017
+    begyndte Firefox at inkorporere ny teknologi under kodeordet Quantum for at fremme
+    parallelitet og et mere intuitivt brugergr\xE6nseflade. Firefox er officielt tilg\xE6ngelig
+    til Windows 7 eller nyere, macOS og Linux. Dens uofficielle porte er tilg\xE6ngelige
+    til forskellige Unix og Unix-lignende operativsystemer, herunder FreeBSD, OpenBSD,
+    NetBSD, illumos og Solaris Unix."
+  PackageLocale: da-DK
+  PackageUrl: https://www.mozilla.org/da/firefox/
+  PrivacyUrl: https://www.mozilla.org/en-US/privacy/firefox/
+  PublisherSupportUrl: https://support.mozilla.org/da/
+  PublisherUrl: https://www.mozilla.org/da/
+  ShortDescription: "Mozilla Firefox er gratis og \xE5ben kildekode-software, udviklet
+    af et f\xE6llesskab p\xE5 tusinder fra hele verden."
+- Description: "Mozilla Firefox, kurz Firefox genannt, ist ein freier Webbrowser des
+    Mozilla-Projektes. Er wurde im September 2002 ver\xF6ffentlicht. Firefox verwendet
+    die Gecko-Layout-Engine zum Rendern von Webseiten, die aktuelle und erwartete
+    Webstandards implementiert. Im Jahr 2017 begann Firefox mit der Einf\xFChrung
+    neuer Technologien unter dem Codenamen Quantum, um Parallelit\xE4t und eine intuitivere
+    Benutzeroberfl\xE4che zu f\xF6rdern. Seine inoffiziellen Ports sind f\xFCr verschiedene
+    Unix- und Unix-\xE4hnliche Betriebssysteme verf\xFCgbar, darunter FreeBSD, OpenBSD,
+    NetBSD, illumos und Solaris Unix."
+  PackageLocale: de-DE
+  PackageUrl: https://www.mozilla.org/de/firefox/
+  PrivacyUrl: https://www.mozilla.org/de/privacy/firefox/
+  PublisherSupportUrl: https://support.mozilla.org/de/
+  PublisherUrl: https://www.mozilla.org/de/
+  ShortDescription: Mozilla Firefox ist ein freier und quelloffener Webbrowser.
+  Tags:
+  - webbrowser
+- PackageLocale: el-GR
+  PackageUrl: https://www.mozilla.org/el/firefox/
+  PrivacyUrl: https://www.mozilla.org/el/privacy/firefox/
+  PublisherSupportUrl: https://support.mozilla.org/el/
+  PublisherUrl: https://www.mozilla.org/el/
+  ShortDescription: "Firefox, \u03AD\u03BD\u03B1 \u03B4\u03C9\u03C1\u03B5\u03AC\u03BD
+    \u03C0\u03C1\u03CC\u03B3\u03C1\u03B1\u03BC\u03BC\u03B1 \u03C0\u03B5\u03C1\u03B9\u03AE\u03B3\u03B7\u03C3\u03B7\u03C2
+    \u03B1\u03C0\u03CC \u03C4\u03B7 Mozilla, \u03BC\u03B9\u03B1 \u03BC\u03B7 \u03BA\u03B5\u03C1\u03B4\u03BF\u03C3\u03BA\u03BF\u03C0\u03B9\u03BA\u03AE
+    \u03BF\u03C1\u03B3\u03AC\u03BD\u03C9\u03C3\u03B7 \u03B1\u03C6\u03B9\u03B5\u03C1\u03C9\u03BC\u03AD\u03BD\u03B7
+    \u03C3\u03C4\u03B7\u03BD \u03C5\u03B3\u03B5\u03AF\u03B1 \u03BA\u03B1\u03B9 \u03C4\u03BF
+    \u03B1\u03C0\u03CC\u03C1\u03C1\u03B7\u03C4\u03BF \u03C4\u03BF\u03C5 \u03B4\u03B9\u03B1\u03B4\u03B9\u03BA\u03C4\u03CD\u03BF\u03C5."
+- Description: Firefox Browser, also known as Mozilla Firefox or simply Firefox, is
+    a free and open-source web browser developed by the Mozilla Foundation and its
+    subsidiary, the Mozilla Corporation. Firefox uses the Gecko layout engine to render
+    web pages, which implements current and anticipated web standards. In 2017, Firefox
+    began incorporating new technology under the code name Quantum to promote parallelism
+    and a more intuitive user interface. Firefox is officially available for Windows
+    7 or newer, macOS, and Linux. Its unofficial ports are available for various Unix
+    and Unix-like operating systems including FreeBSD, OpenBSD, NetBSD, illumos, and
+    Solaris Unix.
+  PackageLocale: en-GB
+  PublisherUrl: https://www.mozilla.org/en-GB/
+  ShortDescription: Mozilla Firefox is free and open source software, built by a community
+    of thousands from all over the world.
+  Tags:
+  - browser
+  - gecko
+  - internet
+  - quantum
+  - spidermonkey
+  - web
+  - web-browser
+  - webpage
+- Description: "Firefox Browser, tambi\xE9n conocido como Mozilla Firefox o simplemente
+    Firefox, es un navegador web gratuito y de c\xF3digo abierto desarrollado por
+    Mozilla Foundation y su subsidiaria, Mozilla Corporation. Firefox utiliza el motor
+    de dise\xF1o Gecko para representar p\xE1ginas web, que implementa est\xE1ndares
+    web actuales y anticipados. En 2017, Firefox comenz\xF3 a incorporar nueva tecnolog\xEDa
+    con el nombre en c\xF3digo Quantum para promover el paralelismo y una interfaz
+    de usuario m\xE1s intuitiva. Firefox est\xE1 disponible oficialmente para Windows
+    7 o m\xE1s reciente, macOS y Linux. Sus puertos no oficiales est\xE1n disponibles
+    para varios sistemas operativos Unix y similares a Unix, incluidos FreeBSD, OpenBSD,
+    NetBSD, illumos y Solaris Unix."
+  PackageLocale: es-MX
+  PackageUrl: https://www.mozilla.org/es-MX/firefox/
+  PrivacyUrl: https://www.mozilla.org/es/privacy/firefox/
+  PublisherSupportUrl: https://support.mozilla.org/es/
+  PublisherUrl: https://www.mozilla.org/es-MX/
+  ShortDescription: "Mozilla Firefox es un software gratuito y de c\xF3digo abierto,
+    creado por una comunidad de miles de personas de todo el mundo."
+  Tags:
+  - navegador
+  - navegador-web
+  - web
+- PackageLocale: fr-FR
+  PackageUrl: https://www.mozilla.org/fr/firefox/
+  PrivacyUrl: https://www.mozilla.org/fr/privacy/firefox/
+  PublisherSupportUrl: https://support.mozilla.org/fr/
+  PublisherUrl: https://www.mozilla.org/fr/
+  ShortDescription: "Mozilla Firefox est un logiciel libre et ouvert, r\xE9alis\xE9
+    par une communaut\xE9 de milliers de contributeurs dans le monde."
+  Tags:
+  - navigateur
+  - navigateur-web
+  - web
+- Description: "A Firefox b\xF6ng\xE9sz\u0151, m\xE1s n\xE9ven Mozilla Firefox vagy
+    egyszer\u0171en Firefox, egy ingyenes \xE9s ny\xEDlt forr\xE1sk\xF3d\xFA webb\xF6ng\xE9sz\u0151
+    amelyet a Mozilla Foundation \xE9s le\xE1nyv\xE1llalata, a Mozilla Corporation
+    fejlesztett ki. A Firefox a Gecko elrendez\xE9si motor haszn\xE1lja a weboldalak
+    megjelen\xEDt\xE9s\xE9hez, a jelenlegi \xE9s a v\xE1rhat\xF3 webes szabv\xE1nyok
+    szerint. 2017-ben a Firefox Quantum k\xF3dn\xE9ven \xFAj technol\xF3gi\xE1t kezdett
+    be\xE9p\xEDteni a p\xE1rhuzamos v\xE9grehajt\xE1st \xE9s a intuit\xEDvabb felhaszn\xE1l\xF3i
+    fel\xFCletet c\xE9lozva meg. A Firefox hivatalosan el\xE9rhet\u0151 Windows 7
+    vagy \xFAjabb, macOS \xE9s Linux rendszerekhez. Nem hivatalos portjai k\xFCl\xF6nf\xE9le
+    Unix \xE9s Unix-szer\u0171 oper\xE1ci\xF3s rendszerekhez \xE9rhet\u0151k el, bele\xE9rtve
+    a FreeBSD-t, OpenBSD, NetBSD, illumos \xE9s Solaris Unix."
+  PackageLocale: hu-HU
+  PackageUrl: https://www.mozilla.org/hu/firefox/
+  PrivacyUrl: https://www.mozilla.org/hu/privacy/firefox/
+  PublisherSupportUrl: https://support.mozilla.org/hu/
+  PublisherUrl: https://www.mozilla.org/hu/
+  ShortDescription: "A Mozilla Firefox egy ingyenes \xE9s ny\xEDlt forr\xE1sk\xF3d\xFA
+    webb\xF6ng\xE9sz\u0151."
+  Tags:
+  - webbrowser
+- Description: "Mozilla Firefox \u306F\u7121\u6599\u306E\u30AA\u30FC\u30D7\u30F3\u30BD\u30FC\u30B9\u30BD\u30D5\u30C8\u30A6\u30A7\u30A2\u3067\u3042\u308A\u3001\u4E16\u754C\u4E2D\u306E\u591A\u6570\u306E\u30B3\u30DF\u30E5\u30CB\u30C6\u30A3\u306B\u3088\u3063\u3066\u958B\u767A\u3055\u308C\u3066\u3044\u307E\u3059\u3002"
+  PackageLocale: ja-JP
+  PackageUrl: https://www.mozilla.org/ja/firefox/
+  PrivacyUrl: https://www.mozilla.org/ja/privacy/firefox/
+  PublisherSupportUrl: https://support.mozilla.org/ja/
+  PublisherUrl: https://www.mozilla.org/ja/
+  ShortDescription: "\u9AD8\u901F\u3067\u8EFD\u91CF\u3001\u30D7\u30E9\u30A4\u30D0\u30B7\u30FC\u91CD\u8996\u306E\u30D6\u30E9\u30A6\u30B6\u30FC"
+- Description: "Firefox Browser, ogs\xE5 kjent som Mozilla Firefox eller bare Firefox,
+    er en gratis nettleser med \xE5pen kildekode utviklet av Mozilla Foundation og
+    dets datterselskap, Mozilla Corporation. Firefox bruker Gecko-layoutmotoren til
+    \xE5 gjengi nettsider, som implementerer gjeldende og forventede webstandarder.
+    I 2017 begynte Firefox \xE5 innlemme ny teknologi under kodenavnet Quantum for
+    \xE5 fremme parallellitet og et mer intuitivt brukergrensesnitt. Firefox er offisielt
+    tilgjengelig for Windows 7 eller nyere, macOS og Linux. Dens uoffisielle porter
+    er tilgjengelige for forskjellige Unix og Unix-lignende operativsystemer, inkludert
+    FreeBSD, OpenBSD, NetBSD, illumos og Solaris Unix."
+  PackageLocale: nb-NO
+  PackageUrl: https://www.mozilla.org/nb-NO/firefox/
+  PrivacyUrl: https://www.mozilla.org/nb-NO/privacy/firefox/
+  PublisherSupportUrl: https://support.mozilla.org/nb-NO/
+  PublisherUrl: https://www.mozilla.org/nb-NO/
+  ShortDescription: "Mozilla Firefox er gratis programvare med \xE5pen kildekode,
+    bygget av et samfunn p\xE5 tusenvis fra hele verden."
+  Tags:
+  - nettleser
+- Description: "\u0411\u0440\u0430\u0443\u0437\u0435\u0440 Firefox, \u0442\u0430\u043A\u0436\u0435
+    \u0438\u0437\u0432\u0435\u0441\u0442\u043D\u044B\u0439 \u043A\u0430\u043A Mozilla
+    Firefox \u0438\u043B\u0438 \u043F\u0440\u043E\u0441\u0442\u043E Firefox, - \u044D\u0442\u043E
+    \u0431\u0435\u0441\u043F\u043B\u0430\u0442\u043D\u044B\u0439 \u0432\u0435\u0431-\u0431\u0440\u0430\u0443\u0437\u0435\u0440
+    \u0441 \u043E\u0442\u043A\u0440\u044B\u0442\u044B\u043C \u0438\u0441\u0445\u043E\u0434\u043D\u044B\u043C
+    \u043A\u043E\u0434\u043E\u043C, \u0440\u0430\u0437\u0440\u0430\u0431\u043E\u0442\u0430\u043D\u043D\u044B\u0439
+    Mozilla Foundation \u0438 \u0435\u0433\u043E \u0434\u043E\u0447\u0435\u0440\u043D\u0435\u0439
+    \u043A\u043E\u043C\u043F\u0430\u043D\u0438\u0435\u0439 Mozilla Corporation. Firefox
+    \u0438\u0441\u043F\u043E\u043B\u044C\u0437\u0443\u0435\u0442 \u043C\u0435\u0445\u0430\u043D\u0438\u0437\u043C
+    \u043A\u043E\u043C\u043F\u043E\u043D\u043E\u0432\u043A\u0438 Gecko \u0434\u043B\u044F
+    \u043E\u0442\u043E\u0431\u0440\u0430\u0436\u0435\u043D\u0438\u044F \u0432\u0435\u0431-\u0441\u0442\u0440\u0430\u043D\u0438\u0446,
+    \u043A\u043E\u0442\u043E\u0440\u044B\u0439 \u0440\u0435\u0430\u043B\u0438\u0437\u0443\u0435\u0442
+    \u0442\u0435\u043A\u0443\u0449\u0438\u0435 \u0438 \u043E\u0436\u0438\u0434\u0430\u0435\u043C\u044B\u0435
+    \u0432\u0435\u0431-\u0441\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u044B. \u0412
+    2017 \u0433\u043E\u0434\u0443 Firefox \u043D\u0430\u0447\u0430\u043B \u0432\u043A\u043B\u044E\u0447\u0430\u0442\u044C
+    \u043D\u043E\u0432\u0443\u044E \u0442\u0435\u0445\u043D\u043E\u043B\u043E\u0433\u0438\u044E
+    \u043F\u043E\u0434 \u043A\u043E\u0434\u043E\u0432\u044B\u043C \u043D\u0430\u0437\u0432\u0430\u043D\u0438\u0435\u043C
+    Quantum, \u0447\u0442\u043E\u0431\u044B \u0441\u043F\u043E\u0441\u043E\u0431\u0441\u0442\u0432\u043E\u0432\u0430\u0442\u044C
+    \u043F\u0430\u0440\u0430\u043B\u043B\u0435\u043B\u0438\u0437\u043C\u0443 \u0438
+    \u0431\u043E\u043B\u0435\u0435 \u0438\u043D\u0442\u0443\u0438\u0442\u0438\u0432\u043D\u043E\u043C\u0443
+    \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C\u0441\u043A\u043E\u043C\u0443
+    \u0438\u043D\u0442\u0435\u0440\u0444\u0435\u0439\u0441\u0443. Firefox \u043E\u0444\u0438\u0446\u0438\u0430\u043B\u044C\u043D\u043E
+    \u0434\u043E\u0441\u0442\u0443\u043F\u0435\u043D \u0434\u043B\u044F Windows 7
+    \u0438\u043B\u0438 \u043D\u043E\u0432\u0435\u0435, macOS \u0438 Linux. \u0415\u0433\u043E
+    \u043D\u0435\u043E\u0444\u0438\u0446\u0438\u0430\u043B\u044C\u043D\u044B\u0435
+    \u043F\u043E\u0440\u0442\u044B \u0434\u043E\u0441\u0442\u0443\u043F\u043D\u044B
+    \u0434\u043B\u044F \u0440\u0430\u0437\u043B\u0438\u0447\u043D\u044B\u0445 Unix
+    \u0438 Unix-\u043F\u043E\u0434\u043E\u0431\u043D\u044B\u0445 \u043E\u043F\u0435\u0440\u0430\u0446\u0438\u043E\u043D\u043D\u044B\u0445
+    \u0441\u0438\u0441\u0442\u0435\u043C, \u0432\u043A\u043B\u044E\u0447\u0430\u044F
+    FreeBSD, OpenBSD, NetBSD, illumos \u0438 Solaris Unix."
+  PackageLocale: ru-RU
+  PackageUrl: https://www.mozilla.org/ru/firefox/
+  PrivacyUrl: https://www.mozilla.org/ru/privacy/firefox/
+  PublisherSupportUrl: https://support.mozilla.org/ru/
+  PublisherUrl: https://www.mozilla.org/ru/
+  ShortDescription: "Mozilla Firefox \u044D\u0442\u043E \u0431\u0435\u0441\u043F\u043B\u0430\u0442\u043D\u043E\u0435
+    \u043F\u0440\u043E\u0433\u0440\u0430\u043C\u043C\u043D\u043E\u0435 \u043E\u0431\u0435\u0441\u043F\u0435\u0447\u0435\u043D\u0438\u0435
+    \u0441 \u043E\u0442\u043A\u0440\u044B\u0442\u044B\u043C \u0438\u0441\u0445\u043E\u0434\u043D\u044B\u043C
+    \u043A\u043E\u0434\u043E\u043C, \u0441\u043E\u0437\u0434\u0430\u043D\u043D\u043E\u0435
+    \u0441\u043E\u043E\u0431\u0449\u0435\u0441\u0442\u0432\u043E\u043C \u0442\u044B\u0441\u044F\u0447
+    \u043B\u044E\u0434\u0435\u0439 \u0441\u043E \u0432\u0441\u0435\u0433\u043E \u043C\u0438\u0440\u0430."
+  Tags:
+  - "\u0431\u0440\u0430\u0443\u0437\u0435\u0440"
+  - "\u0432\u0435\u0431-\u0431\u0440\u0430\u0443\u0437\u0435\u0440"
+- Author: "\u0BAE\u0BCA\u0BB8\u0BBF\u0BB2\u0BCD\u0BB2\u0BBE \u0B85\u0BB1\u0B95\u0BCD\u0B95\u0B9F\u0BCD\u0B9F\u0BB3\u0BC8"
+  Description: "\u0BAA\u0BAF\u0BB0\u0BCD\u0BAA\u0BBE\u0B95\u0BCD\u0BB8\u0BCD \u0B89\u0BB2\u0BBE\u0BB5\u0BBF,
+    \u0BAE\u0BCA\u0BB8\u0BBF\u0BB2\u0BCD\u0BB2\u0BBE \u0BAA\u0BAF\u0BB0\u0BCD\u0BAA\u0BBE\u0B95\u0BCD\u0BB8\u0BCD
+    \u0B85\u0BB2\u0BCD\u0BB2\u0BA4\u0BC1 \u0BB5\u0BC6\u0BB1\u0BC1\u0BAE\u0BA9\u0BC7
+    \u0BAA\u0BAF\u0BB0\u0BCD\u0BAA\u0BBE\u0B95\u0BCD\u0BB8\u0BCD \u0B8E\u0BA9\u0BCD\u0BB1\u0BC1\u0BAE\u0BCD
+    \u0B85\u0BB4\u0BC8\u0B95\u0BCD\u0B95\u0BAA\u0BCD\u0BAA\u0B9F\u0BC1\u0B95\u0BBF\u0BB1\u0BA4\u0BC1,
+    \u0B87\u0BA4\u0BC1 \u0BAE\u0BCA\u0BB8\u0BBF\u0BB2\u0BCD\u0BB2\u0BBE \u0B85\u0BB1\u0B95\u0BCD\u0B95\u0B9F\u0BCD\u0B9F\u0BB3\u0BC8
+    \u0BAE\u0BB1\u0BCD\u0BB1\u0BC1\u0BAE\u0BCD \u0B85\u0BA4\u0BA9\u0BCD \u0BA4\u0BC1\u0BA3\u0BC8
+    \u0BA8\u0BBF\u0BB1\u0BC1\u0BB5\u0BA9\u0BAE\u0BBE\u0BA9 \u0BAE\u0BCA\u0BB8\u0BBF\u0BB2\u0BCD\u0BB2\u0BBE
+    \u0B95\u0BBE\u0BB0\u0BCD\u0BAA\u0BCD\u0BAA\u0BB0\u0BC7\u0BB7\u0BA9\u0BBE\u0BB2\u0BCD
+    \u0B89\u0BB0\u0BC1\u0BB5\u0BBE\u0B95\u0BCD\u0B95\u0BAA\u0BCD\u0BAA\u0B9F\u0BCD\u0B9F
+    \u0B92\u0BB0\u0BC1 \u0B87\u0BB2\u0BB5\u0B9A \u0BAE\u0BB1\u0BCD\u0BB1\u0BC1\u0BAE\u0BCD
+    \u0BA4\u0BBF\u0BB1\u0BA8\u0BCD\u0BA4 \u0BAE\u0BC2\u0BB2 \u0B87\u0BA3\u0BC8\u0BAF
+    \u0B89\u0BB2\u0BBE\u0BB5\u0BBF\u0BAF\u0BBE\u0B95\u0BC1\u0BAE\u0BCD. \u0BAA\u0BAF\u0BB0\u0BCD\u0BAA\u0BBE\u0B95\u0BCD\u0BB8\u0BCD
+    \u0B87\u0BA3\u0BC8\u0BAF\u0BAA\u0BCD \u0BAA\u0B95\u0BCD\u0B95\u0B99\u0BCD\u0B95\u0BB3\u0BC8
+    \u0BB5\u0BB4\u0B99\u0BCD\u0B95\u0BC1\u0BB5\u0BA4\u0BB1\u0BCD\u0B95\u0BC1 \u0B95\u0BC6\u0B95\u0BCD\u0B95\u0BCB
+    \u0BA4\u0BB3\u0BB5\u0BAE\u0BC8\u0BAA\u0BCD\u0BAA\u0BC1 \u0B87\u0BAF\u0BA8\u0BCD\u0BA4\u0BBF\u0BB0\u0BA4\u0BCD\u0BA4\u0BC8\u0BAA\u0BCD
+    \u0BAA\u0BAF\u0BA9\u0BCD\u0BAA\u0B9F\u0BC1\u0BA4\u0BCD\u0BA4\u0BC1\u0B95\u0BBF\u0BB1\u0BA4\u0BC1,
+    \u0B87\u0BA4\u0BC1 \u0BA4\u0BB1\u0BCD\u0BAA\u0BCB\u0BA4\u0BC8\u0BAF \u0BAE\u0BB1\u0BCD\u0BB1\u0BC1\u0BAE\u0BCD
+    \u0B8E\u0BA4\u0BBF\u0BB0\u0BCD\u0BAA\u0BBE\u0BB0\u0BCD\u0B95\u0BCD\u0B95\u0BAA\u0BCD\u0BAA\u0B9F\u0BCD\u0B9F
+    \u0B87\u0BA3\u0BC8\u0BAF\u0BA4\u0BCD \u0BA4\u0BB0\u0B99\u0BCD\u0B95\u0BB3\u0BC8\u0B9A\u0BCD
+    \u0B9A\u0BC6\u0BAF\u0BB2\u0BCD\u0BAA\u0B9F\u0BC1\u0BA4\u0BCD\u0BA4\u0BC1\u0B95\u0BBF\u0BB1\u0BA4\u0BC1.
+    2017 \u0B86\u0BAE\u0BCD \u0B86\u0BA3\u0BCD\u0B9F\u0BBF\u0BB2\u0BCD, \u0B87\u0BA3\u0BC8\u0BAF\u0BBE\u0BA9
+    \u0BAE\u0BB1\u0BCD\u0BB1\u0BC1\u0BAE\u0BCD \u0BAE\u0BBF\u0B95\u0BB5\u0BC1\u0BAE\u0BCD
+    \u0B89\u0BB3\u0BCD\u0BB3\u0BC1\u0BA3\u0BB0\u0BCD\u0BB5\u0BC1 \u0BAA\u0BAF\u0BA9\u0BB0\u0BCD
+    \u0B87\u0B9F\u0BC8\u0BAE\u0BC1\u0B95\u0BA4\u0BCD\u0BA4\u0BC8 \u0BAE\u0BC7\u0BAE\u0BCD\u0BAA\u0B9F\u0BC1\u0BA4\u0BCD\u0BA4\u0BC1\u0BB5\u0BA4\u0BB1\u0BCD\u0B95\u0BBE\u0B95
+    \u0B95\u0BC1\u0BB5\u0BBE\u0BA3\u0BCD\u0B9F\u0BAE\u0BCD \u0B8E\u0BA9\u0BCD\u0BB1
+    \u0B95\u0BC1\u0BB1\u0BBF\u0BAF\u0BC0\u0B9F\u0BCD\u0B9F\u0BC1 \u0BAA\u0BC6\u0BAF\u0BB0\u0BBF\u0BB2\u0BCD
+    \u0BAA\u0BC1\u0BA4\u0BBF\u0BAF \u0BA4\u0BCA\u0BB4\u0BBF\u0BB2\u0BCD\u0BA8\u0BC1\u0B9F\u0BCD\u0BAA\u0BA4\u0BCD\u0BA4\u0BC8
+    \u0BAA\u0BAF\u0BB0\u0BCD\u0BAA\u0BBE\u0B95\u0BCD\u0BB8\u0BCD \u0B87\u0BA3\u0BC8\u0B95\u0BCD\u0B95\u0BA4\u0BCD
+    \u0BA4\u0BCA\u0B9F\u0B99\u0BCD\u0B95\u0BBF\u0BAF\u0BA4\u0BC1. Firefox Windows
+    7 \u0B85\u0BB2\u0BCD\u0BB2\u0BA4\u0BC1 \u0BAA\u0BC1\u0BA4\u0BBF\u0BAF, macOS \u0BAE\u0BB1\u0BCD\u0BB1\u0BC1\u0BAE\u0BCD
+    Linux \u0B95\u0BCD\u0B95\u0BC1 \u0B85\u0BA4\u0BBF\u0B95\u0BBE\u0BB0\u0BAA\u0BCD\u0BAA\u0BC2\u0BB0\u0BCD\u0BB5\u0BAE\u0BBE\u0B95
+    \u0B95\u0BBF\u0B9F\u0BC8\u0B95\u0BCD\u0B95\u0BBF\u0BB1\u0BA4\u0BC1. \u0B85\u0BA4\u0BA9\u0BCD
+    \u0B85\u0BA4\u0BBF\u0B95\u0BBE\u0BB0\u0BAA\u0BCD\u0BAA\u0BC2\u0BB0\u0BCD\u0BB5\u0BAE\u0BB1\u0BCD\u0BB1
+    \u0BAA\u0BCB\u0BB0\u0BCD\u0B9F\u0BCD\u0B95\u0BB3\u0BCD FreeBSD, OpenBSD, NetBSD,
+    illumos \u0BAE\u0BB1\u0BCD\u0BB1\u0BC1\u0BAE\u0BCD Solaris Unix \u0B89\u0BB3\u0BCD\u0BB3\u0BBF\u0B9F\u0BCD\u0B9F
+    \u0BAA\u0BB2\u0BCD\u0BB5\u0BC7\u0BB1\u0BC1 Unix \u0BAE\u0BB1\u0BCD\u0BB1\u0BC1\u0BAE\u0BCD
+    Unix \u0BAA\u0BCB\u0BA9\u0BCD\u0BB1 \u0B87\u0BAF\u0B99\u0BCD\u0B95\u0BC1\u0BA4\u0BB3\u0B99\u0BCD\u0B95\u0BB3\u0BC1\u0B95\u0BCD\u0B95\u0BC1
+    \u0B95\u0BBF\u0B9F\u0BC8\u0B95\u0BCD\u0B95\u0BBF\u0BA9\u0BCD\u0BB1\u0BA9."
+  PackageLocale: ta-IN
+  PublisherSupportUrl: https://support.mozilla.org/ta/
+  PublisherUrl: https://www.mozilla.org/ta/
+  ShortDescription: "\u0BAE\u0BCA\u0BB8\u0BBF\u0BB2\u0BCD\u0BB2\u0BBE \u0BAA\u0BAF\u0BB0\u0BCD\u0BAA\u0BBE\u0B95\u0BCD\u0BB8\u0BCD
+    \u0B8E\u0BA9\u0BCD\u0BAA\u0BA4\u0BC1 \u0B87\u0BB2\u0BB5\u0B9A \u0BAE\u0BB1\u0BCD\u0BB1\u0BC1\u0BAE\u0BCD
+    \u0BA4\u0BBF\u0BB1\u0BA8\u0BCD\u0BA4 \u0BAE\u0BC2\u0BB2 \u0BAE\u0BC6\u0BA9\u0BCD\u0BAA\u0BCA\u0BB0\u0BC1\u0BB3\u0BBE\u0B95\u0BC1\u0BAE\u0BCD,
+    \u0B87\u0BA4\u0BC1 \u0B89\u0BB2\u0B95\u0BAE\u0BCD \u0BAE\u0BC1\u0BB4\u0BC1\u0BB5\u0BA4\u0BBF\u0BB2\u0BC1\u0BAE\u0BBF\u0BB0\u0BC1\u0BA8\u0BCD\u0BA4\u0BC1
+    \u0B86\u0BAF\u0BBF\u0BB0\u0B95\u0BCD\u0B95\u0BA3\u0B95\u0BCD\u0B95\u0BBE\u0BA9
+    \u0B9A\u0BAE\u0BC2\u0B95\u0BA4\u0BCD\u0BA4\u0BBE\u0BB2\u0BCD \u0B89\u0BB0\u0BC1\u0BB5\u0BBE\u0B95\u0BCD\u0B95\u0BAA\u0BCD\u0BAA\u0B9F\u0BCD\u0B9F\u0BA4\u0BC1."
+  Tags:
+  - "\u0B87\u0BA3\u0BC8\u0BAF-\u0B89\u0BB2\u0BBE\u0BB5\u0BBF"
+  - "\u0B89\u0BB2\u0BBE\u0BB5\u0BBF"
+  - "\u0B95\u0BC1\u0BB5\u0BBE\u0BA3\u0BCD\u0B9F\u0BAE\u0BCD"
+  - "\u0B95\u0BC1\u0BB1\u0BC1\u0B95\u0BCD\u0B95\u0BC1-\u0BA4\u0BB3\u0BAE\u0BCD"
+  - "\u0B95\u0BC6\u0B95\u0BCD\u0B95\u0BCB"
+  - "\u0B9A\u0BBF\u0BB2\u0BA8\u0BCD\u0BA4\u0BBF-\u0B95\u0BC1\u0BB0\u0B99\u0BCD\u0B95\u0BC1"
+- Author: "Mozilla \u57FA\u91D1\u4F1A"
+  Description: "Firefox \u6D4F\u89C8\u5668\u662F\u552F\u4E00\u4E00\u6B3E\u7531\u975E\u8425\u5229\u7EC4\u7EC7\u652F\u6301\uFF0C\u4E0D\u4F1A\u5C06\u60A8\u7684\u4E2A\u4EBA\u6570\u636E\u4E70\u7ED9\u5E7F\u544A\u5546\uFF0C\u8FD8\u80FD\u4FDD\u62A4\u60A8\u4E2A\u4EBA\u4FE1\u606F\u7684\u4E3B\u6D41\u6D4F\u89C8\u5668\u3002"
+  PackageLocale: zh-CN
+  PackageUrl: https://www.mozilla.org/zh-CN/firefox/
+  PrivacyUrl: https://www.mozilla.org/zh-CN/privacy/firefox/
+  PublisherSupportUrl: https://support.mozilla.org/zh-CN/
+  PublisherUrl: https://www.mozilla.org/zh-CN/
+  ShortDescription: "\u5F00\u653E\u5B89\u5168\u7684\u5F00\u6E90\u6D4F\u89C8\u5668"
+  Tags:
+  - gecko
+  - quantum
+  - spidermonkey
+  - "\u6D4F\u89C8\u5668"
+  - "\u706B\u72D0"
+  - "\u706B\u72D0\u6D4F\u89C8\u5668"
+  - "\u7F51\u9875"
+  - "\u7F51\u9875\u6D4F\u89C8\u5668"
+ManifestType: merged
+ManifestVersion: 1.28.0
+Moniker: firefox
+PackageIdentifier: Mozilla.Firefox
+PackageLocale: en-US
+PackageName: Mozilla Firefox (en-US)
+PackageUrl: https://www.mozilla.org/firefox/
+PackageVersion: 160.0.1
+PrivacyUrl: https://www.mozilla.org/privacy/firefox/
+ProductCode: Mozilla Firefox
+Protocols:
+- http
+- https
+- mailto
+Publisher: Mozilla
+PublisherSupportUrl: https://support.mozilla.org/
+PublisherUrl: https://www.mozilla.org/
+ReleaseDate: 2026-11-17
+ReleaseNotes: 'Version 160.0.1, first offered to Release channel users on November
+  17, 2026
+
+
+  Fixed
+
+  - Fixed thin lines in PDFs printing as thick black boxes on some printers on Windows.
+  (Bug 2091728)
+
+  - Fixed PDFs, web page graphics, and WebGL content appearing blank or broken on
+  Macs with AMD graphics, such as black cells in Google Sheets. (Bug 2091596)
+
+  - Fixed incorrect colors in WebGL and canvas content, such as games and Google Meet
+  backgrounds, on some Linux systems using Wayland. (Bug 2089043)
+
+  - Fixed links on some sites, such as the Google Store, taking a very long time to
+  load. (Bug 2087787)
+
+  - Fixed tabs crashing on some sites, most notably ChatGPT. (Bug 2088486)
+
+  - Fixed WebTransport connections being unable to send datagrams after a site sent
+  many in quick succession. (Bug 2092532)
+
+  - Fixed trackpad and mouse swipes sometimes scrolling the page when a site had blocked
+  scrolling. (Bug 2086786)
+
+  - Reference link to 160.0 release notes.'
+ReleaseNotesUrl: https://www.firefox.com/en-US/firefox/160.0.1/releasenotes/
+Scope: machine
+ShortDescription: Mozilla Firefox is free and open source software, built by a community
+  of thousands from all over the world.
+Tags:
+- browser
+- gecko
+- internet
+- quantum
+- spidermonkey
+- web
+- web-browser
+- webpage
+UpgradeBehavior: install
