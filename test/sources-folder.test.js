@@ -182,7 +182,42 @@ test('a LISTED checksum file that redirects to a mirror is not used, and is not 
     if (url === sums.browser_download_url) throw Object.assign(new Error('download.gimp.org redirected the request, which this source does not allow'), { redirectRefused: true });
     throw Object.assign(new Error('answered 404'), { status: 404, unavailable: true });
   };
-  assert.deepEqual(await sources.resolveChecksum(entry, { tag_name: '3.2.8', assets: [file, sums] }, file, c.ctx), { digest: null, state: 'none', note: 'no checksum published' });
+  assert.deepEqual(await sources.resolveChecksum(entry, { tag_name: '3.2.8', assets: [file, sums] }, file, c.ctx),
+    { digest: null, state: 'none', note: 'no publisher checksum verified — the checksum file is served from a mirror' });
+});
+
+test('the same file name in two sub-folders is ambiguous and is not offered', async () => {
+  const base = 'https://v.example/dl/';
+  const v = `${base}2.0/`;
+  const { ctx } = ctxWith({
+    [base]: '<a href="2.0/">2.0/</a>',
+    [v]: '<a href="win/">win/</a><a href="mac/">mac/</a><a href="linux/">linux/</a>',
+    [`${v}win/`]: '<a href="app-2.0.0.zip">z</a><a href="SHA256SUMS">s</a><a href="app-2.0.0-setup.exe">e</a>',
+    [`${v}mac/`]: '<a href="app-2.0.0.zip">z</a><a href="SHA256SUMS">s</a><a href="app-2.0.0.dmg">d</a>',
+    [`${v}linux/`]: '<a href="app-2.0.0-x86_64.AppImage">a</a><a href="SHA256SUMS">s</a>',
+  });
+  const rel = await folder.getLatestRelease({ type: 'folder', url: base }, ctx);
+  const names = rel.assets.map((a) => a.name);
+  assert.ok(!names.includes('app-2.0.0.zip'), 'neither copy of the repeated name is offered');
+  assert.ok(names.includes('app-2.0.0-setup.exe') && names.includes('app-2.0.0.dmg') && names.includes('app-2.0.0-x86_64.AppImage'));
+  // Each folder's own SHA256SUMS is kept, with its own address.
+  assert.deepEqual(rel.assets.filter((a) => a.name === 'SHA256SUMS').map((a) => a.browser_download_url).sort(), [`${v}linux/SHA256SUMS`, `${v}mac/SHA256SUMS`, `${v}win/SHA256SUMS`]);
+});
+
+test('a checksum file only vouches for files in its own folder', async () => {
+  const v = 'https://v.example/dl/2.0/';
+  const exe = { name: 'app-2.0.0-setup.exe', browser_download_url: `${v}win/app-2.0.0-setup.exe` };
+  const assets = [exe, { name: 'SHA256SUMS', browser_download_url: `${v}mac/SHA256SUMS` }, { name: 'SHA256SUMS', browser_download_url: `${v}win/SHA256SUMS` }];
+  const entry = sources.normalizeEntry({ type: 'installer', name: 'App', source: { type: 'folder', url: 'https://v.example/dl/' } });
+  const good = 'aa'.repeat(32);
+  const c = ctxWith({
+    // The sibling folder's file lists the same name with a DIFFERENT hash; it must never be consulted.
+    [`${v}mac/SHA256SUMS`]: `${'bb'.repeat(32)}  app-2.0.0-setup.exe\n`,
+    [`${v}win/SHA256SUMS`]: `${good}  app-2.0.0-setup.exe\n`,
+  });
+  const sum = await sources.resolveChecksum(entry, { tag_name: '2.0.0', assets }, exe, c.ctx);
+  assert.equal(sum.digest, `sha256:${good}`);
+  assert.ok(!c.calls.includes(`${v}mac/SHA256SUMS`), 'the other folder was not even asked');
 });
 
 test('VLC: version folder, then platform folders, per-file checksums', async () => {

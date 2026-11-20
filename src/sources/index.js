@@ -394,14 +394,23 @@ async function findPublishedChecksum(rel, asset, ctx, prov) {
   const byConvention = prov && typeof prov.checksumUrls === 'function'
     ? prov.checksumUrls(asset).map((url) => ({ name: `${asset.name}.sha256`, browser_download_url: url, guessed: true }))
     : [];
+  // A checksum file vouches for the files in ITS OWN folder. When the release spans
+  // several folders (win64/, macosx/…), only one beside the file being checked counts —
+  // a same-named sums file from a sibling folder is about different files.
+  const dirOf = (u) => String(u).slice(0, String(u).lastIndexOf('/') + 1);
+  const here = dirOf(asset.browser_download_url);
+  const beside = candidates.filter((c) => dirOf(c.browser_download_url) === here);
+  const listed = beside.length || candidates.some((c) => dirOf(c.browser_download_url) !== dirOf(candidates[0].browser_download_url)) ? beside : candidates;
   let unreadable = null;
-  for (const c of [...candidates, ...byConvention]) {
+  let viaMirror = false;
+  for (const c of [...listed, ...byConvention]) {
     let text;
     try {
       ({ text } = await ctx.net.getText(c.browser_download_url, { maxBytes: MAX_SUMS_BYTES }));
     } catch (e) {
       // Redirected to a mirror: a hash fetched from the same mirror as the file proves
       // nothing the file's own HTTPS download does not, so it is simply not used.
+      if (e && e.redirectRefused && !c.guessed) viaMirror = true;
       if (e && (e.unavailable || e.redirectRefused || c.guessed)) continue;
       unreadable = unreadable || c.name;
       continue;
@@ -410,7 +419,8 @@ async function findPublishedChecksum(rel, asset, ctx, prov) {
     if (hit) return hit;
   }
   if (unreadable) throw new Error(`the published checksum file (${unreadable}) could not be read — try again`);
-  return null;
+  // Say exactly why nothing was verified: "none published" would be untrue here.
+  return viaMirror ? { mirrorOnly: true } : null;
 }
 
 // -> { digest: 'sha256:<hex>' | null, state: 'pinned' | 'published' | 'none', note }
@@ -430,7 +440,8 @@ async function resolveChecksum(entry, rel, asset, ctx) {
   const found = isGithub(entry)
     ? await github.fetchChecksumFromRelease(rel, asset.name)
     : await findPublishedChecksum(rel, asset, ctx || makeCtx(), p);
-  if (found) return { digest: `${found.algo}:${found.expected}`, state: 'published', note: 'verified via release checksums file' };
+  if (found && found.expected) return { digest: `${found.algo}:${found.expected}`, state: 'published', note: 'verified via release checksums file' };
+  if (found && found.mirrorOnly) return { digest: null, state: 'none', note: 'no publisher checksum verified — the checksum file is served from a mirror' };
   return { digest: null, state: 'none', note: 'no checksum published' };
 }
 

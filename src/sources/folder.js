@@ -217,18 +217,31 @@ function releaseFrom(files, opts = {}) {
   if (!usable.length) return null;
   const version = usable.map((f) => versionOf(f.name)).reduce((a, b) => (core.cmpVersion(b, a) > 0 ? b : a));
   const mine = (f) => versionOf(f.name) === version;
+  // The same file name under two different sub-folders (win/app-1.2.zip and
+  // mac/app-1.2.zip) cannot be told apart once only the name is left — and the name is
+  // all the registry selects on. Rather than let whichever was read first win, such a
+  // name is not offered at all.
+  const urlsByName = new Map();
+  for (const f of files) {
+    if (!urlsByName.has(f.name)) urlsByName.set(f.name, new Set());
+    urlsByName.get(f.name).add(f.url);
+  }
+  const ambiguous = (f) => urlsByName.get(f.name).size > 1;
   const assets = [];
   const seen = new Set();
   for (const f of files) {
-    const keep =
-      (isInstallable(f.name) && mine(f) && (opts.prerelease || !isPrerelease(f.name))) ||
-      // Checksum files for this version (or unversioned, like SHA256SUMS) — but not the
-      // per-file hash of something that was itself left out (debug symbols and the like).
-      (isSums(f.name) && !NOISE.test(f.name) && (mine(f) || !versionOf(f.name)));
-    if (!keep || seen.has(f.name)) continue;
-    seen.add(f.name);
+    const installable = isInstallable(f.name) && mine(f) && (opts.prerelease || !isPrerelease(f.name));
+    // Checksum files for this version (or unversioned, like SHA256SUMS) — but not the
+    // per-file hash of something that was itself left out (debug symbols and the like).
+    // Every one is kept, even several of the same name: each belongs to its own folder,
+    // and the registry only consults the one beside the file it is checking.
+    const sums = isSums(f.name) && !NOISE.test(f.name) && (mine(f) || !versionOf(f.name));
+    if (!(installable && !ambiguous(f)) && !sums) continue;
+    if (seen.has(f.url)) continue;
+    seen.add(f.url);
     assets.push({ name: f.name, browser_download_url: f.url });
   }
+  if (!assets.some((x) => isInstallable(x.name))) return null;
   return { version, assets };
 }
 
