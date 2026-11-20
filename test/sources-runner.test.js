@@ -22,8 +22,13 @@ const core = require('../src/core');
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'gu-src-runner-'));
 
 const SOURCE = { type: 'gitea', host: 'codeberg.org', owner: 'team', repo: 'tool' };
+// The asset's name has to be one the RUNNING platform's picker accepts, because these
+// tests go through the real selection. A bare "payload.zip" is fine on Windows and macOS,
+// but on Linux a .zip only counts when its name says Linux (see src/platform/assets.js) —
+// the first Linux run of this file failed ten tests for exactly that reason.
+const FILE = process.platform === 'linux' ? 'payload_linux.zip' : 'payload.zip';
 const API = 'https://codeberg.org/api/v1/repos/team/tool/releases?limit=20';
-const FILE_URL = 'https://codeberg.org/team/tool/releases/download/v2.0.0/payload.zip';
+const FILE_URL = `https://codeberg.org/team/tool/releases/download/v2.0.0/${FILE}`;
 const SUMS_URL = 'https://codeberg.org/team/tool/releases/download/v2.0.0/SHA256SUMS';
 
 function zipBytes() {
@@ -36,7 +41,7 @@ function zipBytes() {
 async function withWorld(opts, fn) {
   const bytes = zipBytes();
   const sha = crypto.createHash('sha256').update(bytes).digest('hex');
-  const assets = [{ name: 'payload.zip', size: bytes.length, browser_download_url: FILE_URL }];
+  const assets = [{ name: FILE, size: bytes.length, browser_download_url: FILE_URL }];
   if (opts.sums) assets.push({ name: 'SHA256SUMS', size: 80, browser_download_url: SUMS_URL });
   const real = {
     getJson: net.getJson, getText: net.getText,
@@ -52,7 +57,7 @@ async function withWorld(opts, fn) {
   };
   net.getText = async (url) => {
     calls.text.push(url);
-    return { status: 200, url, text: `${opts.sums === 'mismatch' ? 'f'.repeat(64) : sha}  payload.zip\n` };
+    return { status: 200, url, text: `${opts.sums === 'mismatch' ? 'f'.repeat(64) : sha}  ${FILE}\n` };
   };
   // (url, destPath, onProgress, maxBytes, policy) — the size cap comes before the policy.
   github.downloadAsset = async (url, file, _progress, maxBytes, policy = {}) => {
@@ -60,7 +65,7 @@ async function withWorld(opts, fn) {
     fs.writeFileSync(file, bytes);
     if (policy.onFinalUrl) policy.onFinalUrl(opts.servedFrom || url);
   };
-  github.getLatestRelease = async () => ({ tag_name: 'v2.0.0', assets: [{ name: 'payload.zip', browser_download_url: 'https://github.invalid/payload.zip' }] });
+  github.getLatestRelease = async () => ({ tag_name: 'v2.0.0', assets: [{ name: FILE, browser_download_url: `https://github.invalid/${FILE}` }] });
   github.fetchChecksumFromRelease = async () => null;
   detect.clearCache = () => {};
   detect.isRunning = async () => false;
@@ -88,7 +93,7 @@ test('check: a sourced app reports its source, the chosen file, its host and che
     assert.equal(r.id, KEY, 'the key is derived from the source, not the stored owner/repo');
     assert.equal(r.repo, 'Tool', 'displayed by name, never by its opaque key');
     assert.deepEqual(r.source, { type: 'gitea', label: 'Codeberg', host: 'codeberg.org', pageUrl: 'https://codeberg.org/team/tool/releases' });
-    assert.equal(r.file, 'payload.zip');
+    assert.equal(r.file, FILE);
     assert.equal(r.fileHost, 'codeberg.org');
     assert.equal(r.checksum, 'published');
     assert.equal(r.to, '2.0.0');
@@ -201,7 +206,7 @@ const manifestRel = (over) => ({
   html_url: 'https://codeberg.org/team/tool/releases',
   provenance: { listedBy: 'Codeberg', listingUrl: 'https://codeberg.org/team/tool/releases' },
   assets: [{
-    name: 'payload.zip', browser_download_url: FILE_URL,
+    name: FILE, browser_download_url: FILE_URL,
     platform: process.platform, arch: process.arch, type: 'portable', kind: 'zip', ...over,
   }],
 });
@@ -231,7 +236,7 @@ test('preflight: an upgrade the listing forbids is blocked in check, dry-run AND
         assert.equal(results[0].status, 'failed', JSON.stringify(o));
         assert.match(results[0].reason, want);
         assert.match(results[0].reason, /^Codeberg says/);
-        assert.equal(results[0].file, 'payload.zip', 'a blocked result still names the file');
+        assert.equal(results[0].file, FILE, 'a blocked result still names the file');
       }
       assert.equal(calls.download.length, 0);
     });
