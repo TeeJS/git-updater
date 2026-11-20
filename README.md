@@ -34,28 +34,32 @@ The tarball has no such requirement, which is why it is the recommended Linux do
 
 ## What it does
 
-- **One box: a name, a GitHub URL, or any https address.** Type `vlc`, paste a GitHub or
-  GitLab/Codeberg project, or paste a vendor's download folder
-  (`download.blender.org/release/`). git-updater lists the sources it found and, for each,
-  the exact file this computer would get, the host it downloads from and whether it can be
-  verified. You pick one. It figures out the right download by itself — platform,
-  architecture, archive vs installer, even matching the format an app is already installed
-  in (MSI vs EXE on Windows, deb vs rpm on Linux) so you never end up with duplicates.
+- **One box: a name, a GitHub URL, or any https address.** Press **Add an app** (next to
+  *Check all*) and type `vlc`, paste a GitHub or GitLab/Codeberg project, or paste a
+  vendor's download folder (`download.blender.org/release/`). The *Add an app* window lists
+  the sources it found and, for each, the exact file this computer would get, the host it
+  downloads from and whether it can be verified. You pick one; the window closes and the
+  new row is checked. The Add row under the list works too, and opens the same window
+  whenever there is a choice to make, so results never land somewhere you might not look.
+  It figures out the right download by itself — platform, architecture, archive vs
+  installer, even matching the format an app is already installed in (MSI vs EXE on
+  Windows, deb vs rpm on Linux) so you never end up with duplicates.
 - **Five kinds of source, always shown.** GitHub releases; GitLab and Gitea/Codeberg
   releases; **WinGet** listings on Windows and **Homebrew** listings on macOS (read as
   listings — git-updater fetches the vendor's own file and never runs `winget` or `brew`);
   and plain vendor download folders. Every row carries a source badge and the download
   host, the preview shows the full address, and the log records the host that actually
   served the file when a mirror was involved.
-- **Popular apps and packs.** A categorized checklist of well-known apps, each mapped to
-  its real identity (the names people type, not package ids). Tick several, review where
-  every file comes from, add them in one go. A *pack* is a named set of apps: a few are
-  built in, you can save the apps on this computer as one, and export it as a file to set
-  up another machine — a pack stores which apps, never which files, so the same pack
-  works on Windows, macOS and Linux.
+- **Popular apps and packs** (top right, next to *Settings*). A categorized checklist of
+  well-known apps, each mapped to its real identity (the names people type, not package
+  ids). Tick several, review where every file comes from, add them in one go. A *pack* is
+  a named set of apps: a few are built in, you can save the apps on this computer as one,
+  and export it as a file to set up another machine — a pack stores which apps, never
+  which files, so the same pack works on Windows, macOS and Linux.
 - **Your preferences decide.** Set a preferred source order (GitHub first, or WinGet
   first…) and a preferred type (portable or installer); when an app is available that way
-  it is added without asking, and the row still says where it came from.
+  it is added without asking — no window, no choice — and the row still says where it came
+  from.
 - **Shows what you actually have.** *Current* comes from the system itself — the uninstall
   registry on Windows, the app bundle's own version on macOS, dpkg/rpm/flatpak/snap on
   Linux, or the portable folder — not from what some tool remembers doing. Next to it: the
@@ -64,12 +68,13 @@ The tarball has no such requirement, which is why it is the recommended Linux do
   batches with live progress (Downloading 42% → Verifying → Installing). Each row has an
   overflow menu: Edit, Force reinstall, Close app & update, View source, Preview selected
   file, Open folder, Stop tracking.
-- **Scan this PC** (Windows and macOS). Finds programs you already have that git-updater
-  recognizes — a curated catalog of 120+ GitHub-released apps (browsers, media, dev tools,
-  AI tools, runtimes), filtered to the ones that exist on your platform — and adds the ones
-  you pick. Not offered on Linux, where your package manager already owns most of what it
-  would find and accepting a suggestion would give you a second copy outside it. Browsing
-  the whole catalog and cherry-picking works everywhere.
+- **Scan this PC** (Windows and macOS; top right, next to *Packs*). Lists the programs you
+  already have that git-updater recognizes — a curated catalog of 120+ GitHub-released
+  apps (browsers, media, dev tools, AI tools, runtimes), filtered to the ones that exist
+  on your platform — and adds the ones you pick. Not offered on Linux, where your package
+  manager already owns most of what it would find and accepting a suggestion would give
+  you a second copy outside it. To add known apps you do not have yet, on any platform,
+  use *Popular apps*.
 - **Safe by default.** Anything that is not GitHub is fetched over HTTPS only, on every
   hop. A checksum is verified whenever one exists — pinned by a WinGet or Homebrew
   listing, or published beside the file — and a mismatch always stops the install. When a
@@ -121,7 +126,9 @@ the thing being replaced.
 
 1. Open Settings (top right) and pick your **portable apps folder** (`C:\PortableApps`,
    `~/Applications`, `~/Apps` — wherever you like).
-2. **Add app** → paste a GitHub releases URL → choose Portable or Installer.
+2. **Add an app** (next to *Check all*) → type an app's name or paste its address → **Find**
+   → in the list, press *Add as Portable* or *Add as Installer* on the source you want.
+   To add several at once, use **Popular apps** (top right) instead.
 3. **Check all**, then **Update all**. That's it.
 
 Prefer beta builds for a specific app? Tick *include beta (pre-release) versions* when

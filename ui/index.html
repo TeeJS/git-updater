@@ -60,18 +60,15 @@
 
   /* Compact add/scan area — matches the table's scale, not a separate page. */
   .sec-h { font: 600 15px var(--sans); margin: 0 0 .5rem; }
-  .sec-h2 { font: 600 13.5px var(--sans); color: var(--text); }
   .helper { font-size: 12px; line-height: 16px; color: var(--muted); margin: .5rem 0 0; }
   .add-row { display: flex; gap: .55rem; align-items: center; }
   .add-row input { flex: 1; min-width: 10rem; height: 35px; }
-  .add-row button, .scan-row button { height: 35px; }
-  .scan-row { display: flex; align-items: center; justify-content: space-between; gap: .75rem; }
+  .add-row button { height: 35px; }
   .scan-label { display: inline-flex; align-items: center; gap: .4rem; }
   @media (max-width: 620px) {
     .add-row { flex-wrap: wrap; }
     .add-row input { min-width: 100%; }
     .add-row button.primary { flex: 1; }
-    .scan-row { flex-direction: column; align-items: stretch; }
   }
 
   .toolbar { display: flex; align-items: center; gap: .55rem; margin-bottom: .7rem; }
@@ -146,18 +143,6 @@
   .src-badge.s-folder { color: var(--accent); border-color: rgba(227,161,60,.4); }
   .src-badge.s-unknown { color: var(--red); border-color: var(--red); }
   .sum-none { color: var(--accent); }
-  /* The options list under the Add box. */
-  .options { display: flex; flex-direction: column; gap: .5rem; margin-top: .7rem; }
-  .options:empty { display: none; }
-  .opt { border: 1px solid var(--border); border-radius: 10px; padding: .6rem .75rem; background: #0d1117; }
-  .opt-head { display: flex; align-items: center; gap: .45rem; flex-wrap: wrap; }
-  .opt-name { font: 600 14px var(--sans); color: var(--text); }
-  .opt-meta { display: grid; gap: .18rem; margin-top: .35rem; font-size: 12px; line-height: 17px; color: var(--muted); }
-  .opt-meta b { font-weight: 600; color: var(--text); }
-  .opt-meta .mono { font-family: var(--mono); font-size: 11.5px; overflow-wrap: anywhere; }
-  .opt-actions { display: flex; gap: .4rem; flex-wrap: wrap; margin-top: .55rem; }
-  .opt-actions button { padding: .3rem .7rem; font-size: 12.5px; }
-  .opt-foot { font-size: 12px; color: var(--faint); }
   .pref-list { display: flex; flex-wrap: wrap; gap: .35rem; flex: 1; min-width: 12rem; }
   .pref-chip { display: inline-flex; align-items: center; gap: .25rem; padding: .15rem .2rem .15rem .55rem; border: 1px solid var(--border); border-radius: 999px; font-size: 12.5px; color: var(--text); background: #0d1117; }
   .pref-chip button { padding: 0 .35rem; border: 0; background: transparent; color: var(--muted); font-size: 12px; line-height: 18px; }
@@ -222,7 +207,13 @@
   .divider { height: 1px; background: var(--border); margin: 12px -16px; }
   /* Settings is its own screen: a button in the list's header, and a header with Back on the screen. */
   .topbar { flex-wrap: wrap; }
-  .settings-btn { margin-left: auto; font-size: .85rem; color: var(--muted); }
+  /* Scan this PC, Packs and Popular apps sit at the top right, just left of Settings, as one
+     group: it never splits across lines; when the window is too narrow it moves below the
+     name as a whole, still right-aligned. */
+  .top-actions { margin-left: auto; display: flex; align-items: center; gap: .4rem; flex-wrap: nowrap; white-space: nowrap; }
+  /* Slightly tighter than other buttons so the header stays on one line at the 720px minimum window width. */
+  .top-actions button { padding-left: .65rem; padding-right: .65rem; }
+  .settings-btn { font-size: .85rem; color: var(--muted); }
   .settings-btn:hover:not(:disabled) { color: var(--text); }
   .back-btn { color: var(--muted); }
   .screen-title { font-size: 1.15rem; }
@@ -246,7 +237,12 @@
     <span class="logo" aria-hidden="true"><img src="data:image/png;base64,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" alt="" width="28" height="28"></span>
     <h1><span class="g">git</span>-updater</h1>
     <span id="headerVersion" class="ver" title="This version of git-updater"></span>
-    <button type="button" id="openSettings" class="ghost settings-btn" title="Open Settings"><span aria-hidden="true">⚙</span> Settings</button>
+    <div class="top-actions">
+      <button type="button" id="scanPc" title="Find apps already installed on this PC that git-updater can keep up to date">Scan this PC</button>
+      <button type="button" id="packsBtn" title="Add a named set of apps in one go">Packs</button>
+      <button type="button" id="browseAll" class="primary" title="Pick apps from a categorized list">Popular apps</button>
+      <button type="button" id="openSettings" class="ghost settings-btn" title="Open Settings"><span aria-hidden="true">⚙</span> Settings</button>
+    </div>
   </header>
   <p class="tagline">Installs and updates your apps straight from their own sources.</p>
   <div id="msgHome"><div id="msg"></div></div>
@@ -286,6 +282,7 @@
     <div class="filtered" id="filtered" hidden><span id="filteredText"></span><button type="button" class="linklike" id="filterClear">Clear</button></div>
     <div class="toolbar">
       <span class="count"><button type="button" class="linklike" id="count" title="Show only the apps with an update" hidden></button></span>
+      <button id="openAddWindow" type="button">Add an app</button>
       <button id="checkAll">Check all</button>
       <button id="updateSel" disabled>Update selected</button>
       <button id="updateAll" class="primary">Update all</button>
@@ -328,20 +325,8 @@
           <input type="checkbox" id="preRel"> include beta (pre-release) versions
         </label>
       </div>
-      <p class="helper" id="addHint">Type an app's name, or paste a GitHub URL or any https:// address. You choose from the sources found, and every app shows where its file comes from.</p>
-      <div class="options" id="options" aria-live="polite"></div>
+      <p class="helper" id="addHint">Type an app's name, or paste a GitHub URL or any https:// address. The sources found open in their own window for you to choose from, and every app shows where its file comes from.</p>
     </section>
-
-    <div class="divider"></div>
-
-    <div class="scan-row">
-      <span class="scan-label"><strong class="sec-h2">Known apps</strong><span class="helper" style="margin:0" id="knownHelp">· Pick from a categorized list, add a pack, or scan this PC.</span></span>
-      <span style="display:flex;gap:.5rem">
-        <button id="scanPc">Scan this PC</button>
-        <button id="packsBtn">Packs</button>
-        <button id="browseAll" class="primary">Popular apps</button>
-      </span>
-    </div>
   </div>
 
   </div>
@@ -1240,12 +1225,11 @@ $('browse').onclick = async () => {
   catch (e) { msg(clean(e), 'bad'); }
 };
 let editingKey = null;
-const ADD_HINT = "Type an app's name, or paste a GitHub URL or any https:// address. You choose from the sources found, and every app shows where its file comes from.";
+const ADD_HINT = "Type an app's name, or paste a GitHub URL or any https:// address. The sources found open in their own window for you to choose from, and every app shows where its file comes from.";
 function setTypeToggle(type) { $('newType').querySelectorAll('button').forEach((b) => b.classList.toggle('active', b.dataset.type === type)); }
 
 function startEdit(r) {
   editingKey = keyOf(r);
-  clearOptions();
   $('newRepo').value = rowName(r);
   // The address of a GitHub entry can be retyped. Any other source is changed by removing
   // the app and adding it again from the source you want, so its field is read-only here.
@@ -1331,14 +1315,13 @@ async function saveEdit() {
   }
 }
 
-// --- Add: name, GitHub URL or any https:// address -> options -> pick -------------
-function clearOptions() { $('options').innerHTML = ''; }
+// --- Add: resolve an app name or HTTPS address, then add directly or open Add an app ---
 const typeLabel = (t) => (t === 'portable' ? 'Portable' : 'Installer');
 
-async function addCandidate(c, type, info) {
+async function addCandidate(c, type, info, prerelease) {
   if (type === 'portable' && !$('portableRoot').value.trim()) { showScreen('settings'); $('portableRoot').focus(); msg('Set the portable apps folder first.', 'bad'); return false; }
   try {
-    const res = await window.api.addSources([{ source: c.source, name: c.name, type, prerelease: $('preRel').checked }]);
+    const res = await window.api.addSources([{ source: c.source, name: c.name, type, prerelease }]);
     if (!res.added) {
       const clash = res.conflicts && res.conflicts[0];
       msg(clash
@@ -1346,7 +1329,6 @@ async function addCandidate(c, type, info) {
         : `${c.name} (${typeLabel(type)}) is already in your list.`, 'bad');
       return false;
     }
-    clearOptions();
     $('newRepo').value = ''; $('preRel').checked = false;
     res.keys.forEach((k) => { st[k] = { ph: 'idle' }; });
     await reloadConfig();
@@ -1358,92 +1340,68 @@ async function addCandidate(c, type, info) {
   } catch (e) { msg(`Can't add ${c.name} — ${clean(e)}`, 'bad'); return false; }
 }
 
-// One card per source found. Each card says who lists the app, then — once inspected —
-// the version, the exact file this computer would get per type, the host it downloads
-// from, and whether it can be verified. Nothing is added until a button is pressed.
-function optionCard(c) {
-  const card = el('div', 'opt');
-  const head = el('div', 'opt-head');
-  head.appendChild(el('span', 'opt-name', c.name));
-  head.appendChild(el('span', 'src-badge s-' + c.source.type, c.listedBy));
-  if (c.curated) head.appendChild(el('span', 'src-badge', 'Curated'));
-  if (c.channel) head.appendChild(el('span', 'src-badge', c.channel));
-  if (c.tracked) head.appendChild(el('span', 'src-badge', 'Already tracked'));
-  card.appendChild(head);
-  const meta = el('div', 'opt-meta'); meta.appendChild(el('span', null, 'Checking what this computer would get…'));
-  card.appendChild(meta);
-  const actions = el('div', 'opt-actions');
-  const view = el('button', 'ghost', 'View source ↗');
-  view.onclick = () => window.api.openSourcePage(c.source).catch((e) => msg(clean(e), 'bad'));
-  card.appendChild(actions);
-  const fill = (info) => {
-    meta.innerHTML = '';
-    const line = (label, text, cls) => { const row = el('span'); row.appendChild(el('b', null, label + ' ')); row.appendChild(el('span', cls || null, text)); meta.appendChild(row); };
-    line('Listed by', `${info.listedBy}${info.publisher ? ' · publisher ' + info.publisher : ''}`);
-    line('Version', info.version);
-    if (info.note) line('Note', info.note);
-    for (const type of ['installer', 'portable']) {
-      const t = info.types[type];
-      if (t.ok) {
-        line(typeLabel(type), `${t.file} — from ${t.host} — ${SUM_TEXT[t.checksum] || ''}${t.emulated ? ' — not native to this computer, runs under emulation' : ''}`, 'mono');
-        if (t.requires && t.requires.length) line('Needs', t.requires.join(', '));
-      } else line(typeLabel(type), `not available — ${t.reason}`);
-      const b = el('button', t.ok ? 'primary' : null, `Add as ${typeLabel(type)}`);
-      b.disabled = !t.ok || !!busy;
-      b.onclick = () => addCandidate(c, type, info);
-      actions.appendChild(b);
-    }
-    actions.appendChild(view);
-  };
-  const fail = (e) => { meta.innerHTML = ''; meta.appendChild(el('span', null, `Could not read this source — ${clean(e)}`)); actions.appendChild(view); };
-  card.inspect = () => window.api.inspectSource(c.source, $('preRel').checked).then((info) => { fill(info); return info; }, (e) => { fail(e); return null; });
-  return card;
-}
-const MAX_OPTIONS = 8;
-async function showOptions(cands, errs) {
-  clearOptions();
-  const box = $('options');
-  const shown = cands.slice(0, MAX_OPTIONS);
-  const cards = shown.map((c) => { const card = optionCard(c); box.appendChild(card); return card; });
-  if (cands.length > shown.length) box.appendChild(el('div', 'opt-foot', `${cands.length - shown.length} more match — type more of the name to narrow it down.`));
-  errs.forEach((e) => box.appendChild(el('div', 'opt-foot', e.error)));
-  msg(`${cands.length} source${cands.length === 1 ? '' : 's'} found — pick one.`, 'info');
-  for (const card of cards) await card.inspect(); // one at a time: several listings share an index
-}
+$('openAddWindow').onclick = () => window.api.openAddWindow().catch((e) => msg(clean(e), 'bad'));
 
 $('addRepo').onclick = async () => {
   if (editingKey) return saveEdit();
   const text = $('newRepo').value.trim();
   if (!text) return msg("Type an app's name, or paste a GitHub URL or any https:// address.", 'bad');
-  clearOptions();
+  const prerelease = $('preRel').checked;
+  const requestedType = selectedType();
   $('addRepo').disabled = true;
   msg(`Looking for ${text}…`, 'info');
-  let res;
-  try { res = await window.api.resolveSource(text); }
-  catch (e) { $('addRepo').disabled = false; return msg(clean(e), 'bad'); }
-  $('addRepo').disabled = false;
-  const good = res.candidates.filter((c) => !c.error);
-  const errs = res.candidates.filter((c) => c.error);
-  if (!good.length) return msg(errs.length ? errs.map((e) => e.error).join('; ') : `Nothing found for "${text}". Try the app's exact name, or paste its GitHub or download address.`, 'bad');
-  // Two cases add without the options list: a pasted address that names exactly one
-  // source (you already chose it), and a name your preferred source has exactly once.
-  // Either way the type you asked for must exist natively there — otherwise the options
-  // are shown so nothing is switched behind you.
-  const pasted = res.kind === 'url' && good.length === 1 ? good[0] : null;
-  const preferred = !pasted && res.autoPick >= 0 ? res.candidates[res.autoPick] : null;
-  const direct = pasted || preferred;
-  if (direct && !direct.tracked) {
-    msg(`Checking ${direct.name} at ${direct.listedBy}…`, 'info');
-    const info = await window.api.inspectSource(direct.source, $('preRel').checked).catch(() => null);
-    const type = preferred && config.typePreference ? config.typePreference : selectedType();
-    const t = info && info.types[type];
-    // Eligible: add it. If the add is refused (already tracked, folder in use) its own
-    // message says why — the options list would only bury that.
-    if (t && t.ok && !t.emulated) { await addCandidate(direct, type, info); return; }
+  try {
+    const res = await window.api.resolveSource(text, prerelease);
+    if (editingKey) return;
+    const good = res.candidates.filter((c) => !c.error);
+    // In the main Add row, a pasted address already names the source and the
+    // Portable/Installer toggle supplies the type. Keep that direct-add path.
+    const pasted = res.kind === 'url' && good.length === 1 ? good[0] : null;
+    const preferred = !pasted && res.autoPick >= 0 ? res.candidates[res.autoPick] : null;
+    const direct = pasted || preferred;
+    if (direct && !direct.tracked) {
+      msg(`Checking ${direct.name} at ${direct.listedBy}…`, 'info');
+      const info = await window.api.inspectSource(direct.source, prerelease).catch(() => null);
+      if (editingKey) return;
+      const type = preferred && config.typePreference ? config.typePreference : requestedType;
+      const file = info?.types[type];
+      if (file?.ok && !file.emulated) {
+        await addCandidate(direct, type, info, prerelease);
+        return;
+      }
+    }
+
+    await window.api.openAddWindow(res.searchId);
+    if (good.length) {
+      msg(`${good.length} source${good.length === 1 ? '' : 's'} found for “${text}”. Choose one in Add an app.`, 'info');
+    } else {
+      msg(`Nothing found for “${text}”. See Add an app.`, 'bad');
+    }
+  } catch (e) {
+    msg(clean(e), 'bad');
+  } finally {
+    $('addRepo').disabled = false;
   }
-  showOptions(good, errs);
 };
-$('newRepo').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('addRepo').click(); if (e.key === 'Escape') { if (editingKey) cancelEdit(); else clearOptions(); } });
+$('newRepo').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') $('addRepo').click();
+  if (e.key === 'Escape' && editingKey) cancelEdit();
+});
+
+window.api.onResultsAdded(async ({ keys, message, handoff }) => {
+  if (!editingKey && handoff && $('newRepo').value.trim() === handoff.text && $('preRel').checked === handoff.prerelease) {
+    $('newRepo').value = '';
+    $('preRel').checked = false;
+  }
+  keys.forEach((k) => { st[k] = { ph: 'idle' }; });
+  try {
+    await reloadConfig();
+    msg(message, 'ok');
+    checkApps(keys);
+  } catch (e) {
+    msg(clean(e), 'bad');
+  }
+});
 async function removeRepo(r) {
   const k = keyOf(r); selected.delete(k); delete st[k];
   config.repos = config.repos.filter((x) => !(x.owner === r.owner && x.repo === r.repo && x.type === r.type));
@@ -1602,18 +1560,18 @@ window.api.onProgress(({ id, phase, pct }) => {
   renderRepos();
 });
 
-$('scanPc').onclick = () => window.api.openScan();
+// Main refuses to open the scan where it is not offered; say why instead of failing silently.
+$('scanPc').onclick = () => window.api.openScan().catch((e) => msg(clean(e), 'bad'));
 
 // "Scan this PC" offers apps already installed. On Linux the package manager already owns
 // most of those, so accepting a suggestion installs a SECOND copy outside it. The button
-// is hidden there rather than left to disappoint. Browsing the catalog never inspects the
-// system, so it stays on every platform.
+// is hidden there rather than left to disappoint. Popular apps and Packs never inspect the
+// system, so they stay on every platform.
 window.api
   .getPlatform()
   .then(({ canScan }) => {
     if (canScan) return;
     $('scanPc').style.display = 'none';
-    $('knownHelp').textContent = '· Pick from a categorized list, or add a pack.';
   })
   .catch(() => {}); // an older main process without the handler keeps today's behaviour
 $('browseAll').onclick = () => window.api.openPopular();

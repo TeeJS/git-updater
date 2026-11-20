@@ -128,7 +128,61 @@ looked up only in curated places — `src/shortcuts.json`, then the WinGet and H
 indexes — never by free-text search of GitHub, which is how impostor repositories get
 offered. `"sourcePreference": ["winget", "github"]` and `"typePreference": "portable"` let
 an **established** identity (a shortcut, or the one package whose id is exactly what was
-typed) be added without the chooser; anything looser always shows the options.
+typed) be added without the chooser; anything looser always opens the *Add an app* window
+with the options (below).
+
+### The Add an app window
+
+Search results never appear inline under the list, where a long list would push them out of
+sight: every choice is made in one window, `ui/add.html` + `ui/add.js`. It opens three ways,
+and there is only ever one:
+
+- the **Add an app** button left of *Check all* (`results:open` with no search): opens the
+  window empty with the search box focused, or focuses it if it is already open;
+- **Find** in the Add row under the list, whenever a choice is left to make: main already
+  holds that search (`lastSearch`), so `results:open(searchId)` shows it in the window
+  without resolving a second time;
+- a search there that finds nothing: the same window, with the text filled in and
+  "Nothing found".
+
+The Add row keeps its direct add for the two cases with no choice to make (a pasted address
+naming exactly one source, with the Portable/Installer toggle as the type; or the saved
+preferences' pick). Inside the window, an app is added without showing cards only when the
+saved preferences decide **both** source and type: `autoPick` found it, `typePreference` is
+set, that type is available natively, and it is not already tracked. A search handed over
+from the Add row never auto-adds: that row has already applied its own rule. Otherwise the
+cards are shown. After a successful add, the main process sends the main window the committed
+keys and the "Added … — file from …" line; that window reloads its list, shows the line and
+checks the new row, and the Add window closes. A failure stays in the Add window's status
+line.
+
+**Main owns the data.** The window names a result only by search id + index. The candidates,
+the inspected previews (`results:inspect` stores them per index), the re-check of the saved
+preferences for an automatic add, the committed config keys and the "Added" message all stay
+in the main process; nothing security-relevant round-trips through the page. `results:add`
+refuses a type that main has not previewed as available, and a search id that a newer
+search has replaced. In the page, a generation counter keeps a slower, older search or
+inspection from painting over a newer one. While an add is in flight, the search box, Find,
+the beta checkbox, Close and every Add button are disabled.
+
+**Its own bridge.** The window loads `electron/add-preload.js`: sandboxed, context-isolated,
+seven methods (`getSearch`, `onSearch`, `search`, `inspectResult`, `openSourcePage`,
+`addResult`, `close`), with no access to config, updates, the token or `source:add`. Its CSP
+is `default-src 'none'` with `script-src 'self'` (no inline script). Navigation and
+`window.open` are blocked. Source data reaches the page as text nodes only.
+
+**Which window is calling.** Every `results:*` handler goes through `requireAddView` and the
+main window's handlers through `requireMainWindow`. `source:add` accepts only the main
+window or the Popular apps window. `fromWindow()` requires the expected `webContents` and its
+main frame, then compares the frame's local file with the expected one. It does not compare
+URL strings: Chromium writes the drive letter of a `file:` URL in upper case
+(`file:///D:/…`) while `pathToFileURL(__dirname…)` keeps whatever case the app was launched
+with. An exact string match therefore refused the main window, the Add window and Popular
+apps all at once when the app was started from a `d:\…` path. The check now uses
+`fileURLToPath`, case-folded on Windows, and ignores the query (the Packs tab loads
+`popular.html?tab=packs`). Any parse failure counts as "not our window".
+`test/ui-add-window.test.js` runs the real handlers and `ui/add.js` against fakes, including
+that drive-case regression.
 
 `src/shortcuts.json` maps the names people use to a WinGet id, a Homebrew cask and/or a
 GitHub repo. It also feeds the Popular apps picker and packs (`src/packs.js`). A pack
@@ -623,6 +677,28 @@ Adding a portable app with no portable folder set opens Settings and focuses tha
 looks up exists, and runs `showScreen()` against a fake page. New settings (the background and
 schedule groups planned in `PROJECT-background-mode.md`) are added as more groups in this screen.
 
+### The header buttons
+
+**Scan this PC**, **Packs** and **Popular apps** sit at the top right, immediately left of
+**Settings**, in one `.top-actions` group. They used to be a "Known apps" row at the bottom of
+the list, which a long list pushed out of sight. The group never splits across lines
+(`flex-wrap: nowrap`). Its buttons are slightly tighter than elsewhere, so the whole header
+stays on one line at the 720 px minimum window width. Below that it would move under the
+name as one right-aligned block. *Scan this PC* is hidden where `getPlatform().canScan` is
+false (Linux), and `scan:open` refuses there too. Its click handler shows that refusal in the
+status line rather than dropping it. `test/ui-header.test.js` guards the order, that each id
+exists once, the no-split rule and both of those behaviours.
+
+### Scan this PC
+
+The Scan window (`ui/scan.html`) has one list: **Installed on this PC**. It used to have a
+second mode, "All known apps", that listed the whole catalog. Every one of its entries is
+already in Popular apps, so it was removed together with its `catalog:all` channel, the
+`catalogAll` preload method and the `openScan(mode)` argument. Matches are added as
+Installer, as before. `scan:open` takes no argument and, outside `SCAN_PLATFORMS`, throws
+before any window exists: there is nothing for it to show. `test/ui-scan.test.js` runs the
+real handler on each platform and the window's script against a minimal DOM.
+
 ### Search and filters
 
 The search box and the Type / Status dropdowns above the list narrow what is shown; a row has to
@@ -706,8 +782,11 @@ instrument that found it.
 ```
 electron/main.js     Electron main process — window + IPC + native folder dialog; calls the engine
 electron/preload.js  narrow contextBridge: the renderer only sees window.api.*
+electron/add-preload.js
+                     the Add an app window's own sandboxed bridge (7 methods, see above)
 ui/index.html        the renderer (no network; talks over IPC)
-ui/scan.html         the Scan this PC window
+ui/add.html, add.js  the Add an app window: search box, result cards, add
+ui/scan.html         the Scan this PC window (installed apps only)
 ui/popular.html      the Popular apps and Packs window
 src/                 the engine (no UI, no shell):
   core.js            IO-free: version compare, asset pick, installer switches, validation

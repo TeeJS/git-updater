@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'self'; img-src data:; font-src 'self'">
+<title>Add an app</title>
+<style>
+  :root {
+    --bg: #0d1117; --panel: #161b22; --border: #30363d;
+    --text: #e6edf3; --muted: #8b949e; --faint: #6e7681;
+    --accent: #e3a13c; --accent-ink: #1a1206; --green: #3fb950; --blue: #58a6ff; --red: #f85149;
+    --mono: 'Cascadia Code', 'Cascadia Mono', Consolas, ui-monospace, monospace;
+    --sans: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 1rem 1.2rem; color: var(--text); font: 14.5px/1.45 var(--sans); background: var(--bg);
+         display: flex; flex-direction: column; height: 100vh; }
+  .search-row { display: flex; gap: .55rem; }
+  #query { width: 100%; min-width: 0; border: 1px solid var(--border); border-radius: 8px; padding: .48rem .65rem;
+           background: var(--panel); color: var(--text); font: inherit; }
+  #query:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .prerelease { display: inline-flex; align-items: center; gap: .35rem; margin-top: .45rem; color: var(--muted); font-size: 12.5px; cursor: pointer; }
+  #status { min-height: 1.2rem; color: var(--muted); margin: .45rem 0 .55rem; font-size: 13px; }
+  #status.bad { color: var(--red); } #status.ok { color: var(--green); }
+  .body { flex: 1; overflow-y: auto; border-top: 1px solid var(--border); padding-top: .7rem; display: flex; flex-direction: column; gap: .55rem; }
+  /* One card per source found. */
+  .opt { flex: none; border: 1px solid var(--border); border-radius: 10px; padding: .65rem .8rem; background: var(--panel); }
+  .opt-head { display: flex; align-items: center; gap: .45rem; flex-wrap: wrap; }
+  .opt-name { font: 600 14.5px var(--sans); color: var(--text); }
+  .opt-meta { display: grid; gap: .18rem; margin-top: .4rem; font-size: 12.5px; line-height: 18px; color: var(--muted); }
+  .opt-meta b { font-weight: 600; color: var(--text); }
+  .opt-meta .mono { font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; }
+  .opt-actions { display: flex; gap: .4rem; flex-wrap: wrap; margin-top: .6rem; }
+  .note { font-size: 12.5px; color: var(--faint); }
+  .empty { color: var(--muted); padding: 1.2rem 0; }
+  .empty b { display: block; color: var(--text); font-size: 15px; margin-bottom: .3rem; }
+  .src-badge { flex: none; font: 600 10.5px var(--sans); line-height: 15px; padding: 0 .42rem; border-radius: 999px; color: var(--muted); border: 1px solid var(--border); background: #0d1117; }
+  .src-badge.s-winget, .src-badge.s-brew { color: var(--blue); border-color: rgba(88,166,255,.35); }
+  .src-badge.s-folder { color: var(--accent); border-color: rgba(227,161,60,.4); }
+  button { font: 600 13px var(--sans); cursor: pointer; border-radius: 8px; padding: .36rem .75rem; border: 1px solid var(--border); background: #21262d; color: var(--text); }
+  button:hover:not(:disabled) { background: #2a313a; }
+  button:disabled { opacity: .4; cursor: default; }
+  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+  button.primary:hover:not(:disabled) { background: #f0b352; }
+  button.ghost { background: transparent; color: var(--blue); }
+  .bar { display: flex; gap: .55rem; align-items: center; padding-top: .7rem; border-top: 1px solid var(--border); margin-top: .7rem; }
+  .bar .count { margin-right: auto; color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<form id="search">
+  <div class="search-row">
+    <input type="text" id="query" placeholder="App name, GitHub URL, or any https:// address" aria-label="App name or address" maxlength="2048" autofocus>
+    <button id="find" type="submit" class="primary">Find</button>
+  </div>
+  <label class="prerelease"><input type="checkbox" id="prerelease"> include beta (pre-release) versions</label>
+</form>
+<div id="status" role="status"></div>
+<div class="body" id="list"></div>
+<div class="bar">
+  <span class="count" id="count"></span>
+  <button id="close" type="button">Close</button>
+</div>
+<script src="add.js"></script>
+</body>
+</html>
