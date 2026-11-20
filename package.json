@@ -1,7 +1,7 @@
 {
   "name": "git-updater",
-  "version": "0.2.7-beta.1",
-  "description": "On-demand desktop GUI that updates apps from their GitHub releases (portable & installed). Windows, macOS and Linux. Electron front-end, no localhost server, no shell.",
+  "version": "0.3.0-beta.1",
+  "description": "On-demand desktop GUI that installs and updates apps from their own sources: GitHub, GitLab and Codeberg releases, WinGet and Homebrew listings, and vendor download folders (portable & installed). Windows, macOS and Linux. Electron front-end, no localhost server, no shell.",
   "bin": {
     "git-updater": "bin/watch.js"
   },
