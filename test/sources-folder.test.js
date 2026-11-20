@@ -149,7 +149,8 @@ test('Blender end to end through the registry: right file per machine, checksum 
   assert.equal(sum.state, 'published');
   assert.match(sum.digest, /^sha256:[a-f0-9]{64}$/);
   // The hash really is the line for THIS file in Blender's own sums file.
-  const line = fx('blender-5.3.0.sha256').split('\n').find((l) => l.endsWith('blender-5.3.0-windows-x64.zip'));
+  // \r?\n: a Windows checkout with core.autocrlf rewrites text fixtures to CRLF.
+  const line = fx('blender-5.3.0.sha256').split(/\r?\n/).find((l) => l.endsWith('blender-5.3.0-windows-x64.zip'));
   assert.equal(sum.digest, `sha256:${line.split(/\s+/)[0]}`);
   // HTTPS on every hop; mirror redirects are followed only after each hop is validated.
   assert.deepEqual(sources.downloadPolicy(entry('portable'), asset, sum), { httpsOnly: true, noRedirect: false });
