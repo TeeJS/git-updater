@@ -245,10 +245,22 @@ function releaseFrom(files, opts = {}) {
   return { version, assets };
 }
 
-async function getLatestRelease(source, ctx, opts = {}) {
+// Stable releases only, whatever the app's beta setting says. A prerelease here is known
+// only by a suffix on a file or folder name ("5.0.0rc2"), and the version this provider
+// reports is the numeric part — so an rc would be recorded as "5.0.0" and the real 5.0.0
+// would then never register as an update. Until prerelease tags are carried through
+// intact, following betas from a folder would be wrong rather than merely incomplete,
+// and the release says so when the setting is on.
+async function getLatestRelease(source, ctx, asked = {}) {
   const base = urlOf(source);
   const list = budgeted(ctx);
-  const provenance = { listedBy: label, listingUrl: base, publisher: new URL(base).host };
+  const opts = { ...asked, prerelease: false };
+  const provenance = {
+    listedBy: label,
+    listingUrl: base,
+    publisher: new URL(base).host,
+    ...(asked.prerelease ? { note: 'vendor folders are followed on stable releases only — the beta setting is not applied' } : {}),
+  };
   const top = await list(base);
 
   // Files right here — unless the folder ALSO has version folders that go newer, in which

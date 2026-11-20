@@ -241,8 +241,12 @@ test('Wireshark: files right here; the newest stable build, not an rc or "latest
   assert.ok(rel.assets.length >= 1 && rel.assets.every((a) => a.name.includes(rel.tag_name)));
   assert.ok(rel.assets.every((a) => !/rc\d|latest/i.test(a.name)));
   assert.deepEqual(calls, [WIRESHARK], 'one request');
+  // The beta setting is NOT applied to folders: an rc would be recorded as "5.0.0" and
+  // hide the real 5.0.0 later. Stable only, and the release says so.
   const pre = await folder.getLatestRelease({ type: 'folder', url: WIRESHARK }, ctx, { prerelease: true });
-  assert.match(pre.tag_name, /^5\.0\.0/, 'with betas on, the rc is offered');
+  assert.equal(pre.tag_name, rel.tag_name);
+  assert.match(pre.provenance.note, /stable releases only/);
+  assert.equal(rel.provenance.note, undefined);
 });
 
 test('a version folder that was listed but cannot be read is an error, never an older version', async () => {
