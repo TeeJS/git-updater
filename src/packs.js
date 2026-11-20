@@ -67,29 +67,28 @@ const BUILTIN = [
 const text = (v, max) => (typeof v === 'string' ? v.replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, max) : '');
 
 // One app reference -> its clean form, or null if it is not one.
-// knownTypes: the source types this build has providers for.
-function cleanRef(ref, knownTypes) {
+// cleanSource(source) -> the source reduced to its provider's own identity fields, or a
+// throw if it is not a valid identity (see sources.cleanSource). A pack can therefore
+// carry a package id, a cask token, a repository or a project address — and nothing
+// beside them.
+function cleanRef(ref, cleanSource) {
   if (typeof ref === 'string') ref = { id: ref };
   if (!ref || typeof ref !== 'object' || Array.isArray(ref)) return null;
   if (typeof ref.id === 'string' && /^[a-z0-9]{1,80}$/.test(ref.id)) return { id: ref.id };
   const src = ref.source;
-  if (!src || typeof src !== 'object' || Array.isArray(src)) return null;
-  if (typeof src.type !== 'string' || !knownTypes.includes(src.type)) return null;
+  if (!src || typeof src !== 'object' || Array.isArray(src) || typeof src.type !== 'string') return null;
   const name = text(ref.name, 120);
-  if (!name) return null;
-  // A source is ids and addresses: scalar strings only, bounded, nothing nested.
-  const source = { type: src.type };
-  for (const [k, v] of Object.entries(src)) {
-    if (k === 'type' || !/^[A-Za-z][A-Za-z0-9]{0,31}$/.test(k)) continue;
-    if (typeof v === 'string' && v.length <= 512 && !/[\u0000-\u001f]/.test(v)) source[k] = v;
+  if (!name || typeof cleanSource !== 'function') return null;
+  try {
+    return { name, source: cleanSource(src) };
+  } catch {
+    return null; // unknown provider, or not a valid identity for it
   }
-  return { name, source };
 }
 
 // Rebuild a pack from untrusted input. Throws with a reason a person can act on.
-// opts.knownTypes: provider types available; opts.id: force an id (for stored packs).
+// opts.cleanSource: see cleanRef; opts.id: keep a stored pack's id.
 function validatePack(input, opts = {}) {
-  const knownTypes = opts.knownTypes || ['github'];
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('that file is not a git-updater pack');
   if (input.format !== FORMAT) throw new Error('that file is not a git-updater pack');
   if (input.version !== 1) throw new Error('this pack was made by a newer git-updater');
@@ -101,7 +100,7 @@ function validatePack(input, opts = {}) {
   const seen = new Set();
   let dropped = 0;
   for (const raw of input.apps) {
-    const ref = cleanRef(raw, knownTypes);
+    const ref = cleanRef(raw, opts.cleanSource);
     if (!ref) { dropped++; continue; }
     const key = JSON.stringify(ref);
     if (seen.has(key)) continue;
@@ -158,19 +157,24 @@ function fromEntries(name, description, entries, sourceOf, canonical) {
 }
 
 // What each reference means on this machine. No network.
-// -> [{ ref, name, source | null, appId?, reason? }]
+// -> [{ ref, name, appId?, sources: [...], reason? }]
+// A shortcut id expands to EVERY source the app has here, ordered (the user's preferred
+// source types first, then the default order), so the caller can fall through to the next
+// when the first has no build for this machine. An explicit source reference stays pinned
+// to exactly that source.
 function resolveRefs(pack, platform, preference, knownTypes) {
   return pack.apps.map((ref) => {
     if (ref.id) {
       const app = catalog.appById(ref.id);
-      if (!app) return { ref, name: ref.id, source: null, reason: "not in this version's app list" };
-      const source = catalog.preferredSource(app, platform, preference);
-      if (!source) return { ref, name: app.name, appId: app.id, source: null, reason: 'not available for this operating system' };
-      if (!knownTypes.includes(source.type)) return { ref, name: app.name, appId: app.id, source: null, reason: 'needs a source this build does not have' };
-      return { ref, name: app.name, appId: app.id, source };
+      if (!app) return { ref, name: ref.id, sources: [], reason: "not in this version's app list" };
+      const all = catalog.orderedSources(app, platform, preference);
+      if (!all.length) return { ref, name: app.name, appId: app.id, sources: [], reason: 'not available for this operating system' };
+      const usable = all.filter((s) => knownTypes.includes(s.type));
+      if (!usable.length) return { ref, name: app.name, appId: app.id, sources: [], reason: 'needs a source this build does not have' };
+      return { ref, name: app.name, appId: app.id, sources: usable };
     }
-    if (!knownTypes.includes(ref.source.type)) return { ref, name: ref.name, source: null, reason: 'needs a source this build does not have' };
-    return { ref, name: ref.name, source: ref.source };
+    if (!knownTypes.includes(ref.source.type)) return { ref, name: ref.name, sources: [], reason: 'needs a source this build does not have' };
+    return { ref, name: ref.name, sources: [ref.source], pinned: true };
   });
 }
 
@@ -203,18 +207,27 @@ function saveMine(file, packs) {
   fs.renameSync(tmp, file);
 }
 
-// Add or replace a pack by id, keeping ids unique.
-function upsert(packs, pack) {
-  const taken = new Set(BUILTIN.map((b) => b.id));
+// Add a pack, ALWAYS as a new entry with an id no other pack has. Nothing is ever
+// replaced by this: two different names can reduce to the same id ("Work PC", "work-pc"),
+// and an imported file must never overwrite something the user saved. Returns
+// { packs, saved } so the caller reports the entry that was actually stored.
+function add(packs, pack) {
+  const taken = new Set([...BUILTIN.map((b) => b.id), ...packs.map((p) => p.id)]);
   let id = pack.id;
-  const existing = packs.findIndex((p) => p.id === id);
-  if (existing >= 0) {
-    const next = packs.slice();
-    next[existing] = pack;
-    return next;
-  }
-  for (let n = 2; taken.has(id) || packs.some((p) => p.id === id); n++) id = `${pack.id}-${n}`;
-  return [...packs, { ...pack, id }];
+  for (let n = 2; taken.has(id); n++) id = `${pack.id}-${n}`;
+  const saved = { ...pack, id };
+  return { packs: [...packs, saved], saved };
 }
 
-module.exports = { FORMAT, BUILTIN, MAX_APPS, MAX_BYTES, validatePack, parsePackFile, exportPack, fromEntries, resolveRefs, builtin, loadMine, saveMine, upsert, slug };
+// Save under a name: replaces ONLY a pack with exactly that name (case-insensitively) —
+// which is what saving again under the same name means — keeping its id.
+function saveNamed(packs, pack) {
+  const i = packs.findIndex((p) => p.name.toLowerCase() === pack.name.toLowerCase());
+  if (i < 0) return add(packs, pack);
+  const saved = { ...pack, id: packs[i].id };
+  const next = packs.slice();
+  next[i] = saved;
+  return { packs: next, saved };
+}
+
+module.exports = { FORMAT, BUILTIN, MAX_APPS, MAX_BYTES, validatePack, parsePackFile, exportPack, fromEntries, resolveRefs, builtin, loadMine, saveMine, add, saveNamed, slug };

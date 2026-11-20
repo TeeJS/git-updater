@@ -303,4 +303,4 @@ async function getLatestRelease(source, ctx) {
   };
 }
 
-module.exports = { type: 'winget', label: 'WinGet', platforms: ['win32'], checksum: 'pinned', canonicalRef, pageUrl, parseUrl, available, search, getLatestRelease };
+module.exports = { type: 'winget', label: 'WinGet', platforms: ['win32'], checksum: 'pinned', fields: ['packageId'], canonicalRef, pageUrl, parseUrl, available, search, getLatestRelease };

@@ -32,6 +32,7 @@ const type = 'brew';
 const label = 'Homebrew';
 const platforms = ['darwin'];
 const checksum = 'pinned';
+const fields = ['token']; // the only identity a saved source carries
 
 const API = 'https://formulae.brew.sh/api/cask';
 const TOKEN = /^[a-z0-9][a-z0-9+@._-]{0,99}$/;
@@ -78,44 +79,75 @@ function hostMajor(ctx) {
   return m ? Number(m[1]) : null;
 }
 
-// Returns the effective { url, version, sha256, arch } for this machine, or
-// { unsupported } when the cask has nothing for it.
-function resolveVariation(cask, ctx) {
+// Homebrew's own statement of which CPUs a cask supports: depends_on.arch is a list like
+// [{ type: 'arm', bits: 64 }]. Absent means it makes no such claim.
+function declaredArchs(cask) {
+  const list = cask && cask.depends_on && cask.depends_on.arch;
+  if (!Array.isArray(list) || !list.length) return null;
+  const out = new Set();
+  for (const a of list) {
+    if (a && a.type === 'arm') out.add('arm64');
+    if (a && a.type === 'intel') out.add('x64');
+  }
+  return out.size ? out : null;
+}
+
+// The cask AS IT APPLIES to this machine: the selected variation merged over the base
+// record as a whole. A variation does not only swap the URL and hash — in the live index
+// variations override `artifacts` 2,144 times, `depends_on` 659 times and `disabled` 75
+// times — so every later decision (is it disabled, is it an app or a pkg, what does it
+// need) must read the merged record, never the base one.
+// -> { cask, arch } or { cask, unsupported }.
+function effectiveCask(base, ctx) {
   const arch = (ctx && ctx.arch) === 'x64' ? 'x64' : 'arm64';
   const major = hostMajor(ctx);
-  const vars = cask.variations && typeof cask.variations === 'object' ? cask.variations : {};
-  const base = { url: cask.url, version: cask.version, sha256: cask.sha256 };
-  const merge = (key) => ({ ...base, ...vars[key] });
+  const vars = base.variations && typeof base.variations === 'object' ? base.variations : {};
+  const merge = (key) => ({ ...base, ...(key ? vars[key] : {}) });
   const intelKeys = Object.keys(vars).filter((k) => MAJOR.has(k));
   const armKeys = Object.keys(vars).filter((k) => /^arm64_/.test(k) && MAJOR.has(k.slice(6)));
   const name = major != null ? CODENAME.get(major) : null;
 
+  let key = null;
   if (arch === 'arm64') {
-    // An arm64_<release> key exists only for OLDER releases that need a different file.
-    if (name && vars[`arm64_${name}`]) return { ...merge(`arm64_${name}`), arch: 'arm64' };
-    if (major != null && armKeys.length) {
-      // Older than the oldest override Homebrew lists: nothing is offered for it.
-      const oldest = Math.min(...armKeys.map((k) => MAJOR.get(k.slice(6))));
-      if (major < oldest && !name) return { unsupported: 'Homebrew lists no build for this version of macOS' };
+    // An arm64_<release> key exists only for OLDER releases that need a different record.
+    if (name && vars[`arm64_${name}`]) key = `arm64_${name}`;
+  } else if (intelKeys.length) {
+    if (name && vars[name]) key = name;
+    else {
+      const majors = intelKeys.map((k) => MAJOR.get(k));
+      // A macOS newer than Homebrew's table knows by name: the newest Intel record applies.
+      if (major == null || major > Math.max(...majors)) key = intelKeys.reduce((x, y) => (MAJOR.get(y) > MAJOR.get(x) ? y : x));
+      else return { cask: base, unsupported: 'Homebrew lists no Intel build for this version of macOS' };
     }
-    return { ...base, arch: intelKeys.length ? 'arm64' : guessArch(base.url) };
   }
+  const cask = merge(key);
 
-  // Intel.
+  // Homebrew's stated architectures beat anything inferred from a file name.
+  const stated = declaredArchs(cask);
+  if (stated) {
+    if (!stated.has(arch)) {
+      return { cask, unsupported: stated.has('arm64') ? 'Homebrew lists only an Apple silicon build' : 'Homebrew lists only an Intel build' };
+    }
+    return { cask, arch: stated.size > 1 ? 'universal' : arch };
+  }
+  if (arch === 'arm64') {
+    void armKeys;
+    return { cask, arch: intelKeys.length ? 'arm64' : guessArch(cask.url) };
+  }
   if (!intelKeys.length) {
-    // One file for every Mac — unless its own name says it is Apple-silicon only.
-    const a = guessArch(base.url);
-    if (a === 'arm64') return { unsupported: 'Homebrew lists only an Apple silicon build' };
-    return { ...base, arch: a };
+    // One record for every Mac — unless its own file name says Apple silicon only.
+    const a = guessArch(cask.url);
+    if (a === 'arm64') return { cask, unsupported: 'Homebrew lists only an Apple silicon build' };
+    return { cask, arch: a };
   }
-  if (name && vars[name]) return { ...merge(name), arch: 'x64' };
-  const majors = intelKeys.map((k) => MAJOR.get(k));
-  if (major == null || major > Math.max(...majors)) {
-    // A macOS newer than Homebrew's table knows by name: the newest Intel record applies.
-    const newest = intelKeys.reduce((a, b) => (MAJOR.get(b) > MAJOR.get(a) ? b : a));
-    return { ...merge(newest), arch: 'x64' };
-  }
-  return { unsupported: 'Homebrew lists no Intel build for this version of macOS' };
+  return { cask, arch: 'x64' };
+}
+
+// Kept for callers that only want the file facts.
+function resolveVariation(base, ctx) {
+  const e = effectiveCask(base, ctx);
+  if (e.unsupported) return { unsupported: e.unsupported };
+  return { url: e.cask.url, version: e.cask.version, sha256: e.cask.sha256, arch: e.arch };
 }
 
 function guessArch(url) {
@@ -161,14 +193,16 @@ function minMacos(cask) {
   return Number.isFinite(n) ? n : null;
 }
 
-function toRelease(cask, ctx) {
-  if (!cask || typeof cask !== 'object' || !TOKEN.test(String(cask.token || ''))) throw new Error('Homebrew returned an invalid cask record');
-  const source = { type, token: cask.token };
+function toRelease(base, ctx) {
+  if (!base || typeof base !== 'object' || !TOKEN.test(String(base.token || ''))) throw new Error('Homebrew returned an invalid cask record');
+  const source = { type, token: base.token };
+  // Everything below reads the record as merged for THIS machine.
+  const eff = effectiveCask(base, ctx);
+  const cask = eff.cask;
   if (cask.disabled) {
     throw Object.assign(new Error(`Homebrew has disabled this cask${cask.disable_reason ? ` (${String(cask.disable_reason).replace(/_/g, ' ')})` : ''}`), { unavailable: true });
   }
-  const eff = resolveVariation(cask, ctx);
-  const version = String(eff.version || cask.version || '');
+  const version = String(cask.version || '');
   if (!version || version === 'latest') {
     throw Object.assign(new Error('Homebrew does not track a version for this app, so updates cannot be detected'), { unavailable: true });
   }
@@ -195,12 +229,12 @@ function toRelease(cask, ctx) {
     return release;
   }
 
-  const { name, sniff } = fileName(eff.url, cask);
+  const { name, sniff } = fileName(cask.url, cask);
   const hasApp = kinds.has('app');
   const hasPkg = kinds.has('pkg');
   const asset = {
     name: name || cask.token,
-    browser_download_url: String(eff.url || ''),
+    browser_download_url: String(cask.url || ''),
     platform: 'darwin',
     arch: eff.arch,
     // A .app is placed, a .pkg is installed — the same split git-updater already uses.
@@ -208,10 +242,10 @@ function toRelease(cask, ctx) {
     kind: hasPkg && !hasApp ? 'pkg' : (EXT.exec(name || '') || [])[1] ? EXT.exec(name)[1].toLowerCase() : undefined,
   };
   if (sniff) asset.sniff = true;
-  if (typeof eff.sha256 === 'string' && SHA256.test(eff.sha256)) {
-    asset.digest = `sha256:${eff.sha256.toLowerCase()}`;
+  if (typeof cask.sha256 === 'string' && SHA256.test(cask.sha256)) {
+    asset.digest = `sha256:${cask.sha256.toLowerCase()}`;
     asset.redirects = 'https-pinned'; // vendor mirrors redirect; the pinned hash makes that safe
-  } else if (eff.sha256 !== 'no_check' && eff.sha256 != null) {
+  } else if (cask.sha256 !== 'no_check' && cask.sha256 != null) {
     throw new Error(`Homebrew published an invalid SHA-256 for ${cask.token}`);
   }
   const need = minMacos(cask);
@@ -350,8 +384,8 @@ async function search(name, ctx) {
 }
 
 module.exports = {
-  type, label, platforms, checksum,
+  type, label, platforms, checksum, fields,
   canonicalRef, pageUrl, parseUrl, search, getLatestRelease,
   // exported for tests
-  toRelease, resolveVariation, slim, fileName,
+  toRelease, resolveVariation, effectiveCask, slim, fileName,
 };

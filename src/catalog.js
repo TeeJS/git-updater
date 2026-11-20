@@ -323,6 +323,18 @@ function lookup(name, platform) {
   return [...exact, ...partial];
 }
 
+// An app's sources on a platform, in the order to TRY them: the user's preferred source
+// types first (in their order), then whatever is left in the default order.
+function orderedSources(app, platform, preference) {
+  const list = sourcesFor(app, platform);
+  const out = [];
+  for (const type of Array.isArray(preference) ? preference : []) {
+    for (const s of list) if (s.type === type && !out.includes(s)) out.push(s);
+  }
+  for (const s of list) if (!out.includes(s)) out.push(s);
+  return out;
+}
+
 // Which of an app's sources to use when adding without asking (the picker, a pack):
 // the first of the user's preferred source types the app has; with no preference, or no
 // match, the app's default order.
@@ -335,4 +347,4 @@ function preferredSource(app, platform, preference) {
   return list[0] || null;
 }
 
-module.exports = { CATALOG, SHORTCUTS, matchInstalled, onPlatform, findInstalled, lookup, sourcesFor, popular, apps, appById, preferredSource, MORE };
+module.exports = { CATALOG, SHORTCUTS, matchInstalled, onPlatform, findInstalled, lookup, sourcesFor, popular, apps, appById, preferredSource, orderedSources, MORE };

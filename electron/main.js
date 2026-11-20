@@ -543,56 +543,80 @@ ipcMain.handle('popular:list', () => {
   }).filter((a) => a.sources.length);
 });
 
-// items: [{ name, source, appId? }] -> one plan row each. Sequential on purpose: several
-// rows share one package index, and GitHub's anonymous API allowance is small.
+// items: [{ name, sources: [...], appId?, reason? }] -> one plan row each. Sequential on
+// purpose: several rows share one package index, and GitHub's anonymous API allowance is
+// small. Each item's sources are tried IN ORDER until one has a file this machine can be
+// given — so a preferred provider with no build here falls through to the next instead
+// of reporting the app as unavailable. A pinned reference has exactly one source.
 async function planItems(items) {
   const cfg = readConfig();
   const tracked = trackedKeys(cfg);
   const want = cfg.typePreference === 'installer' || cfg.typePreference === 'portable' ? cfg.typePreference : null;
+  const order = want ? [want, want === 'portable' ? 'installer' : 'portable'] : ['portable', 'installer'];
   const ctx = sources.makeCtx();
+  const labelOf = (source) => {
+    const p = sources.provider(source.type);
+    return typeof p.hostLabel === 'function' && source.host ? p.hostLabel(source.host) : p.label;
+  };
   const out = [];
   for (const it of items) {
-    const row = { name: it.name, appId: it.appId || null, ok: false };
-    if (!it.source) {
-      out.push({ ...row, reason: it.reason || 'not available' });
+    const base = { name: it.name, appId: it.appId || null, ok: false };
+    const list = Array.isArray(it.sources) ? it.sources : [];
+    if (!list.length) {
+      out.push({ ...base, reason: it.reason || 'not available' });
       continue;
     }
-    try {
-      const p = sources.provider(it.source.type);
-      row.source = it.source;
-      row.listedBy = typeof p.hostLabel === 'function' && it.source.host ? p.hostLabel(it.source.host) : p.label;
-      if (isTracked(tracked, it.source)) {
-        out.push({ ...row, reason: 'already in your list', tracked: true });
-        continue;
-      }
-      const k = sources.keyParts(it.source);
-      const info = await sources.inspect({ ...k, source: it.source.type === 'github' ? undefined : it.source, name: it.name }, ctx, { osRelease: detect.osRelease() });
-      // The preferred type when this source has it natively; else whichever type exists.
-      // An emulated build is never chosen silently: it is offered, unticked, with the reason.
-      const order = want ? [want, want === 'portable' ? 'installer' : 'portable'] : ['portable', 'installer'];
-      const native = order.find((t) => info.types[t].ok && !info.types[t].emulated);
-      const any = native || order.find((t) => info.types[t].ok);
-      if (!any) {
-        out.push({ ...row, version: info.version, reason: info.types[order[0]].reason });
-        continue;
-      }
-      const t = info.types[any];
-      out.push({
-        ...row,
-        ok: true,
-        type: any,
-        version: info.version,
-        publisher: info.publisher,
-        file: t.file,
-        host: t.host,
-        checksum: t.checksum,
-        requires: t.requires,
-        emulated: !!t.emulated,
-        note: want && any !== want ? `no ${want} build here — ${any} offered instead` : info.note || null,
-      });
-    } catch (e) {
-      out.push({ ...row, reason: e.message });
+    // Already tracked from ANY of its sources: nothing to add.
+    const had = list.find((s) => isTracked(tracked, s));
+    if (had) {
+      out.push({ ...base, source: had, listedBy: labelOf(had), reason: 'already in your list', tracked: true });
+      continue;
     }
+    let row = null;
+    const misses = [];
+    for (const source of list) {
+      const listedBy = labelOf(source);
+      try {
+        const k = sources.keyParts(source);
+        const info = await sources.inspect({ ...k, source: source.type === 'github' ? undefined : source, name: it.name }, ctx, { osRelease: detect.osRelease() });
+        // "Only install files that have a checksum" applies here too, so a file that
+        // would be refused at install is never offered ticked as available.
+        const usable = (t) => info.types[t].ok && !(cfg.requireChecksum && info.types[t].checksum === 'none');
+        // The preferred type when this source has it natively; else whichever type exists.
+        // An emulated build is never chosen silently: it is offered, unticked, with the reason.
+        const native = order.find((t) => usable(t) && !info.types[t].emulated);
+        const any = native || order.find((t) => usable(t));
+        if (!any) {
+          const first = info.types[order[0]];
+          misses.push(`${listedBy}: ${first.ok ? 'no checksum published, and only files with a checksum are installed' : first.reason}`);
+          continue;
+        }
+        const t = info.types[any];
+        row = {
+          ...base,
+          ok: true,
+          source,
+          listedBy,
+          type: any,
+          version: info.version,
+          publisher: info.publisher,
+          file: t.file,
+          url: t.url, // the declared address, query string already removed
+          host: t.host,
+          checksum: t.checksum,
+          requires: t.requires,
+          emulated: !!t.emulated,
+          note: [
+            want && any !== want ? `no ${want} build here — ${any} offered instead` : info.note || null,
+            misses.length ? `tried first: ${misses.join('; ')}` : null,
+          ].filter(Boolean).join(' · ') || null,
+        };
+        break;
+      } catch (e) {
+        misses.push(`${listedBy}: ${e.message}`);
+      }
+    }
+    out.push(row || { ...base, source: list[0], listedBy: labelOf(list[0]), reason: misses.join('; ') || 'not available' });
   }
   return out;
 }
@@ -604,12 +628,14 @@ ipcMain.handle('popular:plan', async (_e, ids) => {
   return planItems(packs.resolveRefs(pack, process.platform, cfg.sourcePreference, knownTypes()));
 });
 
-const myPacks = () => packs.loadMine(PACKS_FILE, { knownTypes: knownTypes() });
+// A pack's explicit source references are reduced to a provider's own identity fields.
+const packOpts = () => ({ cleanSource: (src) => sources.cleanSource(src) });
+const myPacks = () => packs.loadMine(PACKS_FILE, packOpts());
 const findPack = (id) => [...packs.builtin(), ...myPacks()].find((p) => p.id === id);
 const packSummary = (p) => {
   const cfg = readConfig();
   const rows = packs.resolveRefs(p, process.platform, cfg.sourcePreference, knownTypes());
-  return { id: p.id, name: p.name, description: p.description, builtin: !!p.builtin, count: p.apps.length, available: rows.filter((r) => r.source).length, apps: rows.map((r) => r.name) };
+  return { id: p.id, name: p.name, description: p.description, builtin: !!p.builtin, count: p.apps.length, available: rows.filter((r) => r.sources.length).length, apps: rows.map((r) => r.name) };
 };
 ipcMain.handle('packs:list', () => ({ builtin: packs.builtin().map(packSummary), mine: myPacks().map(packSummary) }));
 ipcMain.handle('packs:plan', async (_e, id) => {
@@ -622,15 +648,17 @@ ipcMain.handle('packs:save', (_e, { name, description, ids }) => {
   const cfg = readConfig();
   let pack;
   if (Array.isArray(ids)) {
-    pack = packs.validatePack({ format: packs.FORMAT, version: 1, name, description, apps: ids.map((id) => ({ id })) }, { knownTypes: knownTypes() });
+    pack = packs.validatePack({ format: packs.FORMAT, version: 1, name, description, apps: ids.map((id) => ({ id })) }, packOpts());
   } else {
     if (!cfg.repos.length) throw new Error('there are no apps in your list to save');
     const built = packs.fromEntries(name, description, cfg.repos, sources.sourceOf, (s) => `${s.type}:${sources.provider(s.type).canonicalRef(s)}`);
-    pack = packs.validatePack(built, { knownTypes: knownTypes() });
+    pack = packs.validatePack(built, packOpts());
   }
-  const next = packs.upsert(myPacks().filter((p) => p.name.toLowerCase() !== pack.name.toLowerCase()), pack);
-  packs.saveMine(PACKS_FILE, next);
-  return packSummary(next.find((p) => p.name === pack.name));
+  // Saving again under the SAME name replaces that pack; any other name is a new pack,
+  // even when it would reduce to the same id.
+  const r = packs.saveNamed(myPacks(), pack);
+  packs.saveMine(PACKS_FILE, r.packs);
+  return packSummary(r.saved);
 });
 ipcMain.handle('packs:delete', (_e, id) => {
   packs.saveMine(PACKS_FILE, myPacks().filter((p) => p.id !== id));
@@ -660,10 +688,10 @@ ipcMain.handle('packs:import', async () => {
   if (r.canceled || !r.filePaths.length) return { imported: false };
   const file = r.filePaths[0];
   if (fs.statSync(file).size > packs.MAX_BYTES) throw new Error('that file is too large to be a pack');
-  const pack = packs.parsePackFile(fs.readFileSync(file, 'utf8'), { knownTypes: knownTypes() });
-  const next = packs.upsert(myPacks(), pack);
+  const pack = packs.parsePackFile(fs.readFileSync(file, 'utf8'), packOpts());
+  // An import is always a NEW pack with its own id: it can never replace one already saved.
+  const { packs: next, saved } = packs.add(myPacks(), pack);
   packs.saveMine(PACKS_FILE, next);
-  const saved = next[next.length - 1];
   log(`imported pack "${saved.name}" (${saved.apps.length} apps${pack.dropped ? `, ${pack.dropped} unrecognised entries dropped` : ''}) from ${file}`);
   return { imported: true, pack: packSummary(saved), dropped: pack.dropped || 0 };
 });

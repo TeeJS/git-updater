@@ -19,6 +19,7 @@
 const type = 'gitlab';
 const label = 'GitLab';
 const checksum = 'optional';
+const fields = ['host', 'project']; // the only identity a saved source carries
 
 const core = require('../core');
 const newest = (rels) => rels.reduce((best, r) => (core.cmpVersion(r.tag_name, best.tag_name) > 0 ? r : best), rels[0]);
@@ -51,7 +52,12 @@ function parseUrl(input) {
   return { type, ...p };
 }
 
-const canonicalRef = (s) => `${s.host}/${s.project}`.toLowerCase();
+const HOST = /^[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?(?::\d{1,5})?$/i;
+function canonicalRef(s) {
+  const parts = String((s && s.project) || '').split('/');
+  if (!s || !HOST.test(String(s.host || '')) || parts.length < 2 || !parts.every((p) => SEG.test(p))) throw new Error('a GitLab source needs a host and a project path');
+  return `${s.host}/${s.project}`.toLowerCase();
+}
 const pageUrl = (s) => `https://${s.host}/${s.project.split('/').map(encodeURIComponent).join('/')}/-/releases`;
 const apiUrl = (s, n) => `https://${s.host}/api/v4/projects/${encodeURIComponent(s.project)}/releases?per_page=${n}`;
 
@@ -113,4 +119,4 @@ async function probe(input, ctx) {
   }
 }
 
-module.exports = { type, label, checksum, parseUrl, probe, canonicalRef, pageUrl, getLatestRelease, fileName };
+module.exports = { type, label, checksum, fields, parseUrl, probe, canonicalRef, pageUrl, getLatestRelease, fileName };

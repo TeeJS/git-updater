@@ -121,15 +121,18 @@ function entryFromCandidate(candidate, type, extra = {}) {
   return entry;
 }
 
-// Keep only plain JSON scalars one level deep — a source is ids and URLs, nothing else.
+// A saved source is an identity and nothing else. Each provider names the fields that
+// make up its identity (`fields`); only those survive, each a bounded string, and the
+// provider must be able to form a canonical reference from them — which is where a
+// malformed token, package id or address is rejected.
 function cleanSource(source, p) {
-  const out = { type: p.type };
-  for (const [k, v] of Object.entries(source || {})) {
-    if (k === 'type') continue;
-    if (typeof v === 'string' && v.length <= 2048) out[k] = v;
-    else if (typeof v === 'number' || typeof v === 'boolean') out[k] = v;
+  const prov = p || provider(source && source.type);
+  const out = { type: prov.type };
+  for (const k of prov.fields || []) {
+    const v = source ? source[k] : undefined;
+    if (typeof v === 'string' && v.length <= 2048 && !/[\u0000-\u001f]/.test(v)) out[k] = v;
   }
-  p.canonicalRef(out); // throws if the provider cannot make sense of it
+  prov.canonicalRef(out); // throws if the identity is incomplete or malformed
   return out;
 }
 
@@ -624,6 +627,7 @@ module.exports = {
   appKey,
   normalizeEntry,
   entryFromCandidate,
+  cleanSource,
   describe,
   pageUrl,
   setFetch,

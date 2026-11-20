@@ -107,6 +107,27 @@ test('brew: what cannot be installed or updated says why', () => {
   assert.match(brew.toRelease(cask('vlc'), arm()).provenance.note, /also updates itself/);
 });
 
+// Three real casks from Sol's review: a variation overrides far more than the file.
+test('brew: a variation that DISABLES the cask is honoured (adrive on Intel)', () => {
+  assert.equal(only(brew.toRelease(cask('adrive'), arm())).unsupported, undefined, 'Apple silicon is fine');
+  assert.throws(() => brew.toRelease(cask('adrive'), intel('15.0')), (e) => e.unavailable && /disabled this cask \(fails gatekeeper check\)/.test(e.message));
+});
+
+test('brew: a variation that changes the macOS requirement is used, not the base one (artisan)', () => {
+  // Base (Apple silicon) needs macOS 14; the Intel variations need only 13.
+  assert.match(only(brew.toRelease(cask('artisan'), arm('13.5'))).unsupported, /needs macOS 14 or later/);
+  const intel13 = only(brew.toRelease(cask('artisan'), intel('13.5')));
+  assert.equal(intel13.unsupported, undefined);
+  assert.deepEqual(intel13.requires, ['macOS 13 or later']);
+});
+
+test('brew: a stated architecture beats a neutral file name (agentiloop-agent is Apple silicon only)', () => {
+  const armAsset = only(brew.toRelease(cask('agentiloop-agent'), arm('27.0')));
+  assert.equal(armAsset.unsupported, undefined);
+  assert.equal(armAsset.arch, 'arm64');
+  assert.match(only(brew.toRelease(cask('agentiloop-agent'), intel('27.0'))).unsupported, /only an Apple silicon build/);
+});
+
 test('brew: an invalid published hash is an error, not "no checksum"', () => {
   assert.throws(() => brew.toRelease({ ...cask('qgis'), sha256: 'deadbeef' }, arm()), /invalid SHA-256/);
 });

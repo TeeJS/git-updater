@@ -5193,5 +5193,526 @@
   "url_specs": {},
   "variations": {},
   "version": "1.0.55"
+ },
+ {
+  "artifacts": [
+   {
+    "app": [
+     "aDrive.app"
+    ],
+    "target": "/Applications/aDrive.app"
+   },
+   {
+    "zap": [
+     {
+      "trash": [
+       "~/Library/Application Support/aDrive",
+       "~/Library/Preferences/com.alicloud.smartdrive.plist",
+       "~/Library/Saved Application State/com.alicloud.smartdrive.savedState"
+      ]
+     }
+    ]
+   }
+  ],
+  "auto_updates": true,
+  "autobump": true,
+  "bundle_short_version": null,
+  "bundle_version": null,
+  "caveats": null,
+  "caveats_rosetta": null,
+  "conflicts_with": null,
+  "container": null,
+  "depends_on": {
+   "macos": {}
+  },
+  "deprecate_args": null,
+  "deprecated": false,
+  "deprecation_date": null,
+  "deprecation_reason": null,
+  "deprecation_replacement_cask": null,
+  "deprecation_replacement_formula": null,
+  "desc": "Intelligent cloud storage platform",
+  "disable_args": null,
+  "disable_date": null,
+  "disable_reason": null,
+  "disable_replacement_cask": null,
+  "disable_replacement_formula": null,
+  "disabled": false,
+  "full_token": "adrive",
+  "homepage": "https://www.aliyundrive.com/",
+  "installed": null,
+  "installed_time": null,
+  "languages": [],
+  "name": [
+   "Aliyundrive",
+   "\u963f\u91cc\u4e91\u76d8"
+  ],
+  "no_autobump_message": null,
+  "old_tokens": [],
+  "outdated": false,
+  "pinned": false,
+  "pinned_version": null,
+  "rename": [],
+  "ruby_source_checksum": {
+   "sha256": "ca43c3aeec32883a027c8a3d8cd0b6162d00de790772337b49a3cd0c56d556b6"
+  },
+  "ruby_source_path": "Casks/a/adrive.rb",
+  "sha256": "dbf432bf09a4f6669fb9a74c56d082833b751d1b036d627550f6cf55ef7f32f4",
+  "skip_livecheck": false,
+  "supported_platforms": [
+   "golden_gate",
+   "arm64_golden_gate",
+   "tahoe",
+   "arm64_tahoe",
+   "sequoia",
+   "arm64_sequoia",
+   "sonoma",
+   "arm64_sonoma",
+   "ventura",
+   "arm64_ventura",
+   "monterey",
+   "arm64_monterey",
+   "big_sur",
+   "arm64_big_sur"
+  ],
+  "tap": "homebrew/cask",
+  "tap_git_head": "bc429d228452ef0ac57ac508a10e6a39f8e3e32a",
+  "token": "adrive",
+  "url": "https://cdn.aliyundrive.net/downloads/apps/desktop/aDrive-6.9.3-arm64.dmg",
+  "url_specs": {
+   "user_agent": ":fake"
+  },
+  "variations": {
+   "arm64_linux": {
+    "sha256": null
+   },
+   "big_sur": {
+    "disable_args": {
+     "because": "fails_gatekeeper_check",
+     "date": "2026-09-01",
+     "replacement_cask": null,
+     "replacement_formula": null
+    },
+    "disable_date": "2026-09-01",
+    "disable_reason": "fails_gatekeeper_check",
+    "disabled": true,
+    "sha256": "a0273748eda47b69f621e281a8228fd2791c4f8615ce041a3f248eec629941b2",
+    "url": "https://cdn.aliyundrive.net/downloads/apps/desktop/aDrive-6.9.3.dmg"
+   },
+   "golden_gate": {
+    "disable_args": {
+     "because": "fails_gatekeeper_check",
+     "date": "2026-09-01",
+     "replacement_cask": null,
+     "replacement_formula": null
+    },
+    "disable_date": "2026-09-01",
+    "disable_reason": "fails_gatekeeper_check",
+    "disabled": true,
+    "sha256": "a0273748eda47b69f621e281a8228fd2791c4f8615ce041a3f248eec629941b2",
+    "url": "https://cdn.aliyundrive.net/downloads/apps/desktop/aDrive-6.9.3.dmg"
+   },
+   "monterey": {
+    "disable_args": {
+     "because": "fails_gatekeeper_check",
+     "date": "2026-09-01",
+     "replacement_cask": null,
+     "replacement_formula": null
+    },
+    "disable_date": "2026-09-01",
+    "disable_reason": "fails_gatekeeper_check",
+    "disabled": true,
+    "sha256": "a0273748eda47b69f621e281a8228fd2791c4f8615ce041a3f248eec629941b2",
+    "url": "https://cdn.aliyundrive.net/downloads/apps/desktop/aDrive-6.9.3.dmg"
+   },
+   "sequoia": {
+    "disable_args": {
+     "because": "fails_gatekeeper_check",
+     "date": "2026-09-01",
+     "replacement_cask": null,
+     "replacement_formula": null
+    },
+    "disable_date": "2026-09-01",
+    "disable_reason": "fails_gatekeeper_check",
+    "disabled": true,
+    "sha256": "a0273748eda47b69f621e281a8228fd2791c4f8615ce041a3f248eec629941b2",
+    "url": "https://cdn.aliyundrive.net/downloads/apps/desktop/aDrive-6.9.3.dmg"
+   },
+   "sonoma": {
+    "disable_args": {
+     "because": "fails_gatekeeper_check",
+     "date": "2026-09-01",
+     "replacement_cask": null,
+     "replacement_formula": null
+    },
+    "disable_date": "2026-09-01",
+    "disable_reason": "fails_gatekeeper_check",
+    "disabled": true,
+    "sha256": "a0273748eda47b69f621e281a8228fd2791c4f8615ce041a3f248eec629941b2",
+    "url": "https://cdn.aliyundrive.net/downloads/apps/desktop/aDrive-6.9.3.dmg"
+   },
+   "tahoe": {
+    "disable_args": {
+     "because": "fails_gatekeeper_check",
+     "date": "2026-09-01",
+     "replacement_cask": null,
+     "replacement_formula": null
+    },
+    "disable_date": "2026-09-01",
+    "disable_reason": "fails_gatekeeper_check",
+    "disabled": true,
+    "sha256": "a0273748eda47b69f621e281a8228fd2791c4f8615ce041a3f248eec629941b2",
+    "url": "https://cdn.aliyundrive.net/downloads/apps/desktop/aDrive-6.9.3.dmg"
+   },
+   "ventura": {
+    "disable_args": {
+     "because": "fails_gatekeeper_check",
+     "date": "2026-09-01",
+     "replacement_cask": null,
+     "replacement_formula": null
+    },
+    "disable_date": "2026-09-01",
+    "disable_reason": "fails_gatekeeper_check",
+    "disabled": true,
+    "sha256": "a0273748eda47b69f621e281a8228fd2791c4f8615ce041a3f248eec629941b2",
+    "url": "https://cdn.aliyundrive.net/downloads/apps/desktop/aDrive-6.9.3.dmg"
+   },
+   "x86_64_linux": {
+    "disable_args": {
+     "because": "fails_gatekeeper_check",
+     "date": "2026-09-01",
+     "replacement_cask": null,
+     "replacement_formula": null
+    },
+    "disable_date": "2026-09-01",
+    "disable_reason": "fails_gatekeeper_check",
+    "disabled": true,
+    "sha256": null,
+    "url": "https://cdn.aliyundrive.net/downloads/apps/desktop/aDrive-6.9.3.dmg"
+   }
+  },
+  "version": "6.9.3"
+ },
+ {
+  "artifacts": [
+   {
+    "app": [
+     "artisan.app"
+    ],
+    "target": "/Applications/artisan.app"
+   },
+   {
+    "zap": [
+     {
+      "trash": [
+       "~/Library/Application Support/artisan-scope",
+       "~/Library/Preferences/org.artisan-scope.Artisan.plist",
+       "~/Library/Saved Application State/org.artisan-scope.artisan.savedState"
+      ]
+     }
+    ]
+   }
+  ],
+  "auto_updates": null,
+  "autobump": true,
+  "bundle_short_version": null,
+  "bundle_version": null,
+  "caveats": null,
+  "caveats_rosetta": null,
+  "conflicts_with": null,
+  "container": null,
+  "depends_on": {
+   "macos": {
+    ">=": [
+     "14"
+    ]
+   }
+  },
+  "deprecate_args": null,
+  "deprecated": false,
+  "deprecation_date": null,
+  "deprecation_reason": null,
+  "deprecation_replacement_cask": null,
+  "deprecation_replacement_formula": null,
+  "desc": "Visual scope for coffee roasters",
+  "disable_args": null,
+  "disable_date": null,
+  "disable_reason": null,
+  "disable_replacement_cask": null,
+  "disable_replacement_formula": null,
+  "disabled": false,
+  "full_token": "artisan",
+  "homepage": "https://artisan-scope.org/",
+  "installed": null,
+  "installed_time": null,
+  "languages": [],
+  "name": [
+   "Artisan"
+  ],
+  "no_autobump_message": null,
+  "old_tokens": [],
+  "outdated": false,
+  "pinned": false,
+  "pinned_version": null,
+  "rename": [],
+  "ruby_source_checksum": {
+   "sha256": "f7512c13a5e2c15dade432acaae8d1b148a33dd9bc11029550672bc928fb50e0"
+  },
+  "ruby_source_path": "Casks/a/artisan.rb",
+  "sha256": "ea491952b75a3e87de47a29d4b3a131d0105aa89c6e0dd46bc81733b9a4fcb4c",
+  "skip_livecheck": false,
+  "supported_platforms": [
+   "golden_gate",
+   "arm64_golden_gate",
+   "tahoe",
+   "arm64_tahoe",
+   "sequoia",
+   "arm64_sequoia",
+   "sonoma",
+   "arm64_sonoma",
+   "ventura",
+   "x86_64_linux"
+  ],
+  "tap": "homebrew/cask",
+  "tap_git_head": "bc429d228452ef0ac57ac508a10e6a39f8e3e32a",
+  "token": "artisan",
+  "url": "https://github.com/artisan-roaster-scope/artisan/releases/download/v5.0.0/artisan-mac-arm-5.0.0.dmg",
+  "url_specs": {},
+  "variations": {
+   "arm64_linux": {
+    "artifacts": [
+     {
+      "app_image": [
+       "artisan-linux-5.0.0.AppImage",
+       {
+        "target": "Artisan.AppImage"
+       }
+      ],
+      "target": "/$HOME/Applications/Artisan.AppImage"
+     },
+     {
+      "zap": [
+       {
+        "trash": [
+         "~/.config/artisan-scope",
+         "~/.local/share/artisan-scope"
+        ]
+       }
+      ]
+     }
+    ],
+    "depends_on": {
+     "arch": [
+      {
+       "bits": 64,
+       "type": "intel"
+      }
+     ]
+    },
+    "sha256": null,
+    "url": "https://github.com/artisan-roaster-scope/artisan/releases/download/v5.0.0/artisan-linux-5.0.0.AppImage"
+   },
+   "big_sur": {
+    "depends_on": {
+     "macos": {
+      ">=": [
+       "13"
+      ]
+     }
+    },
+    "sha256": "a936efaed6fe4cf93fbdea1f06a85b722294eff8d8996767521deb49d76a6bdc",
+    "url": "https://github.com/artisan-roaster-scope/artisan/releases/download/v5.0.0/artisan-mac-intel-5.0.0.dmg"
+   },
+   "golden_gate": {
+    "depends_on": {
+     "macos": {
+      ">=": [
+       "13"
+      ]
+     }
+    },
+    "sha256": "a936efaed6fe4cf93fbdea1f06a85b722294eff8d8996767521deb49d76a6bdc",
+    "url": "https://github.com/artisan-roaster-scope/artisan/releases/download/v5.0.0/artisan-mac-intel-5.0.0.dmg"
+   },
+   "monterey": {
+    "depends_on": {
+     "macos": {
+      ">=": [
+       "13"
+      ]
+     }
+    },
+    "sha256": "a936efaed6fe4cf93fbdea1f06a85b722294eff8d8996767521deb49d76a6bdc",
+    "url": "https://github.com/artisan-roaster-scope/artisan/releases/download/v5.0.0/artisan-mac-intel-5.0.0.dmg"
+   },
+   "sequoia": {
+    "depends_on": {
+     "macos": {
+      ">=": [
+       "13"
+      ]
+     }
+    },
+    "sha256": "a936efaed6fe4cf93fbdea1f06a85b722294eff8d8996767521deb49d76a6bdc",
+    "url": "https://github.com/artisan-roaster-scope/artisan/releases/download/v5.0.0/artisan-mac-intel-5.0.0.dmg"
+   },
+   "sonoma": {
+    "depends_on": {
+     "macos": {
+      ">=": [
+       "13"
+      ]
+     }
+    },
+    "sha256": "a936efaed6fe4cf93fbdea1f06a85b722294eff8d8996767521deb49d76a6bdc",
+    "url": "https://github.com/artisan-roaster-scope/artisan/releases/download/v5.0.0/artisan-mac-intel-5.0.0.dmg"
+   },
+   "tahoe": {
+    "depends_on": {
+     "macos": {
+      ">=": [
+       "13"
+      ]
+     }
+    },
+    "sha256": "a936efaed6fe4cf93fbdea1f06a85b722294eff8d8996767521deb49d76a6bdc",
+    "url": "https://github.com/artisan-roaster-scope/artisan/releases/download/v5.0.0/artisan-mac-intel-5.0.0.dmg"
+   },
+   "ventura": {
+    "depends_on": {
+     "macos": {
+      ">=": [
+       "13"
+      ]
+     }
+    },
+    "sha256": "a936efaed6fe4cf93fbdea1f06a85b722294eff8d8996767521deb49d76a6bdc",
+    "url": "https://github.com/artisan-roaster-scope/artisan/releases/download/v5.0.0/artisan-mac-intel-5.0.0.dmg"
+   },
+   "x86_64_linux": {
+    "artifacts": [
+     {
+      "app_image": [
+       "artisan-linux-5.0.0.AppImage",
+       {
+        "target": "Artisan.AppImage"
+       }
+      ],
+      "target": "/$HOME/Applications/Artisan.AppImage"
+     },
+     {
+      "zap": [
+       {
+        "trash": [
+         "~/.config/artisan-scope",
+         "~/.local/share/artisan-scope"
+        ]
+       }
+      ]
+     }
+    ],
+    "depends_on": {
+     "arch": [
+      {
+       "bits": 64,
+       "type": "intel"
+      }
+     ]
+    },
+    "sha256": "9a09ef896a491b47f719e4531a71cd8cfa1d7582fb55a29b62e1f1cef30f1227",
+    "url": "https://github.com/artisan-roaster-scope/artisan/releases/download/v5.0.0/artisan-linux-5.0.0.AppImage"
+   }
+  },
+  "version": "5.0.0"
+ },
+ {
+  "artifacts": [
+   {
+    "app": [
+     "Agent!.app"
+    ],
+    "target": "/Applications/Agent!.app"
+   },
+   {
+    "zap": [
+     {
+      "trash": [
+       "~/Library/Caches/Agent.app.toddbruss",
+       "~/Library/HTTPStorages/Agent.app.toddbruss",
+       "~/Library/HTTPStorages/Agent.app.toddbruss.binarycookies",
+       "~/Library/Preferences/Agent.app.toddbruss.plist"
+      ]
+     }
+    ]
+   }
+  ],
+  "auto_updates": null,
+  "autobump": true,
+  "bundle_short_version": null,
+  "bundle_version": null,
+  "caveats": null,
+  "caveats_rosetta": null,
+  "conflicts_with": null,
+  "container": null,
+  "depends_on": {
+   "arch": [
+    {
+     "bits": 64,
+     "type": "arm"
+    }
+   ],
+   "macos": {
+    ">=": [
+     "14"
+    ]
+   }
+  },
+  "deprecate_args": null,
+  "deprecated": false,
+  "deprecation_date": null,
+  "deprecation_reason": null,
+  "deprecation_replacement_cask": null,
+  "deprecation_replacement_formula": null,
+  "desc": "Autonomous agent",
+  "disable_args": null,
+  "disable_date": null,
+  "disable_reason": null,
+  "disable_replacement_cask": null,
+  "disable_replacement_formula": null,
+  "disabled": false,
+  "full_token": "agentiloop-agent",
+  "homepage": "https://github.com/AgentiLoop/Agent",
+  "installed": null,
+  "installed_time": null,
+  "languages": [],
+  "name": [
+   "Agent!",
+   "AgentiLoop Agent!"
+  ],
+  "no_autobump_message": null,
+  "old_tokens": [],
+  "outdated": false,
+  "pinned": false,
+  "pinned_version": null,
+  "rename": [],
+  "ruby_source_checksum": {
+   "sha256": "46d99485191d9941e20889c31dc23a22201647e2842699b8a8fbb019c0d37f9b"
+  },
+  "ruby_source_path": "Casks/a/agentiloop-agent.rb",
+  "sha256": "1ac9293ffb4727e4237258c9df1eeaced9f484205ec771da372306df1c1d7df0",
+  "skip_livecheck": false,
+  "supported_platforms": [
+   "arm64_golden_gate",
+   "arm64_tahoe",
+   "arm64_sequoia",
+   "arm64_sonoma"
+  ],
+  "tap": "homebrew/cask",
+  "tap_git_head": "bc429d228452ef0ac57ac508a10e6a39f8e3e32a",
+  "token": "agentiloop-agent",
+  "url": "https://github.com/AgentiLoop/Agent/releases/download/v1.1.99.299/Agent-v1.1.99.299-macOS.dmg",
+  "url_specs": {},
+  "variations": {},
+  "version": "1.1.99.299"
  }
 ]

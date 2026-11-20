@@ -168,6 +168,8 @@ function renderReview() {
     const file = el('td');
     if (r.ok) {
       file.appendChild(el('span', 'mono', r.file));
+      // The full declared address, not just its host — the file's origin is never implied.
+      if (r.url) file.appendChild(el('span', 'sub mono', r.url));
       const sub = el('span', 'sub', `from ${r.host} — `);
       sub.appendChild(el('span', r.checksum === 'none' ? 'sum-none' : null, SUM[r.checksum] || ''));
       file.appendChild(sub);

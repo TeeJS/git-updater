@@ -10,6 +10,7 @@ const github = require('../github');
 const type = 'github';
 const label = 'GitHub';
 const checksum = 'optional';
+const fields = ['owner', 'repo']; // the only identity a saved source carries
 
 // GitHub owner and repository names: letters, digits, hyphen, underscore, dot. An owner
 // can never contain a dot, which is what lets non-GitHub keys reserve "source.<type>".
@@ -27,7 +28,10 @@ function parseUrl(input) {
   return { type, owner, repo };
 }
 
-const canonicalRef = (source) => `${source.owner}/${source.repo}`;
+function canonicalRef(source) {
+  if (!source || !OWNER.test(String(source.owner || '')) || !REPO.test(String(source.repo || ''))) throw new Error('GitHub needs an owner and a repository name');
+  return `${source.owner}/${source.repo}`;
+}
 const pageUrl = (source) =>
   `https://github.com/${encodeURIComponent(source.owner)}/${encodeURIComponent(source.repo)}/releases`;
 
@@ -41,4 +45,4 @@ async function getLatestRelease(source, ctx, opts = {}) {
   };
 }
 
-module.exports = { type, label, checksum, parseUrl, canonicalRef, pageUrl, getLatestRelease };
+module.exports = { type, label, checksum, fields, parseUrl, canonicalRef, pageUrl, getLatestRelease };

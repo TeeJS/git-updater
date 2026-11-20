@@ -13,6 +13,7 @@
 const type = 'gitea';
 const label = 'Gitea';
 const checksum = 'optional';
+const fields = ['host', 'owner', 'repo']; // the only identity a saved source carries
 
 const core = require('../core');
 const newest = (rels) => rels.reduce((best, r) => (core.cmpVersion(r.tag_name, best.tag_name) > 0 ? r : best), rels[0]);
@@ -48,7 +49,11 @@ function parseUrl(input) {
 }
 
 const hostLabel = (host) => (host === 'codeberg.org' ? 'Codeberg' : label);
-const canonicalRef = (s) => `${s.host}/${s.owner}/${s.repo}`.toLowerCase();
+const HOST = /^[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?(?::\d{1,5})?$/i;
+function canonicalRef(s) {
+  if (!s || !HOST.test(String(s.host || '')) || !SEG.test(String(s.owner || '')) || !SEG.test(String(s.repo || ''))) throw new Error('a Gitea source needs a host, an owner and a repository name');
+  return `${s.host}/${s.owner}/${s.repo}`.toLowerCase();
+}
 const pageUrl = (s) => `https://${s.host}/${encodeURIComponent(s.owner)}/${encodeURIComponent(s.repo)}/releases`;
 const apiUrl = (s, limit) =>
   `https://${s.host}/api/v1/repos/${encodeURIComponent(s.owner)}/${encodeURIComponent(s.repo)}/releases?limit=${limit}`;
@@ -97,4 +102,4 @@ async function probe(input, ctx) {
   }
 }
 
-module.exports = { type, label, checksum, parseUrl, probe, canonicalRef, pageUrl, getLatestRelease, hostLabel };
+module.exports = { type, label, checksum, fields, parseUrl, probe, canonicalRef, pageUrl, getLatestRelease, hostLabel };
