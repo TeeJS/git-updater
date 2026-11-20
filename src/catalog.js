@@ -222,32 +222,86 @@ function matchInstalled(installed, trackedRepos, platform) {
 }
 
 // ---------------------------------------------------------------------------
-// Name lookup — the "shortcut list" behind the Add box.
+// Shortcuts — the curated list behind the Add box, the Popular apps picker and packs.
 //
-// A user types "vlc" or "libre office", not a repository path or a package id. This maps
-// what people actually type to the place the app really comes from. It is deliberately a
-// curated list and not a search engine: every hit is an identity someone checked, which
-// is what makes it safe to add without asking when the user has a preferred source.
+// A user types "vlc" or "libre office", not a package id. Popular apps are also the ones
+// whose real identity is least guessable: WinGet calls Adobe's reader
+// "Adobe.Acrobat.Reader.64-bit", Homebrew calls HandBrake "handbrake-app". src/shortcuts.json
+// maps the names people use to the place the app really comes from:
 //
-// An entry may carry:
-//   aliases   other names people use for the app
-//   category  where it sits in the Popular apps picker
-//   sources   pinned sources per platform, e.g. { win32: [{ type: 'winget', id: '…' }] }.
-//             The entry's GitHub `repo`, when it has one, is always offered as well.
+//   { name, category, aliases?, winget?, brew?, repo? }
+//
+//   winget  a WinGet package id   (offered on Windows)
+//   brew    a Homebrew cask token (offered on macOS)
+//   repo    a GitHub owner/repo   (offered wherever the project publishes builds)
+//
+// Every winget id and brew token in that file was checked against the live index when it
+// was added (test/catalog.test.js checks the shape; the indexes themselves change, and a
+// stale id simply fails its own row with "not found"). It is deliberately a curated list
+// and not a search engine: every hit is an identity someone verified, which is what makes
+// it safe to add without asking when the user has a preferred source.
+//
+// CATALOG rows (GitHub projects, with the name patterns "Scan this PC" needs) are folded
+// in: a shortcut that names the same repo inherits that row's platform limits, and
+// catalog rows with no shortcut of their own are offered under "More from GitHub".
 // ---------------------------------------------------------------------------
 
-const squash = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+const SHORTCUTS = require('./shortcuts.json');
 
-function sourcesFor(entry, platform) {
+const squash = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+const MORE = 'More from GitHub';
+
+let _apps = null;
+// -> [{ id, name, category, aliases, winget?, brew?, repo?, platforms? }], shortcuts first.
+function apps() {
+  if (_apps) return _apps;
+  const byRepo = new Map(CATALOG.map((c) => [c.repo.toLowerCase(), c]));
+  const seenRepo = new Set();
+  const seenId = new Set();
   const out = [];
-  const pinned = entry.sources && (entry.sources[platform] || entry.sources.all);
-  for (const s of pinned || []) out.push({ ...s });
-  if (entry.repo && !entry.noGithub) {
-    const [owner, repo] = entry.repo.split('/');
-    out.push({ type: 'github', owner, repo });
+  for (const s of SHORTCUTS) {
+    const row = s.repo ? byRepo.get(s.repo.toLowerCase()) : null;
+    if (s.repo) seenRepo.add(s.repo.toLowerCase());
+    const id = squash(s.name);
+    if (!id || seenId.has(id)) continue;
+    seenId.add(id);
+    out.push({ id, name: s.name, category: s.category, aliases: s.aliases || [], winget: s.winget, brew: s.brew, repo: s.repo, repoPlatforms: row ? row.platforms : undefined });
   }
+  for (const c of CATALOG) {
+    if (seenRepo.has(c.repo.toLowerCase())) continue;
+    let id = squash(c.name);
+    if (seenId.has(id)) id = squash(c.repo);
+    if (seenId.has(id)) continue;
+    seenId.add(id);
+    out.push({ id, name: c.name, category: MORE, aliases: [], repo: c.repo, repoPlatforms: c.platforms });
+  }
+  _apps = out;
   return out;
 }
+
+// The sources an app has on a platform, in DEFAULT order: the project's own GitHub
+// releases first (first-party), then the package-manager listing. A user's preferred
+// source order, when set, overrides this — see planFor.
+function sourcesFor(app, platform) {
+  const plat = platform || process.platform;
+  const out = [];
+  if (app.repo && (!app.repoPlatforms || app.repoPlatforms.includes(plat))) {
+    const [owner, repo] = app.repo.split('/');
+    out.push({ type: 'github', owner, repo });
+  }
+  if (app.winget && plat === 'win32') out.push({ type: 'winget', packageId: app.winget });
+  if (app.brew && plat === 'darwin') out.push({ type: 'brew', token: app.brew });
+  return out;
+}
+
+// Apps that have at least one source on this platform.
+function popular(platform) {
+  const plat = platform || process.platform;
+  return apps()
+    .map((a) => ({ ...a, sources: sourcesFor(a, plat) }))
+    .filter((a) => a.sources.length);
+}
+const appById = (id) => apps().find((a) => a.id === id) || null;
 
 // -> Candidate[] (see src/sources/index.js), exact matches first.
 function lookup(name, platform) {
@@ -256,18 +310,29 @@ function lookup(name, platform) {
   const plat = platform || process.platform;
   const exact = [];
   const partial = [];
-  for (const entry of CATALOG) {
-    if (!onPlatform(entry, plat)) continue;
-    const names = [entry.name, ...(entry.aliases || [])].map(squash);
+  for (const app of popular(plat)) {
+    const names = [app.name, ...app.aliases].map(squash);
     const isExact = names.includes(q);
     // A partial hit needs three characters, so "a" does not match half the list.
     const isPartial = !isExact && q.length >= 3 && names.some((n) => n.includes(q));
     if (!isExact && !isPartial) continue;
-    for (const source of sourcesFor(entry, plat)) {
-      (isExact ? exact : partial).push({ source, name: entry.name, curated: true, exact: isExact, category: entry.category || null });
+    for (const source of app.sources) {
+      (isExact ? exact : partial).push({ source, name: app.name, curated: true, exact: isExact, category: app.category, appId: app.id });
     }
   }
   return [...exact, ...partial];
 }
 
-module.exports = { CATALOG, matchInstalled, onPlatform, findInstalled, lookup, sourcesFor };
+// Which of an app's sources to use when adding without asking (the picker, a pack):
+// the first of the user's preferred source types the app has; with no preference, or no
+// match, the app's default order.
+function preferredSource(app, platform, preference) {
+  const list = sourcesFor(app, platform);
+  for (const type of Array.isArray(preference) ? preference : []) {
+    const hit = list.find((s) => s.type === type);
+    if (hit) return hit;
+  }
+  return list[0] || null;
+}
+
+module.exports = { CATALOG, SHORTCUTS, matchInstalled, onPlatform, findInstalled, lookup, sourcesFor, popular, apps, appById, preferredSource, MORE };

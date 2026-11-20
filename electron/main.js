@@ -16,6 +16,7 @@ const paths = require('../src/paths');
 const catalog = require('../src/catalog');
 const selfupdate = require('../src/selfupdate');
 const sources = require('../src/sources');
+const packs = require('../src/packs');
 const { log, LOG_FILE } = require('../src/log');
 
 // macOS self-updates in place via Squirrel.Mac (electron/macupdate.js), not the launcher model
@@ -491,8 +492,182 @@ ipcMain.handle('source:add', (_e, items) => {
     log(`added ${keys[keys.length - 1]} (${core.displayId(entry)}) from ${sources.describe(entry).label}`);
   }
   if (keys.length) saveConfigFile(cfg);
+  // Added from the picker window: the main window has to reload its list.
+  if (keys.length && _e && _e.sender && win && !win.isDestroyed() && _e.sender !== win.webContents) win.webContents.send('config-changed');
   return { added: keys.length, skipped, keys };
 });
+// --- Popular apps and packs ----------------------------------------------------
+// Both add several apps at once, so both go through the SAME review step: plan() says,
+// per app, exactly what would be added — source, file, host, checksum state — or why it
+// cannot be. Nothing is saved until the user confirms that list (source:add).
+const PACKS_FILE = path.join(DATA_DIR, 'packs.json');
+const knownTypes = () => sources.providerTypes();
+const trackedKeys = (cfg) => new Set(cfg.repos.map((r) => `${r.owner}/${r.repo}`));
+const isTracked = (set, source) => {
+  const k = sources.keyParts(source);
+  return set.has(`${k.owner}/${k.repo}`);
+};
+
+let popularWin = null;
+ipcMain.handle('popular:open', (_e, tab) => {
+  if (popularWin && !popularWin.isDestroyed()) return popularWin.focus();
+  popularWin = new BrowserWindow({
+    width: 900,
+    height: 760,
+    minWidth: 620,
+    minHeight: 480,
+    parent: win,
+    backgroundColor: '#0d1117',
+    autoHideMenuBar: true,
+    icon: path.join(__dirname, 'icon.png'),
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false },
+  });
+  popularWin.loadFile(path.join(__dirname, '..', 'ui', 'popular.html'), tab === 'packs' ? { query: { tab: 'packs' } } : undefined);
+  popularWin.on('closed', () => { popularWin = null; });
+});
+
+// Every curated app that has a source on this OS, by category. No network.
+ipcMain.handle('popular:list', () => {
+  const cfg = readConfig();
+  const tracked = trackedKeys(cfg);
+  const types = knownTypes();
+  return catalog.popular(process.platform).map((a) => {
+    const usable = a.sources.filter((s) => types.includes(s.type));
+    return {
+      id: a.id,
+      name: a.name,
+      category: a.category,
+      sources: usable.map((s) => sources.provider(s.type).label),
+      tracked: usable.some((s) => isTracked(tracked, s)),
+    };
+  }).filter((a) => a.sources.length);
+});
+
+// items: [{ name, source, appId? }] -> one plan row each. Sequential on purpose: several
+// rows share one package index, and GitHub's anonymous API allowance is small.
+async function planItems(items) {
+  const cfg = readConfig();
+  const tracked = trackedKeys(cfg);
+  const want = cfg.typePreference === 'installer' || cfg.typePreference === 'portable' ? cfg.typePreference : null;
+  const ctx = sources.makeCtx();
+  const out = [];
+  for (const it of items) {
+    const row = { name: it.name, appId: it.appId || null, ok: false };
+    if (!it.source) {
+      out.push({ ...row, reason: it.reason || 'not available' });
+      continue;
+    }
+    try {
+      const p = sources.provider(it.source.type);
+      row.source = it.source;
+      row.listedBy = typeof p.hostLabel === 'function' && it.source.host ? p.hostLabel(it.source.host) : p.label;
+      if (isTracked(tracked, it.source)) {
+        out.push({ ...row, reason: 'already in your list', tracked: true });
+        continue;
+      }
+      const k = sources.keyParts(it.source);
+      const info = await sources.inspect({ ...k, source: it.source.type === 'github' ? undefined : it.source, name: it.name }, ctx, { osRelease: detect.osRelease() });
+      // The preferred type when this source has it natively; else whichever type exists.
+      // An emulated build is never chosen silently: it is offered, unticked, with the reason.
+      const order = want ? [want, want === 'portable' ? 'installer' : 'portable'] : ['portable', 'installer'];
+      const native = order.find((t) => info.types[t].ok && !info.types[t].emulated);
+      const any = native || order.find((t) => info.types[t].ok);
+      if (!any) {
+        out.push({ ...row, version: info.version, reason: info.types[order[0]].reason });
+        continue;
+      }
+      const t = info.types[any];
+      out.push({
+        ...row,
+        ok: true,
+        type: any,
+        version: info.version,
+        publisher: info.publisher,
+        file: t.file,
+        host: t.host,
+        checksum: t.checksum,
+        requires: t.requires,
+        emulated: !!t.emulated,
+        note: want && any !== want ? `no ${want} build here — ${any} offered instead` : info.note || null,
+      });
+    } catch (e) {
+      out.push({ ...row, reason: e.message });
+    }
+  }
+  return out;
+}
+
+ipcMain.handle('popular:plan', async (_e, ids) => {
+  if (!Array.isArray(ids) || ids.length > packs.MAX_APPS) throw new Error('too many apps selected');
+  const cfg = readConfig();
+  const pack = { apps: ids.filter((id) => typeof id === 'string').map((id) => ({ id })) };
+  return planItems(packs.resolveRefs(pack, process.platform, cfg.sourcePreference, knownTypes()));
+});
+
+const myPacks = () => packs.loadMine(PACKS_FILE, { knownTypes: knownTypes() });
+const findPack = (id) => [...packs.builtin(), ...myPacks()].find((p) => p.id === id);
+const packSummary = (p) => {
+  const cfg = readConfig();
+  const rows = packs.resolveRefs(p, process.platform, cfg.sourcePreference, knownTypes());
+  return { id: p.id, name: p.name, description: p.description, builtin: !!p.builtin, count: p.apps.length, available: rows.filter((r) => r.source).length, apps: rows.map((r) => r.name) };
+};
+ipcMain.handle('packs:list', () => ({ builtin: packs.builtin().map(packSummary), mine: myPacks().map(packSummary) }));
+ipcMain.handle('packs:plan', async (_e, id) => {
+  const p = findPack(String(id));
+  if (!p) throw new Error('pack not found');
+  return planItems(packs.resolveRefs(p, process.platform, readConfig().sourcePreference, knownTypes()));
+});
+// Save the apps tracked on this machine (or a picked subset of shortcut ids) as a pack.
+ipcMain.handle('packs:save', (_e, { name, description, ids }) => {
+  const cfg = readConfig();
+  let pack;
+  if (Array.isArray(ids)) {
+    pack = packs.validatePack({ format: packs.FORMAT, version: 1, name, description, apps: ids.map((id) => ({ id })) }, { knownTypes: knownTypes() });
+  } else {
+    if (!cfg.repos.length) throw new Error('there are no apps in your list to save');
+    const built = packs.fromEntries(name, description, cfg.repos, sources.sourceOf, (s) => `${s.type}:${sources.provider(s.type).canonicalRef(s)}`);
+    pack = packs.validatePack(built, { knownTypes: knownTypes() });
+  }
+  const next = packs.upsert(myPacks().filter((p) => p.name.toLowerCase() !== pack.name.toLowerCase()), pack);
+  packs.saveMine(PACKS_FILE, next);
+  return packSummary(next.find((p) => p.name === pack.name));
+});
+ipcMain.handle('packs:delete', (_e, id) => {
+  packs.saveMine(PACKS_FILE, myPacks().filter((p) => p.id !== id));
+  return { ok: true };
+});
+ipcMain.handle('packs:export', async (_e, id) => {
+  const p = findPack(String(id));
+  if (!p) throw new Error('pack not found');
+  const r = await dialog.showSaveDialog(popularWin || win, {
+    title: 'Export pack',
+    defaultPath: `${packs.slug(p.name)}.gupack.json`,
+    filters: [{ name: 'git-updater pack', extensions: ['json'] }],
+  });
+  if (r.canceled || !r.filePath) return { saved: false };
+  fs.writeFileSync(r.filePath, packs.exportPack(p));
+  return { saved: true, path: r.filePath };
+});
+// A pack file is untrusted input: parsePackFile rebuilds it from recognised fields only,
+// so it can name apps and nothing else. Importing saves it under "My packs"; it adds no
+// app until the user opens it and confirms the review list like any other pack.
+ipcMain.handle('packs:import', async () => {
+  const r = await dialog.showOpenDialog(popularWin || win, {
+    title: 'Import pack',
+    properties: ['openFile'],
+    filters: [{ name: 'git-updater pack', extensions: ['json'] }],
+  });
+  if (r.canceled || !r.filePaths.length) return { imported: false };
+  const file = r.filePaths[0];
+  if (fs.statSync(file).size > packs.MAX_BYTES) throw new Error('that file is too large to be a pack');
+  const pack = packs.parsePackFile(fs.readFileSync(file, 'utf8'), { knownTypes: knownTypes() });
+  const next = packs.upsert(myPacks(), pack);
+  packs.saveMine(PACKS_FILE, next);
+  const saved = next[next.length - 1];
+  log(`imported pack "${saved.name}" (${saved.apps.length} apps${pack.dropped ? `, ${pack.dropped} unrecognised entries dropped` : ''}) from ${file}`);
+  return { imported: true, pack: packSummary(saved), dropped: pack.dropped || 0 };
+});
+
 // Change an existing app's type and/or beta setting WITHOUT rebuilding the entry, so
 // its source and every hand-set override survive the edit.
 ipcMain.handle('app:edit', (_e, { appKey, type, prerelease }) => {

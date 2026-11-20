@@ -598,7 +598,8 @@ async function inspect(candidateOrEntry, ctx, host = {}) {
     } catch (e) {
       // The picker's message lists every file in the release; the options list wants
       // the reason, not the inventory.
-      out.types[type] = { ok: false, reason: String(e.message).split('. Assets:')[0] };
+      // ...and "Edit the app" advice makes no sense for something not added yet.
+      out.types[type] = { ok: false, reason: String(e.message).split('. Assets:')[0].split(' — Edit the app')[0] };
     }
   }
   return out;

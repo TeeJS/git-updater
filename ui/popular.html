@@ -1,0 +1,304 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:; font-src 'self'">
+<title>Popular apps and packs — git-updater</title>
+<style>
+  :root {
+    --bg: #0d1117; --panel: #161b22; --border: #30363d;
+    --text: #e6edf3; --muted: #8b949e; --faint: #6e7681;
+    --accent: #e3a13c; --accent-ink: #1a1206; --green: #3fb950; --blue: #58a6ff; --red: #f85149;
+    --mono: 'Cascadia Code', 'Cascadia Mono', Consolas, ui-monospace, monospace;
+    --sans: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 1rem 1.2rem; color: var(--text); font: 14.5px/1.45 var(--sans); background: var(--bg);
+         display: flex; flex-direction: column; height: 100vh; }
+  .top { display: flex; align-items: center; gap: .7rem; flex-wrap: wrap; }
+  h1 { font: 600 1rem var(--mono); margin: 0; }
+  .seg { display: inline-flex; padding: 3px; gap: 3px; border-radius: 9px; background: var(--panel); border: 1px solid var(--border); }
+  .seg button { border: 1px solid transparent; background: transparent; color: var(--muted); padding: .3rem .8rem; border-radius: 6px; font: 600 13px var(--sans); cursor: pointer; }
+  .seg button.active { background: #21262d; color: var(--text); border-color: #444c56; }
+  input[type=text] { background: #0d1117; color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: .42rem .65rem; font: 13.5px var(--sans); }
+  input[type=text]:focus { outline: none; border-color: var(--accent); }
+  input[type=checkbox] { width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; flex: none; }
+  #filter { margin-left: auto; width: 15rem; }
+  #status { min-height: 1.2rem; color: var(--muted); margin: .5rem 0 .2rem; font-size: 13px; }
+  #status.bad { color: var(--red); } #status.ok { color: var(--green); }
+  .body { flex: 1; overflow-y: auto; border-top: 1px solid var(--border); padding-top: .7rem; }
+  /* Categories flow into as many columns as fit; a category never splits across two. */
+  .cats { columns: 15.5rem; column-gap: 1.6rem; }
+  .cat { break-inside: avoid; margin: 0 0 1.1rem; }
+  /* ...except a very long one, which would otherwise strand every column after it. */
+  .cat.long { break-inside: auto; }
+  .cat.long h2 { break-after: avoid; }
+  .cat h2 { font: 600 13px var(--sans); color: var(--text); margin: 0 0 .35rem; padding-bottom: .25rem; border-bottom: 1px solid var(--border); }
+  .item { display: flex; align-items: center; gap: .45rem; padding: .16rem 0; cursor: pointer; min-width: 0; }
+  .item .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .item .src { margin-left: auto; padding-left: .4rem; font-size: 11px; color: var(--faint); white-space: nowrap; }
+  .item.tracked { color: var(--faint); cursor: default; }
+  .item.tracked .src { color: var(--green); }
+  .badge { display: inline-block; font: 600 10.5px var(--sans); line-height: 15px; padding: 0 .42rem; border-radius: 999px; color: var(--muted); border: 1px solid var(--border); background: #0d1117; white-space: nowrap; }
+  .badge.blue { color: var(--blue); border-color: rgba(88,166,255,.35); }
+  .badge.warn { color: var(--accent); border-color: rgba(227,161,60,.4); }
+  /* Review: what would be added, per app, before anything is. */
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; font: 600 11px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--faint); padding: 0 .5rem .4rem 0; }
+  td { padding: .42rem .5rem .42rem 0; border-top: 1px solid var(--border); vertical-align: top; font-size: 13px; }
+  td.name { font-weight: 600; }
+  td .sub { display: block; font-size: 11.5px; color: var(--faint); overflow-wrap: anywhere; }
+  tr.off td { color: var(--faint); }
+  .mono { font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; }
+  .sum-none { color: var(--accent); }
+  /* Packs */
+  .packs { display: grid; grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr)); gap: .7rem; }
+  .pack { border: 1px solid var(--border); border-radius: 10px; padding: .7rem .8rem; background: var(--panel); display: flex; flex-direction: column; gap: .3rem; }
+  .pack h3 { font: 600 14px var(--sans); margin: 0; display: flex; align-items: center; gap: .4rem; }
+  .pack p { margin: 0; font-size: 12.5px; color: var(--muted); }
+  .pack .apps { font-size: 12px; color: var(--faint); }
+  .pack .acts { display: flex; gap: .35rem; flex-wrap: wrap; margin-top: auto; padding-top: .4rem; }
+  .sec { font: 600 12px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--faint); margin: 1rem 0 .5rem; }
+  .sec:first-child { margin-top: 0; }
+  .newpack { display: flex; gap: .45rem; flex-wrap: wrap; align-items: center; margin-bottom: .2rem; }
+  .newpack input { flex: 1; min-width: 12rem; }
+  button.act { font: 600 13px var(--sans); cursor: pointer; border-radius: 8px; padding: .42rem .8rem; border: 1px solid var(--border); background: #21262d; color: var(--text); }
+  button.act.small { padding: .26rem .6rem; font-size: 12px; }
+  button.act:hover:not(:disabled) { background: #2a313a; }
+  button.act:disabled { opacity: .4; cursor: default; }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+  button.danger { color: var(--red); }
+  .bar { display: flex; gap: .55rem; align-items: center; padding-top: .7rem; border-top: 1px solid var(--border); }
+  .bar .count { margin-right: auto; color: var(--muted); font-size: 13px; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div class="top">
+  <h1>Add apps</h1>
+  <div class="seg" id="tabs">
+    <button type="button" data-tab="apps" class="active">Popular apps</button>
+    <button type="button" data-tab="packs">Packs</button>
+  </div>
+  <input type="text" id="filter" placeholder="Filter…" aria-label="Filter apps">
+</div>
+<div id="status">Loading…</div>
+
+<div class="body">
+  <div id="viewApps" class="cats"></div>
+  <div id="viewPacks" class="hidden"></div>
+  <div id="viewReview" class="hidden"></div>
+</div>
+
+<div class="bar">
+  <span class="count" id="count"></span>
+  <button class="act hidden" id="back">Back</button>
+  <button class="act" id="close">Close</button>
+  <button class="act primary" id="go" disabled>Review and add</button>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
+const clean = (e) => String(e && e.message ? e.message : e).replace(/^Error:\s*/, '').replace(/^Error invoking remote method '[^']+':\s*(Error:\s*)?/, '');
+const status = (t, cls) => { $('status').textContent = t || ''; $('status').className = cls || ''; };
+const SUM = { pinned: 'checksum pinned by the listing', published: 'checksum published', none: 'no checksum published' };
+
+let tab = 'apps';
+let apps = [];             // [{ id, name, category, sources[], tracked }]
+const picked = new Set();  // shortcut ids ticked in the Popular apps list
+let plan = null;           // rows under review
+let planFrom = 'apps';     // which view Back returns to
+const chosen = new Set();  // indexes of plan rows that will be added
+
+// --- Popular apps -----------------------------------------------------------------
+function renderApps() {
+  const box = $('viewApps'); box.innerHTML = '';
+  const q = $('filter').value.trim().toLowerCase();
+  const cats = new Map();
+  for (const a of apps) {
+    if (q && !a.name.toLowerCase().includes(q) && !a.category.toLowerCase().includes(q)) continue;
+    if (!cats.has(a.category)) cats.set(a.category, []);
+    cats.get(a.category).push(a);
+  }
+  for (const [name, list] of cats) {
+    const sec = el('section', 'cat' + (list.length > 24 ? ' long' : ''));
+    sec.appendChild(el('h2', null, name));
+    list.sort((x, y) => x.name.localeCompare(y.name));
+    for (const a of list) {
+      const row = el('label', 'item' + (a.tracked ? ' tracked' : ''));
+      const cb = el('input'); cb.type = 'checkbox';
+      cb.checked = a.tracked || picked.has(a.id); cb.disabled = a.tracked;
+      cb.onchange = () => { cb.checked ? picked.add(a.id) : picked.delete(a.id); sync(); };
+      row.appendChild(cb);
+      row.appendChild(el('span', 'nm', a.name));
+      // Where it can come from on this computer — shown before anything is picked.
+      row.appendChild(el('span', 'src', a.tracked ? 'in your list' : a.sources.join(' · ')));
+      row.title = a.tracked ? `${a.name} is already in your list` : `${a.name} — available from ${a.sources.join(', ')}`;
+      sec.appendChild(row);
+    }
+    box.appendChild(sec);
+  }
+  if (!cats.size) box.appendChild(el('p', null, 'Nothing matches that filter.'));
+}
+
+// --- Review: the same step for the picker and for a pack ----------------------------
+function showView(name) {
+  for (const v of ['viewApps', 'viewPacks', 'viewReview']) $(v).classList.toggle('hidden', v !== name);
+  $('back').classList.toggle('hidden', name !== 'viewReview');
+  $('filter').classList.toggle('hidden', name !== 'viewApps');
+  $('tabs').classList.toggle('hidden', name === 'viewReview');
+}
+function renderReview() {
+  const box = $('viewReview'); box.innerHTML = '';
+  const table = el('table');
+  const head = el('tr');
+  for (const h of ['', 'App', 'Source', 'File', 'Type', 'Version']) head.appendChild(el('th', null, h));
+  table.appendChild(head);
+  plan.forEach((r, i) => {
+    const tr = el('tr', r.ok ? null : 'off');
+    const c = el('td'); const cb = el('input'); cb.type = 'checkbox'; cb.disabled = !r.ok; cb.checked = chosen.has(i);
+    cb.onchange = () => { cb.checked ? chosen.add(i) : chosen.delete(i); sync(); };
+    c.appendChild(cb); tr.appendChild(c);
+    tr.appendChild(el('td', 'name', r.name));
+    const src = el('td');
+    if (r.listedBy) src.appendChild(el('span', 'badge blue', r.listedBy));
+    if (r.publisher) src.appendChild(el('span', 'sub', `publisher ${r.publisher}`));
+    tr.appendChild(src);
+    const file = el('td');
+    if (r.ok) {
+      file.appendChild(el('span', 'mono', r.file));
+      const sub = el('span', 'sub', `from ${r.host} — `);
+      sub.appendChild(el('span', r.checksum === 'none' ? 'sum-none' : null, SUM[r.checksum] || ''));
+      file.appendChild(sub);
+      if (r.emulated) file.appendChild(el('span', 'sub sum-none', 'not native to this computer — runs under emulation; tick to add anyway'));
+      if (r.requires && r.requires.length) file.appendChild(el('span', 'sub', `needs ${r.requires.join(', ')}`));
+      if (r.note) file.appendChild(el('span', 'sub', r.note));
+    } else {
+      file.appendChild(el('span', null, r.tracked ? 'Already in your list' : `Not available — ${r.reason}`));
+    }
+    tr.appendChild(file);
+    const type = el('td'); if (r.ok) type.appendChild(el('span', 'badge' + (r.type === 'installer' ? ' warn' : ' blue'), r.type === 'installer' ? 'Installer' : 'Portable')); tr.appendChild(type);
+    tr.appendChild(el('td', 'mono', r.version || ''));
+    table.appendChild(tr);
+  });
+  box.appendChild(table);
+}
+async function review(getPlan, from, label) {
+  planFrom = from; plan = []; chosen.clear();
+  showView('viewReview'); $('viewReview').innerHTML = '';
+  status(`Checking what this computer would get for ${label}…`);
+  $('go').disabled = true;
+  try {
+    plan = await getPlan();
+    // Ticked by default: everything installable and native. Emulated builds wait for a tick.
+    plan.forEach((r, i) => { if (r.ok && !r.emulated) chosen.add(i); });
+    const ok = plan.filter((r) => r.ok).length;
+    status(ok ? `${ok} of ${plan.length} can be added. Each row shows where its file comes from — untick anything you do not want.` : 'None of these can be added on this computer.', ok ? '' : 'bad');
+    renderReview();
+  } catch (e) { status(clean(e), 'bad'); }
+  sync();
+}
+async function addChosen() {
+  const items = [...chosen].map((i) => plan[i]).filter((r) => r && r.ok).map((r) => ({ source: r.source, name: r.name, type: r.type }));
+  if (!items.length) return;
+  $('go').disabled = true;
+  try {
+    const res = await window.api.addSources(items);
+    status(`Added ${res.added} app${res.added === 1 ? '' : 's'}${res.skipped ? `, ${res.skipped} already in your list` : ''}. Use Check all in the main window to see versions.`, 'ok');
+    picked.clear(); chosen.clear();
+    apps = await window.api.popularList();
+    plan = null; showView(planFrom === 'packs' ? 'viewPacks' : 'viewApps');
+    if (planFrom === 'packs') await loadPacks(); else renderApps();
+  } catch (e) { status(clean(e), 'bad'); }
+  sync();
+}
+
+// --- Packs ---------------------------------------------------------------------------
+async function loadPacks() {
+  const box = $('viewPacks'); box.innerHTML = '';
+  const { builtin, mine } = await window.api.packsList();
+  const card = (p) => {
+    const c = el('div', 'pack');
+    const h = el('h3', null, p.name); if (p.builtin) h.appendChild(el('span', 'badge', 'Built-in')); c.appendChild(h);
+    if (p.description) c.appendChild(el('p', null, p.description));
+    c.appendChild(el('p', 'apps', `${p.available} of ${p.count} available on this computer: ${p.apps.join(', ')}`));
+    const acts = el('div', 'acts');
+    const go = el('button', 'act small primary', 'Review and add'); go.disabled = !p.available;
+    go.onclick = () => review(() => window.api.packsPlan(p.id), 'packs', `the ${p.name} pack`);
+    const ex = el('button', 'act small', 'Export…');
+    ex.onclick = async () => { try { const r = await window.api.packsExport(p.id); if (r.saved) status(`Exported to ${r.path}.`, 'ok'); } catch (e) { status(clean(e), 'bad'); } };
+    acts.append(go, ex);
+    if (!p.builtin) {
+      const del = el('button', 'act small danger', 'Delete');
+      del.onclick = async () => { if (!confirm(`Delete the pack "${p.name}"? Apps already added stay in your list.`)) return; await window.api.packsDelete(p.id); loadPacks(); };
+      acts.appendChild(del);
+    }
+    c.appendChild(acts);
+    return c;
+  };
+  box.appendChild(el('div', 'sec', 'My packs'));
+  const make = el('div', 'newpack');
+  const name = el('input'); name.type = 'text'; name.placeholder = 'Name for a new pack, e.g. Work laptop'; name.maxLength = 80;
+  const save = el('button', 'act', 'Save my current apps as a pack');
+  save.onclick = async () => {
+    if (!name.value.trim()) { status('Give the pack a name first.', 'bad'); name.focus(); return; }
+    try { const p = await window.api.packsSave(name.value.trim(), 'Saved from this computer.', null); status(`Saved "${p.name}" with ${p.count} app${p.count === 1 ? '' : 's'}.`, 'ok'); loadPacks(); }
+    catch (e) { status(clean(e), 'bad'); }
+  };
+  const imp = el('button', 'act', 'Import pack…');
+  imp.onclick = async () => {
+    try {
+      const r = await window.api.packsImport();
+      if (r.imported) { status(`Imported "${r.pack.name}"${r.dropped ? ` — ${r.dropped} entr${r.dropped === 1 ? 'y' : 'ies'} it listed were not recognised and were left out` : ''}. Nothing is added until you review it.`, 'ok'); loadPacks(); }
+    } catch (e) { status(clean(e), 'bad'); }
+  };
+  make.append(name, save, imp); box.appendChild(make);
+  const mineGrid = el('div', 'packs'); mine.forEach((p) => mineGrid.appendChild(card(p)));
+  if (!mine.length) box.appendChild(el('p', 'apps', 'None yet. Save the apps on this computer as a pack, then export it to set up another one.'));
+  box.appendChild(mineGrid);
+  box.appendChild(el('div', 'sec', 'Built-in packs'));
+  const grid = el('div', 'packs'); builtin.forEach((p) => grid.appendChild(card(p))); box.appendChild(grid);
+}
+
+// --- shell ---------------------------------------------------------------------------
+function sync() {
+  const reviewing = !$('viewReview').classList.contains('hidden');
+  if (reviewing) {
+    $('count').textContent = `${chosen.size} to add`;
+    $('go').textContent = `Add ${chosen.size} app${chosen.size === 1 ? '' : 's'}`;
+    $('go').disabled = chosen.size === 0;
+    $('go').classList.remove('hidden');
+  } else if (tab === 'apps') {
+    $('count').textContent = `${picked.size} selected`;
+    $('go').textContent = 'Review and add';
+    $('go').disabled = picked.size === 0;
+    $('go').classList.remove('hidden');
+  } else {
+    $('count').textContent = '';
+    $('go').classList.add('hidden');
+  }
+}
+$('go').onclick = () => {
+  if (!$('viewReview').classList.contains('hidden')) return addChosen();
+  review(() => window.api.popularPlan([...picked]), 'apps', `${picked.size} app${picked.size === 1 ? '' : 's'}`);
+};
+$('back').onclick = () => { plan = null; chosen.clear(); showView(planFrom === 'packs' ? 'viewPacks' : 'viewApps'); status(''); sync(); };
+$('close').onclick = () => window.close();
+$('filter').oninput = renderApps;
+async function setTab(next) {
+  tab = next;
+  $('tabs').querySelectorAll('button').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
+  showView(tab === 'packs' ? 'viewPacks' : 'viewApps');
+  status('');
+  try {
+    if (tab === 'packs') await loadPacks();
+    else { apps = await window.api.popularList(); renderApps(); status(`${apps.length} apps. Tick the ones you want — each is added from your preferred source, and you review where every file comes from first.`); }
+  } catch (e) { status(clean(e), 'bad'); }
+  sync();
+}
+$('tabs').querySelectorAll('button').forEach((b) => (b.onclick = () => setTab(b.dataset.tab)));
+setTab(new URLSearchParams(location.search).get('tab') === 'packs' ? 'packs' : 'apps');
+</script>
+</body>
+</html>
