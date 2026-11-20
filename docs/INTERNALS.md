@@ -49,7 +49,8 @@ Optional per-app overrides (rarely needed):
 - `"asset": "*-win-x64.zip"` (glob or `/regex/`) pins a specific file instead of auto-pick.
 - Portable: `"install": { "dir": "D:/Custom" }` to override the folder.
 - Installer: `"install": { "kind": "inno", "args": ["/VERYSILENT"] }` — required when detection
-  can't identify an unusual installer (`kind` is `msi` | `nsis` | `inno` | `pkg` | `deb` | `rpm`).
+  can't identify an unusual installer (`kind` is `msi` | `nsis` | `inno` | `exe` | `pkg` | `deb` | `rpm`;
+  `exe` has no switches of its own and runs only with `args`).
 - `"prerelease": true` follows beta releases; `"detect"` / `"process"` override the registry
   match / process name when they differ from the repo name.
 - `"tagPrefix": "desktop-v"` pins release lookup to one train, for repos that publish several
@@ -58,6 +59,82 @@ Optional per-app overrides (rarely needed):
 
 You can track the same repo as **both** portable and installed — each is a separate entry with
 its own update history.
+
+## Sources
+
+An entry with no `source` field is a GitHub entry and behaves exactly as it always has.
+Any other app carries a `source` object and a `name`:
+
+```jsonc
+{ "type": "installer", "name": "VLC media player", "source": { "type": "winget", "packageId": "VideoLAN.VLC" } }
+{ "type": "portable",  "name": "Blender",          "source": { "type": "brew",   "token": "blender" } }
+{ "type": "portable",  "name": "Blender",          "source": { "type": "folder", "url": "https://download.blender.org/release/" } }
+{ "type": "portable",  "name": "Runner",           "source": { "type": "gitlab", "host": "gitlab.com", "project": "gitlab-org/gitlab-runner" } }
+{ "type": "portable",  "name": "Forgejo",          "source": { "type": "gitea",  "host": "codeberg.org", "owner": "forgejo", "repo": "forgejo" } }
+```
+
+`owner`/`repo` on such an entry are **derived, not stored on trust**: on every load and
+save `src/sources/index.js` recomputes them from `source` as
+`source.<type>` / `<percent-encoded canonical ref>`. A GitHub owner cannot contain a dot, so
+the two namespaces cannot collide, and a hand-edited or imported entry cannot claim one
+identity while pointing at another. Everything human-facing — the row label, the name used
+to find the installed app, the process filter, the portable folder — comes from `name`
+(`core.appName` / `detectName` / `processName` / `folderName`), never from the opaque key.
+
+| Provider (`src/sources/`) | Reads | Checksum | Notes |
+|---|---|---|---|
+| `github.js` | the GitHub REST API, via the unchanged `src/github.js` | asset digest or a sums file in the release | a thin wrap; nothing about GitHub entries changed |
+| `gitlab.js` | `/api/v4/projects/<path>/releases` | a sums file among the release links | only files the project attached; generated source archives are dropped |
+| `gitea.js` | `/api/v1/repos/<o>/<r>/releases` (Codeberg, Forgejo, Gitea) | a sums file among the assets | |
+| `winget.js` | Microsoft's index on `cdn.winget.microsoft.com` (V2 for search and the latest version, V1 for the hash-pinned manifest) | **pinned** by the manifest | read with `node:sqlite`, `adm-zip` and `js-yaml` (FAILSAFE schema). `winget` itself is never run |
+| `brew.js` | `formulae.brew.sh/api/cask/<token>.json`, and a slimmed cached copy of the index for search | **pinned** by the cask, unless the cask says `no_check` | the record is merged with its variation for this macOS release and CPU before any decision. `brew` itself is never run |
+| `folder.js` | a vendor's directory listing, pasted by the user | a sums file in the folder, or `<file>.sha256` from the origin | no per-app recipe; see the header of the file for the listing dialects it reads |
+
+Both forge providers and the folder provider pick the **highest version**, not the first
+row: real feeds list a maintenance release of an old series above the newest one.
+
+**One selection for every path.** `sources.selectAsset` chooses the file for a machine and
+is used by Add, Check, Preview, dry-run and Update, so a check can never promise an update
+the install then refuses. Providers that state what a file is (WinGet, Homebrew) are chosen
+on those facts — platform, architecture, type, installer kind, then the flavor already
+installed, scope and locale. For the rest the existing filename picker runs **after**
+builds the machine cannot run have been removed (its scoring only penalises them, and a
+penalty still wins when the wrong build is the only one). x64 on arm64 Windows or macOS is
+allowed as an emulated fallback and is always flagged as such; it is never taken without
+the user seeing it. `runner.preflight` adds the listing's upgrade rule and the checksum
+setting, and gives the same answer in check, dry-run and update.
+
+**Network rules.** Providers never call `fetch`; they are handed `ctx.net`
+(`src/sources/net.js`): HTTPS only, a byte cap, and **no redirects** — a listing or API
+call that is redirected is refused before any request goes anywhere else. File downloads
+from a non-GitHub source are HTTPS on every hop; a redirect (vendors front downloads with
+mirror networks) is followed only after the next address has been validated. Node does that
+with `redirect: 'manual'`. Electron's `net.fetch` cannot — a manual redirect there is
+cancelled and exposes no `Location` — so the GUI injects a resolver built on `net.request`,
+whose `redirect` event fires before the hop is followed; the engine's `checkHop` decides
+each one and the address that finally answers is fetched directly with redirects refused.
+The declared address and the host that actually served the file are both recorded.
+
+**Checksums** resolve to one of three states: `pinned` (the listing states the hash of this
+exact file), `published` (a digest or sums file beside it) or `none`. A declared but
+malformed digest, or a listed checksum file that cannot be read, is an error rather than
+`none`. `"requireChecksum": true` (Settings → *Only install files that have a checksum*)
+refuses a `none` file from any source, GitHub included.
+
+**Adding.** `sources.resolve(text)` turns what the user typed into candidates: an address
+is matched by shape (GitHub, GitLab, Codeberg, a WinGet or Homebrew listing page) or, for
+an unrecognised host, probed for a forge API and then for a download folder. A name is
+looked up only in curated places — `src/shortcuts.json`, then the WinGet and Homebrew
+indexes — never by free-text search of GitHub, which is how impostor repositories get
+offered. `"sourcePreference": ["winget", "github"]` and `"typePreference": "portable"` let
+an **established** identity (a shortcut, or the one package whose id is exactly what was
+typed) be added without the chooser; anything looser always shows the options.
+
+`src/shortcuts.json` maps the names people use to a WinGet id, a Homebrew cask and/or a
+GitHub repo. It also feeds the Popular apps picker and packs (`src/packs.js`). A pack
+stores which apps, never which files, so it resolves per platform; an imported pack is
+rebuilt from the fields `validatePack` recognises (a shortcut id, or a provider's own
+identity fields) and adds nothing until its review list is confirmed.
 
 ## Verification & transactional installs
 
@@ -429,6 +506,7 @@ electron/main.js     Electron main process — window + IPC + native folder dial
 electron/preload.js  narrow contextBridge: the renderer only sees window.api.*
 ui/index.html        the renderer (no network; talks over IPC)
 ui/scan.html         the Scan this PC window
+ui/popular.html      the Popular apps and Packs window
 src/                 the engine (no UI, no shell):
   core.js            IO-free: version compare, asset pick, installer switches, validation
   github.js          release fetch + download + digest/checksums-file verify (sha256/sha512)
@@ -441,7 +519,13 @@ src/                 the engine (no UI, no shell):
   detect.js          installed versions/flavor + running-app check (async) — matching only
                      (token-boundary, and Linux-strict: see the header for why `ed` is not
                      Bedrock Panel and the `git` package is not git-updater)
-  catalog.js         known-apps catalog for "Scan this PC", filtered per platform
+  catalog.js         known-apps catalog for "Scan this PC", plus name lookup over shortcuts.json
+  shortcuts.json     popular apps -> WinGet id / Homebrew cask / GitHub repo (curated, verified)
+  packs.js           packs: built-in, saved, and the validation gate for imported files
+  sources/           where an app can come from (see "Sources" above):
+    index.js         the registry: keys, selection, checksum policy, resolver, provenance
+    net.js           ctx.net for providers: HTTPS only, no redirects, size-capped
+    github.js gitlab.js gitea.js winget.js brew.js folder.js   one provider per file
   log.js             file log -> <config dir>/logs (Settings -> Open log)
   platform/          EVERYTHING OS-specific lives here, behind one interface:
     index.js         dispatch on process.platform; a no-op impl for anything unsupported

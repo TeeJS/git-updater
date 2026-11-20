@@ -2,12 +2,14 @@
   <img src="docs/logo.png" alt="git-updater" width="440">
 </p>
 
-**Keep your apps up to date straight from their GitHub releases. Windows, macOS and Linux.**
+**Install and update your apps straight from their own sources. Windows, macOS and Linux.**
 
-A ton of great software ships on GitHub — and nothing keeps it updated. git-updater is a
-self-hosted **Ninite replacement**: you pick the apps, it checks their latest releases and
-updates them, portable apps and installed programs alike. No accounts, no background
-services, no store — just your list and GitHub.
+A ton of great software ships on GitHub, on a vendor's own download page, or through a
+package listing — and nothing keeps all of it updated. git-updater is a self-hosted
+**Ninite replacement**: you pick the apps, it checks their latest releases and updates
+them, portable apps and installed programs alike. No accounts, no background services, no
+store — just your list, and for every app a plain statement of **where its file comes
+from**.
 
 ## Get it
 
@@ -31,27 +33,48 @@ The tarball has no such requirement, which is why it is the recommended Linux do
 
 ## What it does
 
-- **Tracks any app that ships GitHub releases.** Paste a releases URL (or `owner/repo`),
-  say whether you want it *portable* or *installed*, done. It figures out the right download
-  for your machine by itself — platform, architecture, archive vs installer, even matching
-  the format an app is already installed in (MSI vs EXE on Windows, deb vs rpm on Linux) so
-  you never end up with duplicates.
+- **One box: a name, a GitHub URL, or any https address.** Type `vlc`, paste a GitHub or
+  GitLab/Codeberg project, or paste a vendor's download folder
+  (`download.blender.org/release/`). git-updater lists the sources it found and, for each,
+  the exact file this computer would get, the host it downloads from and whether it can be
+  verified. You pick one. It figures out the right download by itself — platform,
+  architecture, archive vs installer, even matching the format an app is already installed
+  in (MSI vs EXE on Windows, deb vs rpm on Linux) so you never end up with duplicates.
+- **Five kinds of source, always shown.** GitHub releases; GitLab and Gitea/Codeberg
+  releases; **WinGet** listings on Windows and **Homebrew** listings on macOS (read as
+  listings — git-updater fetches the vendor's own file and never runs `winget` or `brew`);
+  and plain vendor download folders. Every row carries a source badge and the download
+  host, the preview shows the full address, and the log records the host that actually
+  served the file when a mirror was involved.
+- **Popular apps and packs.** A categorized checklist of well-known apps, each mapped to
+  its real identity (the names people type, not package ids). Tick several, review where
+  every file comes from, add them in one go. A *pack* is a named set of apps: a few are
+  built in, you can save the apps on this computer as one, and export it as a file to set
+  up another machine — a pack stores which apps, never which files, so the same pack
+  works on Windows, macOS and Linux.
+- **Your preferences decide.** Set a preferred source order (GitHub first, or WinGet
+  first…) and a preferred type (portable or installer); when an app is available that way
+  it is added without asking, and the row still says where it came from.
 - **Shows what you actually have.** *Current* comes from the system itself — the uninstall
   registry on Windows, the app bundle's own version on macOS, dpkg/rpm/flatpak/snap on
   Linux, or the portable folder — not from what some tool remembers doing. Next to it: the
   latest available version and a live status.
 - **Updates on your terms.** Per-app Check/Update buttons, or *Check all* / *Update all*
   batches with live progress (Downloading 42% → Verifying → Installing). Each row has an
-  overflow menu: Edit, Force reinstall, Close app & update, View release, Open folder,
-  Stop tracking.
+  overflow menu: Edit, Force reinstall, Close app & update, View source, Preview selected
+  file, Open folder, Stop tracking.
 - **Scan this PC** (Windows and macOS). Finds programs you already have that git-updater
   recognizes — a curated catalog of 120+ GitHub-released apps (browsers, media, dev tools,
   AI tools, runtimes), filtered to the ones that exist on your platform — and adds the ones
   you pick. Not offered on Linux, where your package manager already owns most of what it
   would find and accepting a suggestion would give you a second copy outside it. Browsing
   the whole catalog and cherry-picking works everywhere.
-- **Safe by default.** Every download is checksum-verified. Portable updates are
-  transactional — a failed or interrupted update restores the previous version completely,
+- **Safe by default.** Anything that is not GitHub is fetched over HTTPS only, on every
+  hop. A checksum is verified whenever one exists — pinned by a WinGet or Homebrew
+  listing, or published beside the file — and a mismatch always stops the install. When a
+  vendor publishes none the app says so, on the row and in the log; a Settings switch,
+  *Only install files that have a checksum*, refuses those files outright. Portable
+  updates are transactional — a failed or interrupted update restores the previous version completely,
   and your settings inside the app folder survive. Installers that need admin rights fall
   back to their own window with a normal UAC prompt.
 - **Quiet by design.** Nothing runs at startup, nothing phones home, no background service.
