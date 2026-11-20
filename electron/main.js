@@ -9,6 +9,7 @@
 const { app, BrowserWindow, ipcMain, dialog, shell, screen, net, safeStorage, Tray, Menu, nativeImage, Notification, powerMonitor } = require('electron');
 const fs = require('fs');
 const path = require('path');
+const { fileURLToPath } = require('url');
 const core = require('../src/core');
 const github = require('../src/github');
 const runner = require('../src/runner');
@@ -525,7 +526,13 @@ ipcMain.handle('log:open', () => shell.openPath(LOG_FILE));
 
 // --- "Scan this PC" window: find installed catalog apps and add selected ---
 let scanWin = null;
-ipcMain.handle('scan:open', (_e, mode) => {
+ipcMain.handle('scan:open', () => {
+  // The window has one mode, "Installed on this PC", and that mode answers nothing where
+  // scanning is refused (see SCAN_PLATFORMS). Refuse to open it there rather than show an
+  // empty window; the button is hidden on those platforms too.
+  if (!SCAN_PLATFORMS.has(process.platform)) {
+    throw new Error(`Scan this PC is not available on ${process.platform}; use Popular apps to add known apps`);
+  }
   if (scanWin && !scanWin.isDestroyed()) return scanWin.focus();
   scanWin = new BrowserWindow({
     width: 680,
@@ -536,18 +543,15 @@ ipcMain.handle('scan:open', (_e, mode) => {
     icon: path.join(__dirname, 'icon.png'),
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false },
   });
-  // Linux has no installed-apps mode, so the window always opens on the catalog there
-  // rather than on a tab that would answer nothing.
-  const wanted = SCAN_PLATFORMS.has(process.platform) ? mode : 'all';
-  scanWin.loadFile(path.join(__dirname, '..', 'ui', 'scan.html'), wanted === 'all' ? { query: { mode: 'all' } } : undefined);
+  scanWin.loadFile(path.join(__dirname, '..', 'ui', 'scan.html'));
 });
 // "Scan this PC" reads what is ALREADY INSTALLED and offers matches. That is the wrong
 // question on Linux, where a package manager already owns most of what it would find:
 // accepting a suggestion installs a SECOND copy outside dpkg, and the user ends up with
 // two, launching whichever the desktop happens to resolve.
 //
-// Browsing the catalog is unaffected and stays — it never inspects the system, so none of
-// that applies. Windows and macOS keep the scan: there is no system package manager
+// Known apps stay addable everywhere through Popular apps, which never inspects the system,
+// so none of that applies. Windows and macOS keep the scan: there is no system package manager
 // updating those apps behind our back, which is the entire reason this program exists.
 //
 // Refused here as well as hidden in the UI. A disabled button is a suggestion; an empty
@@ -561,13 +565,6 @@ ipcMain.handle('scan:run', async () => {
   detect.clearCache();
   const tracked = new Set(readConfig().repos.map((r) => `${r.owner}/${r.repo}`.toLowerCase()));
   return catalog.matchInstalled(await detect.allInstalled(), tracked); // filtered to this OS
-});
-// The whole catalog (for "All known apps" browsing), tracked entries flagged.
-ipcMain.handle('catalog:all', () => {
-  const tracked = new Set(readConfig().repos.map((r) => `${r.owner}/${r.repo}`.toLowerCase()));
-  return catalog.CATALOG
-    .map((c) => ({ name: c.name, repo: c.repo, tracked: tracked.has(c.repo.toLowerCase()) }))
-    .sort((a, b) => a.name.localeCompare(b.name));
 });
 // Add selected repos: [{repo: "owner/name", type: "portable"|"installer"}].
 ipcMain.handle('scan:add', (_e, items) => {
@@ -688,33 +685,229 @@ ipcMain.handle('sources:providers', () => {
 // text into candidates; inspect says what each one would install on THIS machine; add
 // builds the config entry main-side. The renderer never constructs a key or a URL.
 const catalogLookup = (name, platform) => catalog.lookup(name, platform);
+const addPage = path.join(__dirname, '..', 'ui', 'add.html');
+const mainPage = path.join(__dirname, '..', 'ui', 'index.html');
+const popularPage = path.join(__dirname, '..', 'ui', 'popular.html');
+let addView = null;
+let lastSearch = null;
+let nextSearchId = 0;
 
-ipcMain.handle('source:resolve', async (_e, text) => {
+function fromWindow(e, w, expectedFile) {
+  if (!w || w.isDestroyed() || e.sender !== w.webContents) return false;
+  const frame = e.senderFrame;
+  if (!frame || frame !== w.webContents.mainFrame) return false;
+  try {
+    const url = new URL(frame.url);
+    if (url.protocol !== 'file:') return false;
+    // Compare decoded local paths so file URL serialization and the Packs query
+    // cannot affect the sender check. Windows paths are case-insensitive.
+    const windows = process.platform === 'win32';
+    const actual = path.normalize(fileURLToPath(url, { windows }));
+    const expected = path.normalize(expectedFile);
+    return windows ? actual.toLowerCase() === expected.toLowerCase() : actual === expected;
+  } catch {
+    return false;
+  }
+}
+
+function requireMainWindow(e) {
+  if (!fromWindow(e, win, mainPage)) throw new Error('only the main window can use the main Add row');
+}
+
+function requireAddView(e) {
+  if (!addView || addView.parent !== win || win.isDestroyed() || !fromWindow(e, addView.window, addPage)) {
+    throw new Error('not the Add an app window');
+  }
+  return addView;
+}
+
+function searchInput(input) {
+  const { text, prerelease } = input || {};
+  if (typeof text !== 'string' || text.length > 2048 || !text.trim() || typeof prerelease !== 'boolean') {
+    throw new Error('enter an app name or address up to 2048 characters');
+  }
+  return { text: text.trim(), prerelease };
+}
+
+async function resolveAppSearch(input) {
+  const { text, prerelease } = searchInput(input);
+  const id = ++nextSearchId;
+  const { kind, candidates: resolved } = await sources.resolve(text, sources.makeCtx(), { catalog: catalogLookup });
   const cfg = readConfig();
-  const out = await sources.resolve(String(text || ''), sources.makeCtx(), { catalog: catalogLookup });
-  const pick = sources.autoPick(out.candidates, cfg.sourcePreference);
-  const tracked = new Set(cfg.repos.map((r) => `${r.owner}/${r.repo}`));
-  const candidates = out.candidates.map((c) => {
-    if (c.error) return c;
-    const k = sources.keyParts(c.source);
-    return { ...c, tracked: tracked.has(`${k.owner}/${k.repo}`) };
+  const tracked = trackedKeys(cfg);
+  const candidates = resolved.map((c) => c.error ? c : { ...c, tracked: isTracked(tracked, c.source) });
+  const autoPick = candidates.indexOf(sources.autoPick(candidates, cfg.sourcePreference));
+  return { id, text, prerelease, kind, candidates, autoPick, typePreference: cfg.typePreference, previews: new Map() };
+}
+
+ipcMain.handle('source:resolve', async (e, input) => {
+  requireMainWindow(e);
+  const parent = win;
+  const search = await resolveAppSearch(input);
+  // A delayed result from an earlier request or a closed window cannot replace a later result.
+  if (parent === win && !parent.isDestroyed() && (!lastSearch || search.id > lastSearch.id)) {
+    lastSearch = { ...search, parent };
+  }
+  return { searchId: search.id, kind: search.kind, candidates: search.candidates, autoPick: search.autoPick };
+});
+
+function searchData(search) {
+  if (!search) return null;
+  const { id, text, prerelease, candidates, autoPick, typePreference } = search;
+  const cards = [];
+  const notes = [];
+  candidates.forEach((c, index) => {
+    if (c.error) notes.push(String(c.error));
+    else cards.push({ index, name: c.name, sourceType: c.source.type, listedBy: c.listedBy, curated: c.curated, channel: c.channel, tracked: c.tracked });
   });
-  return { kind: out.kind, candidates, autoPick: pick ? out.candidates.indexOf(pick) : -1 };
+  return { id, text, prerelease, candidates: cards, notes, autoPick, typePreference };
+}
+
+// The toolbar focuses the existing window. A bottom-row handoff replaces its
+// search with the resolver result already held by main, including empty results.
+ipcMain.handle('results:open', async (e, searchId) => {
+  requireMainWindow(e);
+  const parent = win;
+  let search = null;
+  if (searchId !== undefined) {
+    if (!lastSearch || lastSearch.parent !== parent || searchId !== lastSearch.id) {
+      throw new Error('that search is no longer current');
+    }
+    search = lastSearch;
+  }
+  if (!addView || addView.parent !== parent || addView.window.isDestroyed()) {
+    const window = new BrowserWindow({
+      width: 780,
+      height: 700,
+      minWidth: 520,
+      minHeight: 380,
+      title: 'Add an app',
+      parent,
+      backgroundColor: '#0d1117',
+      autoHideMenuBar: true,
+      icon: path.join(__dirname, 'icon.png'),
+      show: false,
+      webPreferences: { preload: path.join(__dirname, 'add-preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true },
+    });
+    const view = { window, parent, search, request: null };
+    addView = view;
+    window.once('closed', () => { if (addView === view) addView = null; });
+    window.webContents.on('will-navigate', (event) => event.preventDefault());
+    window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+    view.loaded = window.loadFile(addPage).catch((err) => {
+      if (!window.isDestroyed()) window.destroy();
+      throw err;
+    });
+  } else if (search) {
+    addView.request = null;
+    addView.search = search;
+    addView.window.webContents.send('results:show-search', searchData(search));
+  }
+  const view = addView;
+  await view.loaded;
+  if (addView !== view || view.window.isDestroyed() || parent.isDestroyed()) return;
+  if (view.window.isMinimized()) view.window.restore();
+  view.window.show();
+  view.window.focus();
 });
-// A candidate is not an installed app yet, so nothing about what happens to be installed
-// may steer which file its preview shows: no installer flavor is passed, only the OS.
-ipcMain.handle('source:inspect', async (_e, { source, prerelease }) => {
+
+ipcMain.handle('results:data', (e) => searchData(requireAddView(e).search));
+
+ipcMain.handle('results:search', async (e, input) => {
+  const view = requireAddView(e);
+  const request = {};
+  view.request = request;
+  view.search = null;
+  try {
+    const search = await resolveAppSearch(input);
+    if (addView !== view || view.request !== request) return null;
+    view.search = search;
+    return searchData(search);
+  } catch (err) {
+    if (addView === view && view.request === request) throw err;
+    return null;
+  }
+});
+
+function resultCandidate(view, selection) {
+  const { id, index } = selection || {};
+  const { search } = view;
+  const candidate = search && id === search.id && Number.isSafeInteger(index) && index >= 0
+    ? search.candidates[index] : null;
+  if (!candidate || candidate.error) throw new Error('that search result is no longer available');
+  return { search, candidate };
+}
+
+// A candidate is not an installed app yet, so the preview does not use an installed
+// app's flavor. Both the main Add row and the Add window preview against the OS.
+function inspectSource(source, prerelease) {
   const k = sources.keyParts(source);
-  const probe = { ...k, source: source.type === 'github' ? undefined : source, name: 'candidate', prerelease: !!prerelease };
+  const probe = { ...k, source: source.type === 'github' ? undefined : source, name: 'candidate', prerelease };
   return sources.inspect(probe, sources.makeCtx(), { osRelease: detect.osRelease() });
+}
+
+ipcMain.handle('source:inspect', (e, { source, prerelease }) => {
+  requireMainWindow(e);
+  return inspectSource(source, !!prerelease);
 });
-ipcMain.handle('source:open', (_e, source) => {
+
+ipcMain.handle('results:inspect', async (e, selection) => {
+  const view = requireAddView(e);
+  const { search, candidate } = resultCandidate(view, selection);
+  const info = await inspectSource(candidate.source, search.prerelease);
+  search.previews.set(selection.index, info);
+  return info;
+});
+
+ipcMain.handle('results:open-source', (e, selection) => {
+  const { candidate: { source } } = resultCandidate(requireAddView(e), selection);
   const k = sources.keyParts(source);
   return shell.openExternal(sources.pageUrl({ ...k, type: 'portable', source: source.type === 'github' ? undefined : source }));
 });
+
+ipcMain.handle('results:close', (e) => requireAddView(e).window.close());
+
+ipcMain.handle('results:add', (e, selection) => {
+  const view = requireAddView(e);
+  const { search, candidate } = resultCandidate(view, selection);
+  const { index, type, automatic } = selection;
+  if ((type !== 'installer' && type !== 'portable') || typeof automatic !== 'boolean') {
+    throw new Error('invalid package type or add mode');
+  }
+  const file = search.previews.get(index)?.types[type];
+  if (!file?.ok) throw new Error('that package is not available');
+  if (automatic) {
+    const cfg = readConfig();
+    const pick = sources.autoPick(search.candidates, cfg.sourcePreference);
+    if (pick !== candidate || cfg.typePreference !== type || file.emulated
+        || isTracked(trackedKeys(cfg), candidate.source)) return { needsChoice: true };
+  }
+
+  const res = addSourceItems([{ source: candidate.source, name: candidate.name, type, prerelease: search.prerelease }]);
+  if (!res.added) {
+    const clash = res.conflicts[0];
+    const label = type === 'portable' ? 'Portable' : 'Installer';
+    return { error: clash
+      ? `${candidate.name} would unpack into the same folder as ${clash.with}, which is already in your list. Stop tracking that one first, or add this as an Installer.`
+      : `${candidate.name} (${label}) is already in your list.` };
+  }
+
+  // Report only the actual committed keys and the main-process preview. Clearing the
+  // search also prevents replay before the native window finishes closing.
+  view.search = null;
+  const from = ` — file from ${file.host}${file.checksum === 'none' ? ', no checksum published' : ''}`;
+  view.parent.webContents.send('results:added', {
+    keys: res.keys,
+    message: `Added ${candidate.name} from ${candidate.listedBy}${from}.`.slice(0, 400),
+    handoff: search.parent ? { text: search.text, prerelease: search.prerelease } : null,
+  });
+  view.window.close();
+  return { added: res.added };
+});
+
 // items: [{ source, name, type, prerelease }]. Returns { added, skipped, conflicts, keys }.
-ipcMain.handle('source:add', (_e, items) => {
-  if (!Array.isArray(items)) throw new Error('items must be an array');
+function addSourceItems(items) {
+  if (!Array.isArray(items) || items.length > 2048) throw new Error('expected an array of up to 2048 apps');
   const cfg = readConfig();
   if (!Array.isArray(cfg.repos)) cfg.repos = [];
   if (items.some((i) => i && i.type === 'portable') && !cfg.portableRoot) {
@@ -756,9 +949,16 @@ ipcMain.handle('source:add', (_e, items) => {
     log(`added ${keys[keys.length - 1]} (${core.displayId(entry)}) from ${sources.describe(entry).label}`);
   }
   if (keys.length) saveConfigFile(cfg);
-  // Added from the picker window: the main window has to reload its list.
-  if (keys.length && _e && _e.sender && win && !win.isDestroyed() && _e.sender !== win.webContents) win.webContents.send('config-changed');
   return { added: keys.length, skipped, conflicts, keys };
+}
+
+ipcMain.handle('source:add', (e, items) => {
+  const fromMain = fromWindow(e, win, mainPage);
+  const fromPicker = fromWindow(e, popularWin, popularPage);
+  if (!fromMain && !fromPicker) throw new Error('only the main or Popular apps window can add these apps');
+  const res = addSourceItems(items);
+  if (res.added && fromPicker && win && !win.isDestroyed()) win.webContents.send('config-changed');
+  return res;
 });
 // --- Popular apps and packs ----------------------------------------------------
 // Both add several apps at once, so both go through the SAME review step: plan() says,

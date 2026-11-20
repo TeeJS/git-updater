@@ -44,8 +44,8 @@ test('every Settings control moved to the Settings screen, once, and none was lo
   }
 });
 
-test('the list screen keeps the list, the search, Add an app and Known apps', () => {
-  for (const id of ['rows', 'search', 'filterType', 'filterStatus', 'checkAll', 'updateAll', 'newRepo', 'scanPc', 'browseAll', 'msg', 'openSettings']) {
+test('the list screen keeps the list, the search, Add an app and the Known apps buttons', () => {
+  for (const id of ['rows', 'search', 'filterType', 'filterStatus', 'checkAll', 'updateAll', 'newRepo', 'scanPc', 'packsBtn', 'browseAll', 'msg', 'openSettings']) {
     assert.ok(mainScreen.includes(`id="${id}"`), `${id} is on the list screen`);
   }
   assert.ok(settingsScreen.includes('id="settingsBack"'), 'Back is on the Settings screen');

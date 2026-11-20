@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:; font-src 'self'">
-<title>Add known apps — git-updater</title>
+<title>Scan this PC — git-updater</title>
 <style>
   :root {
     --bg: #0d1117; --panel: #161b22; --border: #30363d;
@@ -16,10 +16,6 @@
   body { margin: 0; padding: 1.1rem 1.25rem; color: var(--text); font: 15px/1.5 var(--sans); background: var(--bg);
          display: flex; flex-direction: column; height: 100vh; }
   h1 { font: 600 1rem var(--mono); margin: 0 0 .6rem; }
-  .seg { display: inline-flex; padding: 3px; gap: 3px; border-radius: 9px; background: #161b22; border: 1px solid var(--border); }
-  .seg button { border: 1px solid transparent; background: transparent; color: var(--muted); padding: .3rem .7rem; border-radius: 6px; font: 600 13px var(--sans); cursor: pointer; }
-  .seg button.active { background: #21262d; color: var(--text); border-color: #444c56; }
-  .seg.mini button { padding: .14rem .45rem; font-size: 11.5px; }
   .list { flex: 1; overflow-y: auto; margin-top: .6rem; border-top: 1px solid var(--border); }
   .row { display: grid; grid-template-columns: 26px minmax(0,1fr) 90px minmax(0,1.2fr) 128px; column-gap: 10px;
          align-items: center; padding: .42rem 0; border-bottom: 1px solid var(--border); }
@@ -40,13 +36,7 @@
 </style>
 </head>
 <body>
-<h1>Add known apps</h1>
-<div class="row" style="display:flex;border:0;padding:0">
-  <div class="seg" id="mode">
-    <button type="button" data-mode="installed" class="active">Installed on this PC</button>
-    <button type="button" data-mode="all">All known apps</button>
-  </div>
-</div>
+<h1>Installed on this PC</h1>
 <div id="status">Scanning…</div>
 
 <div class="list" id="list"></div>
@@ -62,14 +52,12 @@
 
 <script>
 const $ = (id) => document.getElementById(id);
-let mode = 'installed';
 let installedRows = null; // cached scan result
-let catalogRows = null;   // cached full catalog
 const selected = new Map(); // repo -> chosen type
 
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
 
-function rowsFor() { return (mode === 'installed' ? installedRows : catalogRows) || []; }
+function rowsFor() { return installedRows || []; }
 
 function render() {
   const list = $('list');
@@ -88,29 +76,13 @@ function render() {
 
     const app = el('span', 'app', r.name); app.title = r.displayName || r.name;
     row.appendChild(app);
-    row.appendChild(el('span', 'ver', mode === 'installed' ? (r.version || '—') : ''));
+    row.appendChild(el('span', 'ver', r.version || '—'));
     const repo = el('span', 'repo', r.repo + (r.tracked ? '  (tracked)' : '')); repo.title = r.repo;
     row.appendChild(repo);
 
-    // Type: fixed "Installer" for installed-scan; a per-row choice when browsing.
+    // Type: an app found installed is tracked as Installer.
     const typeWrap = el('span');
-    if (!r.tracked) {
-      if (mode === 'installed') typeWrap.appendChild(el('span', 'ver', 'Installer'));
-      else {
-        const seg = el('span', 'seg mini');
-        for (const t of ['portable', 'installer']) {
-          const b = el('button', r.type === t ? 'active' : null, t === 'portable' ? 'Portable' : 'Installer');
-          b.type = 'button';
-          b.onclick = () => {
-            r.type = t;
-            if (selected.has(r.repo)) selected.set(r.repo, t);
-            render();
-          };
-          seg.appendChild(b);
-        }
-        typeWrap.appendChild(seg);
-      }
-    }
+    if (!r.tracked) typeWrap.appendChild(el('span', 'ver', 'Installer'));
     row.appendChild(typeWrap);
     list.appendChild(row);
   }
@@ -132,26 +104,12 @@ $('selAll').onchange = (e) => {
   render();
 };
 
-$('mode').querySelectorAll('button').forEach((b) => {
-  b.onclick = async () => {
-    $('mode').querySelectorAll('button').forEach((x) => x.classList.toggle('active', x === b));
-    mode = b.dataset.mode;
-    selected.clear();
-    await load();
-  };
-});
-
 async function load() {
   $('status').textContent = 'Loading…';
   try {
-    if (mode === 'installed') {
-      if (!installedRows) installedRows = (await window.api.scanRun()).map((r) => ({ ...r, type: 'installer' }));
-      const n = installedRows.length, add = installedRows.filter((r) => !r.tracked).length;
-      $('status').textContent = n ? `Found ${n} known installed app${n > 1 ? 's' : ''}; ${add} not yet tracked.` : 'No known apps found on this PC.';
-    } else {
-      if (!catalogRows) catalogRows = (await window.api.catalogAll()).map((r) => ({ ...r, type: r.type || 'portable' }));
-      $('status').textContent = `${catalogRows.length} apps git-updater knows how to update — pick the package type for each.`;
-    }
+    if (!installedRows) installedRows = (await window.api.scanRun()).map((r) => ({ ...r, type: 'installer' }));
+    const n = installedRows.length, add = installedRows.filter((r) => !r.tracked).length;
+    $('status').textContent = n ? `Found ${n} known installed app${n > 1 ? 's' : ''}; ${add} not yet tracked.` : 'No known apps found on this PC.';
     render();
   } catch (e) { $('status').textContent = String(e.message || e); }
 }
@@ -164,29 +122,9 @@ $('add').onclick = async () => {
 };
 $('close').onclick = () => window.close();
 
-const showAll = () => {
-  mode = 'all';
-  $('mode').querySelectorAll('button').forEach((x) => x.classList.toggle('active', x.dataset.mode === 'all'));
-};
-
-// Optional start mode via ?mode=all
-if (new URLSearchParams(location.search).get('mode') === 'all') showAll();
-
-// On Linux there is no installed-apps scan — the package manager already owns most of
-// what it would find, so accepting a suggestion would install a second copy outside it.
-// The main process returns nothing there; this hides the tab rather than leaving one that
-// answers nothing. Awaited before the first load so the window never renders the wrong tab.
-(async () => {
-  try {
-    const { canScan } = await window.api.getPlatform();
-    if (!canScan) {
-      const tab = $('mode').querySelector('[data-mode="installed"]');
-      if (tab) tab.style.display = 'none';
-      showAll();
-    }
-  } catch {} // an older main process without the handler keeps today's behaviour
-  load();
-})();
+// The main process refuses to open this window where scanning is not offered (Linux),
+// so there is no other mode to fall back to here.
+load();
 </script>
 </body>
 </html>
