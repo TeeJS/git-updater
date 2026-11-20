@@ -157,10 +157,13 @@ const linux = {
   // `sources?` is plural in the wild (OBS ships "OBS-Studio-32.2.2-Sources.tar.gz"), and a
   // source tarball is a valid .tar.gz that unpacks into a folder — so without this it scores
   // as a legitimate portable build and installs 5,000 files of C++ with nothing to launch.
+  // `src` is the same thing under its other common spelling: Forgejo publishes
+  // "forgejo-src-17.0.2.tar.gz" beside bare binaries, and with nothing else unpackable in
+  // the release it was chosen as the Linux portable build (found on a real Linux host).
   // The debug-symbol artifacts alongside it (.ddeb, -dbsym, -dSYMs, -PDBs, -debuginfo) are
   // companions of a real build, never the build.
   reject:
-    /\.(exe|msi|dmg|pkg|apk|ddeb)$|(?:^|[-_.])(win(?:dows|32|64)?|darwin|mac(?:os)?|osx|android|freebsd|sources?|dbsym|dsyms|pdbs|debuginfo)(?:[-_.0-9]|$)/i,
+    /\.(exe|msi|dmg|pkg|apk|ddeb)$|(?:^|[-_.])(win(?:dows|32|64)?|darwin|mac(?:os)?|osx|android|freebsd|sources?|src|dbsym|dsyms|pdbs|debuginfo)(?:[-_.0-9]|$)/i,
   ext: {
     // A .zip counts ONLY when something in the name says Linux. Linux software ships
     // .tar.gz, .tar.xz or an AppImage; .zip is the Windows and macOS convention, and a

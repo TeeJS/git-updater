@@ -10,6 +10,8 @@ const path = require('path');
 
 const gitlab = require('../src/sources/gitlab');
 const gitea = require('../src/sources/gitea');
+const sources = require('../src/sources');
+const core = require('../src/core');
 
 const fx = (...p) => JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'sources', ...p), 'utf8'));
 const ctxFor = (routes) => ({
@@ -121,4 +123,21 @@ test('gitea.probe: recognises an unknown host that speaks the API, and only then
   );
   assert.equal(await gitea.probe(url, ctxFor({})), null);
   assert.equal(await gitea.probe(url, ctxFor({ 'https://git.example.org/api/v1/repos/team/tool/releases?limit=1': { message: 'nope' } })), null);
+});
+
+test('Forgejo on Linux: the source tarball is never taken for the app', async () => {
+  // Real release: bare binaries (forgejo-17.0.2-linux-amd64), their .xz, and
+  // forgejo-src-17.0.2.tar.gz. Nothing there is an unpackable Linux build, so the honest
+  // answer is "no Linux portable asset" — not a folder full of source code.
+  const list = fx('gitea', 'codeberg-forgejo-releases.json');
+  const rel = await gitea.getLatestRelease(FORGEJO, ctxFor({ [FORGEJO_API]: list }));
+  assert.ok(rel.assets.some((a) => a.name === 'forgejo-src-17.0.2.tar.gz'), 'the fixture does contain the source tarball');
+  const entry = sources.normalizeEntry({ type: 'portable', name: 'Forgejo', source: { ...FORGEJO } });
+  for (const arch of ['x64', 'arm64']) {
+    assert.throws(() => sources.selectAsset(entry, rel, { platform: 'linux', arch }), /no Linux portable asset/, arch);
+  }
+  // The rule lives in the shared picker, so a GitHub release shaped the same way is covered too.
+  assert.throws(() => core.pickAsset([{ name: 'tool-src-1.2.3.tar.gz' }, { name: 'tool_src.tar.xz' }], 'portable', 'x64', null, 'linux'), /no Linux portable asset/);
+  // ...without catching real builds that merely contain those letters.
+  assert.equal(core.pickAsset([{ name: 'srcery-1.0-linux-x86_64.tar.gz' }], 'portable', 'x64', null, 'linux').name, 'srcery-1.0-linux-x86_64.tar.gz');
 });
