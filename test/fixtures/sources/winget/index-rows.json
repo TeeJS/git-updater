@@ -1,0 +1,97 @@
+{
+  "verifiedAtUtc": "2026-11-20T06:37:44.594445+00:00",
+  "indexes": [
+    {
+      "url": "https://cdn.winget.microsoft.com/cache/source.msix",
+      "http": 200,
+      "bytes": 22112331,
+      "schema": {
+        "majorVersion": "1",
+        "minorVersion": "7"
+      }
+    },
+    {
+      "url": "https://cdn.winget.microsoft.com/cache/source2.msix",
+      "http": 200,
+      "bytes": 4014992,
+      "schema": {
+        "majorVersion": "2",
+        "minorVersion": "1"
+      }
+    }
+  ],
+  "packages": [
+    {
+      "id": "BlenderFoundation.Blender",
+      "name": "blender",
+      "moniker": "blender",
+      "version": "5.3.0",
+      "fixture": "BlenderFoundation.Blender.merged.yaml.txt",
+      "url": "https://cdn.winget.microsoft.com/cache/manifests/b/BlenderFoundation/Blender/5.3.0/d68a",
+      "http": 200,
+      "bytes": 3677,
+      "manifestSha256": "1d80422e62748e9ffa34a95914cfa9c158e2e54d8b19ed8270f51dcde8534a77",
+      "v2VersionDataSha256": "41d4b67b9654a6d3c511b94cb68a2919fd0def15d269ef60f5fd4a5a99a68018"
+    },
+    {
+      "id": "VideoLAN.VLC",
+      "name": "VLC media player",
+      "moniker": "vlc",
+      "version": "3.0.24",
+      "fixture": "VideoLAN.VLC.merged.yaml.txt",
+      "url": "https://cdn.winget.microsoft.com/cache/manifests/v/VideoLAN/VLC/3.0.24/16cd",
+      "http": 200,
+      "bytes": 7011,
+      "manifestSha256": "629c5bc6b1bcd2d5692ba1d795d68976ef58c4a3a7b905c6b2a4a70744edc770",
+      "v2VersionDataSha256": "9f8c3bb2d3eb0e58fa65335ca8ff1286846a7233d6a7553a10c83c2a401ed3f3"
+    },
+    {
+      "id": "Mozilla.Firefox",
+      "name": "Mozilla Firefox (en-US)",
+      "moniker": "firefox",
+      "version": "160.0.1",
+      "fixture": "Mozilla.Firefox.merged.yaml.txt",
+      "url": "https://cdn.winget.microsoft.com/cache/manifests/m/Mozilla/Firefox/160.0.1/2d09",
+      "http": 200,
+      "bytes": 25045,
+      "manifestSha256": "29808b749417a14adffea0b3139893d11db50b59956d92c695f06bc71ce42778",
+      "v2VersionDataSha256": "12639125f523cb3daacb5b46399761ab0e6e940f80c73218737e190f8f82bb3f"
+    },
+    {
+      "id": "TheDocumentFoundation.LibreOffice",
+      "name": "LibreOffice",
+      "moniker": "libreoffice",
+      "version": "26.8.3.1",
+      "fixture": "TheDocumentFoundation.LibreOffice.merged.yaml.txt",
+      "url": "https://cdn.winget.microsoft.com/cache/manifests/t/TheDocumentFoundation/LibreOffice/26.8.3.1/eb17",
+      "http": 200,
+      "bytes": 4717,
+      "manifestSha256": "8b4821ac7f19c99d743b02fd623eace03f31c2ae07c84b402859a4ef9c0b7cd3",
+      "v2VersionDataSha256": "fbc2b58974bf12b4733ec0f0f3c8e809d5c01a5228b3a28c69d63a22bfbeaed5"
+    },
+    {
+      "id": "7zip.7zip",
+      "name": "7-Zip",
+      "moniker": "7zip",
+      "version": "26.06",
+      "fixture": "7zip.7zip.merged.yaml.txt",
+      "url": "https://cdn.winget.microsoft.com/cache/manifests/7/7zip/7zip/26.06/67fd",
+      "http": 200,
+      "bytes": 4946,
+      "manifestSha256": "f86fb8436b561e28bc12be77e88d15aa5a1ece54aa417a61796d8b5f44a429e7",
+      "v2VersionDataSha256": "a701c043b735d27c9141069e3f5c01b9d87bb004e06850ed7803abfdf144056c"
+    },
+    {
+      "id": "Git.Git",
+      "name": "Git",
+      "moniker": "git",
+      "version": "2.56.0.4",
+      "fixture": "Git.Git.merged.yaml.txt",
+      "url": "https://cdn.winget.microsoft.com/cache/manifests/g/Git/Git/2.56.0.4/16cd",
+      "http": 200,
+      "bytes": 4285,
+      "manifestSha256": "fe81e7ceaf0b055addfcdd9707293d896e273e9499cd5327be5a450ffe068953",
+      "v2VersionDataSha256": "ef34cd0d5f2d6d5477ad01d13d946bd02560077fa51f5f0aff06be76d4892340"
+    }
+  ]
+}

@@ -1,7 +1,7 @@
 {
   "name": "git-updater",
-  "version": "0.2.7",
-  "description": "Desktop GUI that updates apps from their GitHub releases (portable & installed). Windows, macOS and Linux. Electron front-end, no localhost server, no shell. Quiet by default; optional start at login and tray.",
+  "version": "0.3.0-beta.1",
+  "description": "Desktop GUI that installs and updates apps from their own sources: GitHub, GitLab and Codeberg releases, WinGet and Homebrew listings, and vendor download folders (portable & installed). Windows, macOS and Linux. Electron front-end, no localhost server, no shell. Quiet by default; optional start at login and tray.",
   "bin": {
     "git-updater": "bin/watch.js"
   },
@@ -21,7 +21,8 @@
   "dependencies": {
     "7z-wasm": "^1.2.0",
     "adm-zip": "^0.6.1",
-    "electron-updater": "^6.8.9"
+    "electron-updater": "^6.8.9",
+    "js-yaml": "^4.3.2"
   },
   "devDependencies": {
     "electron": "^44.3.0",

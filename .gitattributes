@@ -1,0 +1,3 @@
+# Fixtures are captures of real server responses and must reach every checkout byte for
+# byte. Without this, a Windows checkout with core.autocrlf=true rewrites them to CRLF.
+test/fixtures/** -text

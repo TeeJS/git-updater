@@ -248,6 +248,11 @@ const INSTALLER_SWITCHES = {
     cmd: (file) => [file, ['/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART']],
     override: (file, args) => args,
   },
+  // A vendor executable built with no installer framework git-updater recognises. It has
+  // NO default switches: it runs only with switches a listing declared for this exact
+  // file, or ones the user pinned in config.json — never a guess. installerCmd refuses it
+  // outright when there are none.
+  exe: { cmd: (file) => [file, null], override: (file, args) => args },
   // macOS — installer(8) writes into /Library and needs root, so this only succeeds
   // when git-updater itself is running elevated; otherwise the caller falls back to
   // opening the .pkg in Installer.app, which prompts for authorization normally.
@@ -276,7 +281,44 @@ function installerCmd(kind, file, argsOverride) {
   if (Array.isArray(argsOverride) && argsOverride.length) {
     return { exe, args: spec.override(file, argsOverride) };
   }
+  if (!defaultArgs) throw new Error(`installer kind "${kind}" has no silent switches of its own — it needs explicit ones`);
   return { exe, args: defaultArgs };
+}
+
+// ---------------------------------------------------------------------------
+// Names.
+//
+// For a GitHub entry the repository name does four jobs at once: it is what the user
+// sees, the needle used to find the installed app, the process filter, and the folder a
+// portable copy unpacks into. An entry from any other source has an opaque, encoded
+// `repo` (it is only a key — see src/sources/index.js), so those four jobs are done by
+// `name` instead. Every caller goes through these helpers rather than reading `repo`.
+// ---------------------------------------------------------------------------
+
+function appName(r) {
+  if (!r) return '';
+  if (r.source) return String(r.name || r.repo || '');
+  return String(r.repo || '');
+}
+const detectName = (r) => (r && r.detect) || appName(r);
+const processName = (r) => (r && r.process) || appName(r);
+
+// What a row is called in results, logs and the CLI: "owner/repo" for GitHub (unchanged),
+// the app's name for everything else.
+function displayId(r) {
+  return r && r.source ? appName(r) : `${r.owner}/${r.repo}`;
+}
+
+// A folder name that is legal on every platform this app runs on. Windows is the strict
+// one: no <>:"/\|?* or control characters, and no trailing dot or space.
+function folderName(r) {
+  if (!r || !r.source) return r ? r.repo : '';
+  const cleaned = appName(r)
+    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/[. ]+$/, '');
+  return cleaned || 'app';
 }
 
 // ---------------------------------------------------------------------------
@@ -313,6 +355,15 @@ function validateConfig(json) {
   json.repos.forEach((r, i) => {
     const at = `repos[${i}]`;
     if (!r.owner || !r.repo) throw new Error(`${at}: "owner" and "repo" are required`);
+    // A non-GitHub entry says where it comes from. Only the shape is checked here (this
+    // module does no IO and knows no providers); src/sources/index.js validates the rest
+    // and derives owner/repo from it.
+    if (r.source != null) {
+      if (typeof r.source !== 'object' || typeof r.source.type !== 'string' || !r.source.type) {
+        throw new Error(`${at}: "source" must be an object with a "type"`);
+      }
+      if (typeof r.name !== 'string' || !r.name.trim()) throw new Error(`${at}: a "name" is required for an app with a "source"`);
+    }
     if (r.type !== 'portable' && r.type !== 'installer') {
       throw new Error(`${at}: "type" must be "portable" or "installer"`);
     }
@@ -326,7 +377,7 @@ function validateConfig(json) {
       if (!r.install) r.install = {};
       if (!r.install.dir) {
         if (!json.portableRoot) throw new Error(`${at}: portable requires install.dir or a top-level portableRoot`);
-        r.install.dir = resolvePortableDir(json.portableRoot, r.repo);
+        r.install.dir = resolvePortableDir(json.portableRoot, folderName(r));
       }
     } else {
       // installer: kind is optional (auto-guessed from the picked file); if set, it must be valid.
@@ -446,6 +497,11 @@ module.exports = {
   validateConfig,
   downloadLimitBytes,
   resolvePortableDir,
+  appName,
+  detectName,
+  processName,
+  displayId,
+  folderName,
   buildSummary,
   INSTALLER_SWITCHES,
 };

@@ -1,0 +1,180 @@
+Author: Igor Pavlov
+Commands:
+- 7z
+Copyright: "Copyright \xA9 1999-2026 Igor Pavlov."
+Documentations:
+- DocumentLabel: FAQ
+  DocumentUrl: https://7-zip.org/faq.html
+ElevationRequirement: elevatesSelf
+FileExtensions:
+- 001
+- 7z
+- apfs
+- arj
+- bz2
+- bzip2
+- cab
+- cpio
+- deb
+- dmg
+- esd
+- fat
+- gz
+- gzip
+- hfs
+- iso
+- lha
+- lzh
+- lzma
+- ntfs
+- rar
+- rpm
+- squashfs
+- swm
+- tar
+- taz
+- tbz
+- tbz2
+- tgz
+- tpz
+- txz
+- tzst
+- vhd
+- vhdx
+- wim
+- xar
+- xz
+- z
+- zip
+- zst
+Icons:
+- IconFileType: ico
+  IconResolution: custom
+  IconSha256: 649c3c8780a116e625ee8124338642c2088b5153b4280bdf7a42b544fecf0730
+  IconTheme: default
+  IconUrl: https://cdn.winget.microsoft.com/icons/649c3c8780a116e625ee8124338642c2088b5153b4280bdf7a42b544fecf0730.ico
+Installers:
+- Architecture: x86
+  InstallModes:
+  - interactive
+  - silent
+  InstallerSha256: 5E38F80C3752DE43887E7A99AD10668C14BF64DCC929A636510B54616EA7DEC7
+  InstallerSwitches:
+    InstallLocation: /D="<INSTALLPATH>"
+    Silent: /S
+    SilentWithProgress: /S
+  InstallerType: exe
+  InstallerUrl: https://github.com/ip7z/7zip/releases/download/26.06/7z2606.exe
+  ProductCode: 7-Zip
+- Architecture: x64
+  InstallModes:
+  - interactive
+  - silent
+  InstallerSha256: 9B697F65ECC2D9B0152F5EE96D72DDE522A7827690349D9307935DACF40F42EC
+  InstallerSwitches:
+    InstallLocation: /D="<INSTALLPATH>"
+    Silent: /S
+    SilentWithProgress: /S
+  InstallerType: exe
+  InstallerUrl: https://github.com/ip7z/7zip/releases/download/26.06/7z2606-x64.exe
+  ProductCode: 7-Zip
+- Architecture: arm
+  InstallModes:
+  - interactive
+  - silent
+  InstallerSha256: 50A38E90C7B92BDA0C15C3AF32D5F85E0E5C2762CE5D5518B3C0E3CA321C2510
+  InstallerSwitches:
+    InstallLocation: /D="<INSTALLPATH>"
+    Silent: /S
+    SilentWithProgress: /S
+  InstallerType: exe
+  InstallerUrl: https://github.com/ip7z/7zip/releases/download/26.06/7z2606-arm.exe
+  ProductCode: 7-Zip
+- Architecture: arm64
+  InstallModes:
+  - interactive
+  - silent
+  InstallerSha256: 036A00D478EF81F4B4B85FB37B0F934D558341F3F51AA7D36D2A26454740E625
+  InstallerSwitches:
+    InstallLocation: /D="<INSTALLPATH>"
+    Silent: /S
+    SilentWithProgress: /S
+  InstallerType: exe
+  InstallerUrl: https://github.com/ip7z/7zip/releases/download/26.06/7z2606-arm64.exe
+  ProductCode: 7-Zip
+- AppsAndFeaturesEntries:
+  - UpgradeCode: '{23170F69-40C1-2701-0000-000004000000}'
+  Architecture: x86
+  InstallationMetadata:
+    DefaultInstallLocation: '%ProgramFiles(x86)%\7-Zip'
+  InstallerSha256: 1B3694F6F1449FB5EE98CBDAE5B3DCCE4A86E7F4929E8543DC28B89B55B89187
+  InstallerSwitches:
+    InstallLocation: INSTALLDIR="<INSTALLPATH>"
+  InstallerType: wix
+  InstallerUrl: https://github.com/ip7z/7zip/releases/download/26.06/7z2606.msi
+  ProductCode: '{23170F69-40C1-2701-2606-000001000000}'
+- AppsAndFeaturesEntries:
+  - UpgradeCode: '{23170F69-40C1-2702-0000-000004000000}'
+  Architecture: x64
+  InstallationMetadata:
+    DefaultInstallLocation: '%ProgramFiles%\7-Zip'
+  InstallerSha256: 6DC822569E777D9A3ECD5FFCBC22B55600AF87E6C5D9810A64E8566CF5A4AF9F
+  InstallerSwitches:
+    InstallLocation: INSTALLDIR="<INSTALLPATH>"
+  InstallerType: wix
+  InstallerUrl: https://github.com/ip7z/7zip/releases/download/26.06/7z2606-x64.msi
+  ProductCode: '{23170F69-40C1-2702-2606-000001000000}'
+License: LGPL-2.1
+LicenseUrl: https://7-zip.org/license.txt
+Localization:
+- Documentations:
+  - DocumentLabel: "\u5E38\u89C1\u95EE\u9898"
+    DocumentUrl: https://sparanoid.com/lab/7z/faq.html
+  LicenseUrl: https://github.com/sparanoid/7z/blob/master/zh-cn/License.txt
+  PackageLocale: zh-CN
+  PackageUrl: https://sparanoid.com/lab/7z/download.html
+  PublisherSupportUrl: https://sparanoid.com/lab/7z/support.html
+  PublisherUrl: https://sparanoid.com/lab/7z/
+  ShortDescription: "7-Zip \u662F\u4E00\u6B3E\u62E5\u6709\u6781\u9AD8\u538B\u7F29\u6BD4\u7684\u5F00\u6E90\u538B\u7F29\u8F6F\u4EF6\u3002"
+  Tags:
+  - "\u538B\u7F29"
+  - "\u5F52\u6863"
+  - "\u6253\u5305"
+  - "\u63D0\u53D6"
+  - "\u89E3\u5305"
+  - "\u89E3\u538B"
+ManifestType: merged
+ManifestVersion: 1.28.0
+Moniker: 7zip
+PackageIdentifier: 7zip.7zip
+PackageLocale: en-US
+PackageName: 7-Zip
+PackageUrl: https://7-zip.org/download.html
+PackageVersion: 26.06
+Publisher: Igor Pavlov
+PublisherSupportUrl: https://7-zip.org/support.html
+PublisherUrl: https://7-zip.org/
+ReleaseDate: 2026-11-07
+ReleaseNotes: '- Improved support for split files created by "split" utility in Linux.
+
+  - Some bugs and vulnerabilities were fixed.'
+ReleaseNotesUrl: https://github.com/ip7z/7zip/releases/tag/26.06
+Scope: machine
+ShortDescription: A file archiver with a high compression ratio.
+Tags:
+- 7zfiles
+- archive
+- archiver
+- compress
+- compression
+- decompress
+- decompression
+- extract
+- extractor
+- rarfiles
+- targzfiles
+- unarchive
+- unarchiver
+- unzip
+- zip
+UpgradeBehavior: install

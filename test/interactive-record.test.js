@@ -23,6 +23,7 @@ test('interactive completion records a date without a tag that masks later unins
   const context = {
     ipcMain: { handle: (_name, fn) => { handler = fn; } },
     readConfig: () => ({ repos: [repo] }),
+    core: require('../src/core'), // the handler names apps through core's helpers
     detect: { clearCache: () => {}, installedVersion: async () => '152.1.94.117' },
     state: { load: () => ({}), save: (value) => fs.writeFileSync(statePath, JSON.stringify(value)) },
   };

@@ -137,6 +137,32 @@
   .table-header > .name-header { display: flex; align-items: baseline; gap: .35rem; overflow: hidden; white-space: nowrap; }
   .name-header .sort-button { width: auto; }  .app-row { padding: .5rem 0; border-top: 1px solid var(--border); }
   .app-name { font: 500 14px var(--mono); }
+  /* Every row says where its file comes from: a source badge plus the host. */
+  .app-cell { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .app-src { display: flex; align-items: center; gap: .35rem; min-width: 0; font-size: 11.5px; color: var(--faint); }
+  .app-src .where { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .src-badge { flex: none; font: 600 10.5px var(--sans); line-height: 15px; padding: 0 .42rem; border-radius: 999px; color: var(--muted); border: 1px solid var(--border); background: #0d1117; }
+  .src-badge.s-winget, .src-badge.s-brew { color: var(--blue); border-color: rgba(88,166,255,.35); }
+  .src-badge.s-folder { color: var(--accent); border-color: rgba(227,161,60,.4); }
+  .src-badge.s-unknown { color: var(--red); border-color: var(--red); }
+  .sum-none { color: var(--accent); }
+  /* The options list under the Add box. */
+  .options { display: flex; flex-direction: column; gap: .5rem; margin-top: .7rem; }
+  .options:empty { display: none; }
+  .opt { border: 1px solid var(--border); border-radius: 10px; padding: .6rem .75rem; background: #0d1117; }
+  .opt-head { display: flex; align-items: center; gap: .45rem; flex-wrap: wrap; }
+  .opt-name { font: 600 14px var(--sans); color: var(--text); }
+  .opt-meta { display: grid; gap: .18rem; margin-top: .35rem; font-size: 12px; line-height: 17px; color: var(--muted); }
+  .opt-meta b { font-weight: 600; color: var(--text); }
+  .opt-meta .mono { font-family: var(--mono); font-size: 11.5px; overflow-wrap: anywhere; }
+  .opt-actions { display: flex; gap: .4rem; flex-wrap: wrap; margin-top: .55rem; }
+  .opt-actions button { padding: .3rem .7rem; font-size: 12.5px; }
+  .opt-foot { font-size: 12px; color: var(--faint); }
+  .pref-list { display: flex; flex-wrap: wrap; gap: .35rem; flex: 1; min-width: 12rem; }
+  .pref-chip { display: inline-flex; align-items: center; gap: .25rem; padding: .15rem .2rem .15rem .55rem; border: 1px solid var(--border); border-radius: 999px; font-size: 12.5px; color: var(--text); background: #0d1117; }
+  .pref-chip button { padding: 0 .35rem; border: 0; background: transparent; color: var(--muted); font-size: 12px; line-height: 18px; }
+  .pref-chip button:hover { color: var(--text); background: transparent; }
+  .pref-empty { font-size: 12.5px; color: var(--faint); }
   .status { display: inline-flex; align-items: center; gap: .4rem; font-size: .88rem; }
   .status .txt { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* The Auto-update column: one checkbox per app, header wraps onto two lines ("Auto-" / "update"). */
@@ -222,7 +248,7 @@
     <span id="headerVersion" class="ver" title="This version of git-updater"></span>
     <button type="button" id="openSettings" class="ghost settings-btn" title="Open Settings"><span aria-hidden="true">⚙</span> Settings</button>
   </header>
-  <p class="tagline">Keeps your apps current straight from their GitHub releases.</p>
+  <p class="tagline">Installs and updates your apps straight from their own sources.</p>
   <div id="msgHome"><div id="msg"></div></div>
   <div id="selfup"><span id="selfupText"></span><button id="selfupBtn" class="primary"></button><button id="selfupDismiss" title="Dismiss">&times;</button></div>
 
@@ -289,29 +315,31 @@
     <section class="add-section">
       <h2 class="sec-h">Add an app</h2>
       <div class="add-row">
-        <input type="text" id="newRepo" placeholder="github.com/owner/repo  or  owner/repo" aria-label="GitHub repository">
+        <input type="text" id="newRepo" placeholder="App name, GitHub URL, or any https:// address" aria-label="App name or address">
         <div class="seg" id="newType" role="group" aria-label="Package type">
           <button type="button" data-type="portable" class="active">Portable</button>
           <button type="button" data-type="installer">Installer</button>
         </div>
         <button id="cancelEdit" style="display:none">Cancel</button>
-        <button id="addRepo" class="primary">Add app</button>
+        <button id="addRepo" class="primary">Find</button>
       </div>
       <div class="row" style="margin-top:.45rem; gap:.4rem">
         <label style="display:flex;align-items:center;gap:.35rem;font-size:12px;color:var(--muted);cursor:pointer">
           <input type="checkbox" id="preRel"> include beta (pre-release) versions
         </label>
       </div>
-      <p class="helper" id="addHint">GitHub releases URL; the right download for this computer is selected automatically.</p>
+      <p class="helper" id="addHint">Type an app's name, or paste a GitHub URL or any https:// address. You choose from the sources found, and every app shows where its file comes from.</p>
+      <div class="options" id="options" aria-live="polite"></div>
     </section>
 
     <div class="divider"></div>
 
     <div class="scan-row">
-      <span class="scan-label"><strong class="sec-h2">Known apps</strong><span class="helper" style="margin:0" id="knownHelp">· Scan this PC, or browse everything git-updater can manage.</span></span>
+      <span class="scan-label"><strong class="sec-h2">Known apps</strong><span class="helper" style="margin:0" id="knownHelp">· Pick from a categorized list, add a pack, or scan this PC.</span></span>
       <span style="display:flex;gap:.5rem">
         <button id="scanPc">Scan this PC</button>
-        <button id="browseAll">Browse all apps</button>
+        <button id="packsBtn">Packs</button>
+        <button id="browseAll" class="primary">Popular apps</button>
       </span>
     </div>
   </div>
@@ -333,7 +361,23 @@
         <button id="browse">Browse…</button>
         <button id="saveRoot">Save</button>
       </div>
-      <p class="hint">Portable apps unzip into <code>&lt;folder&gt;/&lt;repo&gt;</code>.</p>
+      <p class="hint">Portable apps unzip into <code>&lt;folder&gt;/&lt;app&gt;</code>.</p>
+      <div class="row" style="margin-top:.6rem">
+        <span style="color:var(--muted);font-size:.9rem;min-width:8rem">Preferred sources</span>
+        <div class="pref-list" id="srcPref"></div>
+        <select id="srcPrefAdd" aria-label="Add a preferred source"><option value="">Add…</option></select>
+      </div>
+      <p class="hint">In order. When an app you name is available from the first of these that has it, it is added from there without asking — the row still shows the source. Empty: you always choose.</p>
+      <div class="row" style="margin-top:.6rem">
+        <span style="color:var(--muted);font-size:.9rem;min-width:8rem">Preferred type</span>
+        <select id="typePref" aria-label="Preferred package type"><option value="">No preference</option><option value="portable">Portable</option><option value="installer">Installer</option></select>
+      </div>
+      <p class="hint">Used for new apps when the chosen source offers that type. If it does not, you are shown the type that exists rather than switched silently.</p>
+      <div class="row" style="margin-top:.6rem">
+        <span style="color:var(--muted);font-size:.9rem;min-width:8rem">Checksums</span>
+        <label class="scan-label"><input type="checkbox" id="requireChecksum"> Only install files that have a checksum</label>
+      </div>
+      <p class="hint">Off by default. A checksum is always verified when one is published, and a mismatch always stops the install. On, a file with no published checksum is not installed at all, from any source.</p>
       <div class="row" style="margin-top:.6rem">
         <span style="color:var(--muted);font-size:.9rem;min-width:8rem">Date format</span>
         <select id="dateFormat" aria-label="Status date format"><option value="MM/DD">MM/DD</option><option value="DD/MM">DD/MM</option></select>
@@ -541,6 +585,37 @@ const selectedType = () => $('newType').querySelector('button.active').dataset.t
 $('newType').querySelectorAll('button').forEach((b) =>
   b.onclick = () => { $('newType').querySelectorAll('button').forEach((x) => x.classList.remove('active')); b.classList.add('active'); });
 
+// Where each tracked app comes from (source type, label, listing host, and what the last
+// install recorded). Filled from the main process; localDescribe covers the first paint.
+let srcInfo = {};
+// What a row is called. GitHub entries keep owner/repo; any other source has a name.
+const rowName = (r) => (r.source ? (r.name || r.repo) : `${r.owner}/${r.repo}`);
+const shortName = (r) => (r.source ? (r.name || r.repo) : r.repo);
+const nameOfKey = (k) => { const r = config.repos.find((x) => keyOf(x) === k); return r ? rowName(r) : k.split('#')[0]; };
+function localDescribe(r) {
+  if (!r.source) return { type: 'github', label: 'GitHub', host: 'github.com', ref: `${r.owner}/${r.repo}` };
+  return { type: r.source.type, label: r.source.type, host: '', ref: '' };
+}
+const SUM_TEXT = { pinned: 'checksum pinned by the listing', published: 'checksum published', none: 'no checksum published' };
+function sourceLine(r, key, s) {
+  const info = srcInfo[key] || localDescribe(r);
+  const line = el('span', 'app-src');
+  line.appendChild(el('span', 'src-badge s-' + info.type, info.label));
+  const fileHost = s.fileHost || info.fileHost || '';
+  const sum = s.checksum || info.checksum || '';
+  const listed = r.source ? (info.ref || info.host) : 'github.com';
+  const where = el('span', 'where', fileHost && fileHost !== info.host ? `${listed} · file from ${fileHost}` : listed);
+  line.appendChild(where);
+  if (sum === 'none') line.appendChild(el('span', 'sum-none', '· no checksum'));
+  line.title = [
+    `Listed by ${info.label}${info.host ? ' (' + info.host + ')' : ''}`,
+    fileHost ? `File downloads from ${fileHost}` : 'File host is shown after a check',
+    sum ? SUM_TEXT[sum] || '' : '',
+    info.error || '',
+  ].filter(Boolean).join('\n');
+  return line;
+}
+
 function parseRepo(s) {
   s = s.trim();
   let m = s.match(/github\.com\/([^/\s]+)\/([^/\s#?]+)/i);
@@ -647,6 +722,8 @@ function matchesSearch(r, text) {
   if (!q) return true;
   const owner = String(r.owner).toLowerCase();
   const repo = String(r.repo).toLowerCase();
+  // An app from another source is known by its name; its repo field is only an encoded key.
+  if (r.source) return String(r.name || '').toLowerCase().includes(q) || String(r.source.type || '').toLowerCase().includes(q);
   return owner.includes(q) || repo.includes(q) || `${owner}/${repo}`.includes(q);
 }
 // The wording follows what the Status column shows. "present" is whether the app is on this
@@ -721,6 +798,10 @@ function applyStartupSort(cfg) {
 
 function sortedRepos() {
   const repos = [...config.repos];
+  // Self-contained on purpose (the sort is unit-tested in isolation): the label a row
+  // sorts by is its name for a sourced app, owner/repo for a GitHub one.
+  const rowName = (r) => (r.source ? (r.name || r.repo) : `${r.owner}/${r.repo}`);
+  const appOf = (r) => (r.source ? (r.name || r.repo) : r.repo);
   if (busy && displayOrder) {
     const rank = new Map(displayOrder.map((key, i) => [key, i]));
     return repos.sort((a, b) => (rank.get(keyOf(a)) ?? Infinity) - (rank.get(keyOf(b)) ?? Infinity));
@@ -731,9 +812,11 @@ function sortedRepos() {
     repos.sort((a, b) => {
       const sa = st[keyOf(a)] || {}, sb = st[keyOf(b)] || {};
       let result;
-      // Owner sorts by owner then name; App sorts by the repo name alone (TeeJS/bedrock-panel files under B), owner breaks ties.
-      if (col === 'owner') result = a.owner.localeCompare(b.owner) || a.repo.localeCompare(b.repo);
-      else if (col === 'app') result = a.repo.localeCompare(b.repo) || a.owner.localeCompare(b.owner);
+      // Owner sorts by owner then name; App sorts by the app's name alone (TeeJS/bedrock-panel files under B), owner breaks ties.
+      // A non-GitHub app has no owner/repo to show: its name is its `name`, and its "owner"
+      // is its source namespace (source.winget, source.brew…), so those group together.
+      if (col === 'owner') result = a.owner.localeCompare(b.owner) || appOf(a).localeCompare(appOf(b));
+      else if (col === 'app') result = appOf(a).localeCompare(appOf(b)) || a.owner.localeCompare(b.owner);
       else if (col === 'type') result = a.type.localeCompare(b.type);
       else if (col === 'auto') result = (b.autoUpdate ? 1 : 0) - (a.autoUpdate ? 1 : 0); // ascending: ticked apps first
       else if (col === 'current' || col === 'available') {
@@ -753,7 +836,7 @@ function sortedRepos() {
         if (da != null && db != null && da !== db) return direction * (da - db);
         result = 0;
       }
-      return direction * result || `${a.owner}/${a.repo}`.localeCompare(`${b.owner}/${b.repo}`);
+      return direction * result || rowName(a).localeCompare(rowName(b));
     });
   }
   displayOrder = repos.map(keyOf);
@@ -796,9 +879,12 @@ function renderRepos() {
     cb.onchange = () => { cb.checked ? selected.add(key) : selected.delete(key); syncBar(); };
     row.appendChild(cb);
 
-    const appSpan = el('span', 'app-name', `${r.owner}/${r.repo}${r.prerelease ? ' β' : ''}`);
-    appSpan.title = `${r.owner}/${r.repo}` + (r.prerelease ? ' — tracking beta (pre-release) versions' : '');
-    row.appendChild(appSpan);
+    const appCell = el('span', 'app-cell');
+    const appSpan = el('span', 'app-name', `${rowName(r)}${r.prerelease ? ' β' : ''}`);
+    appSpan.title = rowName(r) + (r.prerelease ? ' — tracking beta (pre-release) versions' : '');
+    appCell.appendChild(appSpan);
+    appCell.appendChild(sourceLine(r, key, s));
+    row.appendChild(appCell);
     row.appendChild(el('span', 'type-cell badge ' + (r.type === 'installer' ? 'installer' : 'portable'), r.type === 'installer' ? 'Installer' : 'Portable'));
 
     // Current
@@ -926,18 +1012,22 @@ function openMenu(r, anchor) {
   item('Check now', () => checkApps([key]));
   item(s.ph === 'failed' ? 'Retry' : !s.present ? 'Install' : 'Update', () => runBatch([key]));
   sep();
-  item('View release ↗', () => window.api.openRelease(r.owner, r.repo));
-  item('Preview selected asset', async () => {
-    try { const { tag, asset } = await window.api.previewAsset(key); msg(`${r.owner}/${r.repo} @ ${tag} → ${asset}`, 'info'); }
-    catch (e) { msg(clean(e), 'bad'); }
+  item('View source ↗', () => window.api.openRelease(key).catch((e) => msg(clean(e), 'bad')));
+  item('Preview selected file', async () => {
+    try {
+      const p = await window.api.previewAsset(key);
+      st[key] = { ...(st[key] || {}), fileHost: p.host, checksum: p.checksum };
+      renderRepos();
+      msg(`${rowName(r)} @ ${p.tag} → ${p.asset} — ${p.url} — listed by ${p.listedBy}; ${SUM_TEXT[p.checksum] || ''}${p.requires && p.requires.length ? '; needs ' + p.requires.join(', ') : ''}`, 'info');
+    } catch (e) { msg(clean(e), 'bad'); }
   });
   if (r.type === 'portable') item('Open folder', () => window.api.openFolder(key));
   sep();
   item('Edit…', () => startEdit(r));
   item('Close app & update', () => closeAndRetry(r, key));
-  item('Force reinstall', () => { if (confirm(`Reinstall ${r.owner}/${r.repo} even if it's up to date?`)) runBatch([key], true); });
+  item('Force reinstall', () => { if (confirm(`Reinstall ${rowName(r)} even if it's up to date?`)) runBatch([key], true); });
   sep();
-  item('Stop tracking', () => { if (confirm(`Stop tracking ${r.owner}/${r.repo} (${r.type})? This does not uninstall it.`)) removeRepo(r); }, true);
+  item('Stop tracking', () => { if (confirm(`Stop tracking ${rowName(r)} (${r.type})? This does not uninstall it.`)) removeRepo(r); }, true);
 
   document.body.appendChild(menuEl);
   const rect = anchor.getBoundingClientRect();
@@ -964,7 +1054,11 @@ async function load() {
   window.api.getVersion().then((v) => { $('appVersion').textContent = v; $('headerVersion').textContent = v ? `v${v}` : ''; }).catch(() => {});
   config = await window.api.getConfig();
   if (!config.repos) config.repos = [];
+  srcInfo = await window.api.describeSources().catch(() => ({}));
   $('portableRoot').value = config.portableRoot || '';
+  $('requireChecksum').checked = !!config.requireChecksum;
+  $('typePref').value = config.typePreference === 'portable' || config.typePreference === 'installer' ? config.typePreference : '';
+  renderSourcePrefs();
   $('selfPreRel').checked = !!config.selfUpdatePrerelease;
   $('checkOnOpen').checked = !!config.checkOnOpen;
   $('selfCheckOnOpen').checked = !!config.selfCheckOnOpen;
@@ -1076,6 +1170,46 @@ $('checkOnOpen').onchange = () => { config.checkOnOpen = $('checkOnOpen').checke
 $('selfCheckOnOpen').onchange = () => { config.selfCheckOnOpen = $('selfCheckOnOpen').checked; saveConfig().then(() => msg('Saved.', 'ok')); };
 $('selfAutoUpdate').onchange = () => { config.selfAutoUpdate = $('selfAutoUpdate').checked; renderInstallInfo(); saveConfig().then(() => msg('Saved.', 'ok')); };
 $('autoCloseReopen').onchange = () => { config.autoCloseReopen = $('autoCloseReopen').checked; saveConfig().then(() => msg('Saved.', 'ok')); };
+$('requireChecksum').onchange = () => { config.requireChecksum = $('requireChecksum').checked; saveConfig().then(() => msg('Saved.', 'ok')); };
+$('typePref').onchange = () => {
+  if ($('typePref').value) config.typePreference = $('typePref').value; else delete config.typePreference;
+  if (config.typePreference && !editingKey) setTypeToggle(config.typePreference);
+  saveConfig().then(() => msg('Saved.', 'ok'));
+};
+
+// Preferred sources: an ordered list. First match wins, so order is the whole point.
+let providers = [];
+window.api.listProviders().then((list) => { providers = list || []; renderSourcePrefs(); }).catch(() => {});
+function renderSourcePrefs() {
+  const box = $('srcPref'); if (!box) return;
+  const order = Array.isArray(config.sourcePreference) ? config.sourcePreference : [];
+  const labelOf = (t) => (providers.find((p) => p.type === t) || {}).label || t;
+  box.innerHTML = '';
+  if (!order.length) box.appendChild(el('span', 'pref-empty', 'None — you always choose.'));
+  order.forEach((t, i) => {
+    const chip = el('span', 'pref-chip', `${i + 1}. ${labelOf(t)}`);
+    const move = (d) => { const o = order.slice(); const j = i + d; if (j < 0 || j >= o.length) return; [o[i], o[j]] = [o[j], o[i]]; setSourcePrefs(o); };
+    const up = el('button', null, '↑'); up.title = 'Move earlier'; up.disabled = i === 0; up.onclick = () => move(-1);
+    const down = el('button', null, '↓'); down.title = 'Move later'; down.disabled = i === order.length - 1; down.onclick = () => move(1);
+    const del = el('button', null, '×'); del.title = 'Remove'; del.onclick = () => setSourcePrefs(order.filter((x) => x !== t));
+    chip.append(up, down, del); box.appendChild(chip);
+  });
+  const add = $('srcPrefAdd'); add.innerHTML = '';
+  add.appendChild(Object.assign(el('option', null, 'Add…'), { value: '' }));
+  providers.filter((p) => !order.includes(p.type)).forEach((p) => {
+    const o = el('option', null, p.ok ? p.label : `${p.label} (${p.reason})`); o.value = p.type; o.disabled = !p.ok; add.appendChild(o);
+  });
+}
+function setSourcePrefs(order) {
+  config.sourcePreference = order;
+  renderSourcePrefs();
+  saveConfig().then(() => msg('Saved.', 'ok'));
+}
+$('srcPrefAdd').onchange = () => {
+  const t = $('srcPrefAdd').value; if (!t) return;
+  setSourcePrefs([...(Array.isArray(config.sourcePreference) ? config.sourcePreference : []), t]);
+};
+
 $('dateFormat').onchange = () => { config.dateFormat = $('dateFormat').value; renderRepos(); saveConfig().then(() => msg('Saved.', 'ok')); };
 // Startup sort: saved as soon as it changes, and only read at the next launch, so changing it
 // does not re-sort the list that is on screen now.
@@ -1106,67 +1240,210 @@ $('browse').onclick = async () => {
   catch (e) { msg(clean(e), 'bad'); }
 };
 let editingKey = null;
-const ADD_HINT = 'Paste a GitHub releases URL; git-updater selects the right download for this computer automatically.';
+const ADD_HINT = "Type an app's name, or paste a GitHub URL or any https:// address. You choose from the sources found, and every app shows where its file comes from.";
 function setTypeToggle(type) { $('newType').querySelectorAll('button').forEach((b) => b.classList.toggle('active', b.dataset.type === type)); }
 
 function startEdit(r) {
   editingKey = keyOf(r);
-  $('newRepo').value = `${r.owner}/${r.repo}`;
+  clearOptions();
+  $('newRepo').value = rowName(r);
+  // The address of a GitHub entry can be retyped. Any other source is changed by removing
+  // the app and adding it again from the source you want, so its field is read-only here.
+  $('newRepo').disabled = !!r.source;
   setTypeToggle(r.type);
   $('preRel').checked = !!r.prerelease;
   $('addRepo').textContent = 'Save';
   $('cancelEdit').style.display = '';
-  $('addHint').textContent = `Editing ${r.owner}/${r.repo} — change the repo or type, then Save.`;
-  $('newRepo').focus();
+  $('addHint').textContent = r.source
+    ? `Editing ${rowName(r)} — change its type or beta setting, then Save.`
+    : `Editing ${rowName(r)} — change the repo or type, then Save.`;
+  ($('newRepo').disabled ? $('addRepo') : $('newRepo')).focus();
   $('newRepo').scrollIntoView({ block: 'nearest' });
 }
 function cancelEdit() {
   editingKey = null;
   $('newRepo').value = '';
-  $('addRepo').textContent = 'Add app';
+  $('newRepo').disabled = false;
+  $('addRepo').textContent = 'Find';
   $('cancelEdit').style.display = 'none';
   $('preRel').checked = false;
   $('addHint').textContent = ADD_HINT;
+  if (config.typePreference) setTypeToggle(config.typePreference);
   msg('', '');
 }
 $('cancelEdit').onclick = cancelEdit;
 $('editJson').onclick = () => window.api.openConfig();
 $('openLog').onclick = () => window.api.openLog();
 
-$('addRepo').onclick = async () => {
-  const parsed = parseRepo($('newRepo').value);
-  if (!parsed) return msg('Paste a GitHub releases URL or owner/repo.', 'bad');
+async function reloadConfig() {
+  config = await window.api.getConfig();
+  if (!config.repos) config.repos = [];
+  srcInfo = await window.api.describeSources().catch(() => ({}));
+  await refreshInstalled();
+  renderRepos();
+}
+
+// Save an edit. Type and beta are changed IN PLACE by the main process, so the app's
+// source and every hand-set override in config.json survive. Only a GitHub entry whose
+// owner/repo text was actually retyped is replaced.
+async function saveEdit() {
+  const r = config.repos.find((x) => keyOf(x) === editingKey);
+  if (!r) return cancelEdit();
   const type = selectedType();
-  if (type === 'portable' && !$('portableRoot').value.trim()) { showScreen('settings'); $('portableRoot').focus(); return msg('Set the portable apps folder first.', 'bad'); }
-  const dup = config.repos.some((r) => r.owner === parsed.owner && r.repo === parsed.repo && r.type === type && keyOf(r) !== editingKey);
-  if (dup) return msg(`${parsed.owner}/${parsed.repo} (${type}) is already in your list.`, 'bad');
-
+  if (type === 'portable' && !$('portableRoot').value.trim() && !(r.install && r.install.dir)) { showScreen('settings'); $('portableRoot').focus(); return msg('Set the portable apps folder first.', 'bad'); }
+  let retarget = null;
+  if (!r.source) {
+    const parsed = parseRepo($('newRepo').value);
+    if (!parsed) return msg('Paste a GitHub releases URL or owner/repo.', 'bad');
+    if (parsed.owner !== r.owner || parsed.repo !== r.repo) retarget = parsed;
+  }
   $('addRepo').disabled = true;
-  msg(`Checking ${parsed.owner}/${parsed.repo}…`, 'info');
   try {
-    await window.api.validateRepo(parsed.owner, parsed.repo, $('preRel').checked);
+    if (retarget) {
+      const dup = config.repos.some((x) => x.owner === retarget.owner && x.repo === retarget.repo && x.type === type && keyOf(x) !== editingKey);
+      if (dup) throw new Error(`${retarget.owner}/${retarget.repo} (${type}) is already in your list`);
+      msg(`Checking ${retarget.owner}/${retarget.repo}…`, 'info');
+      await window.api.validateRepo(retarget.owner, retarget.repo, $('preRel').checked);
+      const wasAutoUpdate = !!(editingKey && config.repos.find((r) => keyOf(r) === editingKey)?.autoUpdate);
+      delete st[editingKey]; selected.delete(editingKey);
+      config.repos = config.repos.filter((x) => keyOf(x) !== editingKey);
+      const entry = { owner: retarget.owner, repo: retarget.repo, type };
+      if ($('preRel').checked) entry.prerelease = true;
+      if (wasAutoUpdate) entry.autoUpdate = true; // editing an app must not quietly drop its Auto-update tick
+      config.repos.push(entry);
+      await saveConfig();
+      cancelEdit();
+      await reloadConfig();
+      msg('Saved.', 'ok');
+      checkApps([`${retarget.owner}/${retarget.repo}#${type}`]);
+      return;
+    }
+    const { key } = await window.api.editApp(editingKey, type, $('preRel').checked);
+    if (key !== editingKey) { delete st[editingKey]; selected.delete(editingKey); }
+    cancelEdit();
+    await reloadConfig();
+    msg('Saved.', 'ok');
+    checkApps([key]);
   } catch (e) {
+    msg(`Can't save — ${clean(e)}`, 'bad');
+  } finally {
     $('addRepo').disabled = false;
-    return msg(`Can't ${editingKey ? 'save' : 'add'} ${parsed.owner}/${parsed.repo} — ${clean(e)}. Check the owner/repo.`, 'bad');
   }
-  $('addRepo').disabled = false;
+}
 
-  const wasAutoUpdate = !!(editingKey && config.repos.find((r) => keyOf(r) === editingKey)?.autoUpdate);
-  if (editingKey) { // replace the edited entry
-    delete st[editingKey]; selected.delete(editingKey);
-    config.repos = config.repos.filter((r) => keyOf(r) !== editingKey);
+// --- Add: name, GitHub URL or any https:// address -> options -> pick -------------
+function clearOptions() { $('options').innerHTML = ''; }
+const typeLabel = (t) => (t === 'portable' ? 'Portable' : 'Installer');
+
+async function addCandidate(c, type, info) {
+  if (type === 'portable' && !$('portableRoot').value.trim()) { showScreen('settings'); $('portableRoot').focus(); msg('Set the portable apps folder first.', 'bad'); return false; }
+  try {
+    const res = await window.api.addSources([{ source: c.source, name: c.name, type, prerelease: $('preRel').checked }]);
+    if (!res.added) {
+      const clash = res.conflicts && res.conflicts[0];
+      msg(clash
+        ? `${c.name} would unpack into the same folder as ${clash.with}, which is already in your list. Stop tracking that one first, or add this as an Installer.`
+        : `${c.name} (${typeLabel(type)}) is already in your list.`, 'bad');
+      return false;
+    }
+    clearOptions();
+    $('newRepo').value = ''; $('preRel').checked = false;
+    res.keys.forEach((k) => { st[k] = { ph: 'idle' }; });
+    await reloadConfig();
+    const t = info && info.types && info.types[type];
+    const from = t && t.ok ? ` — file from ${t.host}${t.checksum === 'none' ? ', no checksum published' : ''}` : '';
+    msg(`Added ${c.name} from ${c.listedBy}${from}.`, 'ok');
+    checkApps(res.keys);
+    return true;
+  } catch (e) { msg(`Can't add ${c.name} — ${clean(e)}`, 'bad'); return false; }
+}
+
+// One card per source found. Each card says who lists the app, then — once inspected —
+// the version, the exact file this computer would get per type, the host it downloads
+// from, and whether it can be verified. Nothing is added until a button is pressed.
+function optionCard(c) {
+  const card = el('div', 'opt');
+  const head = el('div', 'opt-head');
+  head.appendChild(el('span', 'opt-name', c.name));
+  head.appendChild(el('span', 'src-badge s-' + c.source.type, c.listedBy));
+  if (c.curated) head.appendChild(el('span', 'src-badge', 'Curated'));
+  if (c.channel) head.appendChild(el('span', 'src-badge', c.channel));
+  if (c.tracked) head.appendChild(el('span', 'src-badge', 'Already tracked'));
+  card.appendChild(head);
+  const meta = el('div', 'opt-meta'); meta.appendChild(el('span', null, 'Checking what this computer would get…'));
+  card.appendChild(meta);
+  const actions = el('div', 'opt-actions');
+  const view = el('button', 'ghost', 'View source ↗');
+  view.onclick = () => window.api.openSourcePage(c.source).catch((e) => msg(clean(e), 'bad'));
+  card.appendChild(actions);
+  const fill = (info) => {
+    meta.innerHTML = '';
+    const line = (label, text, cls) => { const row = el('span'); row.appendChild(el('b', null, label + ' ')); row.appendChild(el('span', cls || null, text)); meta.appendChild(row); };
+    line('Listed by', `${info.listedBy}${info.publisher ? ' · publisher ' + info.publisher : ''}`);
+    line('Version', info.version);
+    if (info.note) line('Note', info.note);
+    for (const type of ['installer', 'portable']) {
+      const t = info.types[type];
+      if (t.ok) {
+        line(typeLabel(type), `${t.file} — from ${t.host} — ${SUM_TEXT[t.checksum] || ''}${t.emulated ? ' — not native to this computer, runs under emulation' : ''}`, 'mono');
+        if (t.requires && t.requires.length) line('Needs', t.requires.join(', '));
+      } else line(typeLabel(type), `not available — ${t.reason}`);
+      const b = el('button', t.ok ? 'primary' : null, `Add as ${typeLabel(type)}`);
+      b.disabled = !t.ok || !!busy;
+      b.onclick = () => addCandidate(c, type, info);
+      actions.appendChild(b);
+    }
+    actions.appendChild(view);
+  };
+  const fail = (e) => { meta.innerHTML = ''; meta.appendChild(el('span', null, `Could not read this source — ${clean(e)}`)); actions.appendChild(view); };
+  card.inspect = () => window.api.inspectSource(c.source, $('preRel').checked).then((info) => { fill(info); return info; }, (e) => { fail(e); return null; });
+  return card;
+}
+const MAX_OPTIONS = 8;
+async function showOptions(cands, errs) {
+  clearOptions();
+  const box = $('options');
+  const shown = cands.slice(0, MAX_OPTIONS);
+  const cards = shown.map((c) => { const card = optionCard(c); box.appendChild(card); return card; });
+  if (cands.length > shown.length) box.appendChild(el('div', 'opt-foot', `${cands.length - shown.length} more match — type more of the name to narrow it down.`));
+  errs.forEach((e) => box.appendChild(el('div', 'opt-foot', e.error)));
+  msg(`${cands.length} source${cands.length === 1 ? '' : 's'} found — pick one.`, 'info');
+  for (const card of cards) await card.inspect(); // one at a time: several listings share an index
+}
+
+$('addRepo').onclick = async () => {
+  if (editingKey) return saveEdit();
+  const text = $('newRepo').value.trim();
+  if (!text) return msg("Type an app's name, or paste a GitHub URL or any https:// address.", 'bad');
+  clearOptions();
+  $('addRepo').disabled = true;
+  msg(`Looking for ${text}…`, 'info');
+  let res;
+  try { res = await window.api.resolveSource(text); }
+  catch (e) { $('addRepo').disabled = false; return msg(clean(e), 'bad'); }
+  $('addRepo').disabled = false;
+  const good = res.candidates.filter((c) => !c.error);
+  const errs = res.candidates.filter((c) => c.error);
+  if (!good.length) return msg(errs.length ? errs.map((e) => e.error).join('; ') : `Nothing found for "${text}". Try the app's exact name, or paste its GitHub or download address.`, 'bad');
+  // Two cases add without the options list: a pasted address that names exactly one
+  // source (you already chose it), and a name your preferred source has exactly once.
+  // Either way the type you asked for must exist natively there — otherwise the options
+  // are shown so nothing is switched behind you.
+  const pasted = res.kind === 'url' && good.length === 1 ? good[0] : null;
+  const preferred = !pasted && res.autoPick >= 0 ? res.candidates[res.autoPick] : null;
+  const direct = pasted || preferred;
+  if (direct && !direct.tracked) {
+    msg(`Checking ${direct.name} at ${direct.listedBy}…`, 'info');
+    const info = await window.api.inspectSource(direct.source, $('preRel').checked).catch(() => null);
+    const type = preferred && config.typePreference ? config.typePreference : selectedType();
+    const t = info && info.types[type];
+    // Eligible: add it. If the add is refused (already tracked, folder in use) its own
+    // message says why — the options list would only bury that.
+    if (t && t.ok && !t.emulated) { await addCandidate(direct, type, info); return; }
   }
-  const entry = { owner: parsed.owner, repo: parsed.repo, type };
-  if ($('preRel').checked) entry.prerelease = true;
-  if (wasAutoUpdate) entry.autoUpdate = true; // editing an app must not quietly drop its Auto-update tick
-  config.repos.push(entry);
-  const wasEditing = !!editingKey;
-  cancelEdit();
-  msg(wasEditing ? 'Saved.' : 'Added.', 'ok');
-  await saveConfig(); await refreshInstalled(); renderRepos();
-  checkApps([`${parsed.owner}/${parsed.repo}#${type}`]); // populate available for the new/edited entry
+  showOptions(good, errs);
 };
-$('newRepo').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('addRepo').click(); if (e.key === 'Escape' && editingKey) cancelEdit(); });
+$('newRepo').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('addRepo').click(); if (e.key === 'Escape') { if (editingKey) cancelEdit(); else clearOptions(); } });
 async function removeRepo(r) {
   const k = keyOf(r); selected.delete(k); delete st[k];
   config.repos = config.repos.filter((x) => !(x.owner === r.owner && x.repo === r.repo && x.type === r.type));
@@ -1180,7 +1457,7 @@ async function watchInstall(key, fromVersion, wasInstall, onComplete) {
   while (Date.now() < deadline) {
     await new Promise((r) => setTimeout(r, 5000));
     if (st[key]?.ph !== 'waiting') {
-      if (onComplete) msg(`${key.split('#')[0]} left the installer wait state — completion was not confirmed, so it was not re-opened.`, 'bad');
+      if (onComplete) msg(`${nameOfKey(key)} left the installer wait state — completion was not confirmed, so it was not re-opened.`, 'bad');
       return;
     }
     try {
@@ -1209,13 +1486,13 @@ async function closeAndRetry(r, key) {
   if (busy) return;
   try {
     if (await window.api.isAppRunning(key)) {
-      if (!confirm(`Close ${r.repo} and update it? Unsaved work in ${r.repo} may be lost.`)) return;
-      msg(`Closing ${r.repo}…`, 'info');
+      if (!confirm(`Close ${shortName(r)} and update it? Unsaved work in ${shortName(r)} may be lost.`)) return;
+      msg(`Closing ${shortName(r)}…`, 'info');
       let res = await window.api.closeApp(key, false);
-      if (res.stillRunning && confirm(`${r.repo} did not close. Force-close it? Unsaved work WILL be lost.`)) {
+      if (res.stillRunning && confirm(`${shortName(r)} did not close. Force-close it? Unsaved work WILL be lost.`)) {
         res = await window.api.closeApp(key, true);
       }
-      if (res.stillRunning) return msg(`${r.repo} is still running — close it manually, then Retry.`, 'bad');
+      if (res.stillRunning) return msg(`${shortName(r)} is still running — close it manually, then Retry.`, 'bad');
     }
   } catch (e) { return msg(clean(e), 'bad'); }
   runBatch([key]);
@@ -1234,9 +1511,10 @@ async function checkApps(keys) {
       const r = results.find((x) => (x.id || x.repo) === k) || results[0];
       if (r) {
         const s = st[k] || {};
-        if (r.retyped && retyped[r.retyped.to]) retyped[r.retyped.to].push(k.split('#')[0]);
-        if (r.status === 'failed') st[k] = { ...s, ph: 'failed', reason: r.reason };
-        else st[k] = { ...s, ph: r.status === 'current' ? 'current' : 'available', from: r.from || s.from, to: r.to, present: s.present };
+        if (r.retyped && retyped[r.retyped.to]) retyped[r.retyped.to].push(nameOfKey(k));
+        const prov = { ...(r.fileHost ? { fileHost: r.servedFrom || r.fileHost } : {}), ...(r.checksum ? { checksum: r.checksum } : {}) };
+        if (r.status === 'failed') st[k] = { ...s, ...prov, ph: 'failed', reason: r.reason };
+        else st[k] = { ...s, ...prov, ph: r.status === 'current' ? 'current' : 'available', from: r.from || s.from, to: r.to, present: s.present };
       }
       renderRepos();
       // Rate-limited (or a bad token): every remaining call would fail the same way and
@@ -1275,7 +1553,7 @@ async function runBatch(keys, force, autoClose = false) {
   const reopenErrors = [];
   async function reopen(k) {
     try { await window.api.openApp(k); }
-    catch (e) { reopenErrors.push(`${k.split('#')[0]}: ${clean(e)}`); msg(`Could not re-open ${k.split('#')[0]}: ${clean(e)}`, 'bad'); }
+    catch (e) { reopenErrors.push(`${nameOfKey(k)}: ${clean(e)}`); msg(`Could not re-open ${nameOfKey(k)}: ${clean(e)}`, 'bad'); }
   }
   for (const k of keys) {
     const wasInstall = !(st[k] && st[k].present); // fresh install vs update, for the right wording
@@ -1286,7 +1564,7 @@ async function runBatch(keys, force, autoClose = false) {
       closed = !!r?.closed;
       const s = st[k] || {};
       if (!r) { st[k] = { ...s, ph: 'failed', reason: 'no result' }; failed++; }
-      else if (r.status === 'updated') { st[k] = { ...s, ph: wasInstall ? 'installed' : 'updated', from: r.to, to: r.to, present: true, date: r.installedAt || new Date().toISOString(), lastAction: r.lastAction || (wasInstall ? 'installed' : 'updated') }; wasInstall ? installed++ : done++; }
+      else if (r.status === 'updated') { st[k] = { ...s, ...(r.fileHost ? { fileHost: r.servedFrom || r.fileHost } : {}), ...(r.checksum ? { checksum: r.checksum } : {}), ph: wasInstall ? 'installed' : 'updated', from: r.to, to: r.to, present: true, date: r.installedAt || new Date().toISOString(), lastAction: r.lastAction || (wasInstall ? 'installed' : 'updated') }; wasInstall ? installed++ : done++; }
       else if (r.status === 'current') { st[k] = { ...s, ph: 'current', to: r.to }; }
       else if (/installer window opened/.test(r.reason || '')) {
         st[k] = { ...s, ph: 'waiting', to: r.to };
@@ -1335,10 +1613,11 @@ window.api
   .then(({ canScan }) => {
     if (canScan) return;
     $('scanPc').style.display = 'none';
-    $('knownHelp').textContent = '· Browse everything git-updater can manage.';
+    $('knownHelp').textContent = '· Pick from a categorized list, or add a pack.';
   })
   .catch(() => {}); // an older main process without the handler keeps today's behaviour
-$('browseAll').onclick = () => window.api.openScan('all');
+$('browseAll').onclick = () => window.api.openPopular();
+$('packsBtn').onclick = () => window.api.openPopular('packs');
 window.api.onConfigChanged(() => load()); // scan window added apps -> refresh the list
 
 // git-updater's own update — piggybacks on Check all (no startup network calls).

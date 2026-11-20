@@ -1,0 +1,78 @@
+AppsAndFeaturesEntries:
+- UpgradeCode: '{F26FE7C6-0B11-50DD-AAAF-2DC493706BDE}'
+Author: Blender Foundation
+Copyright: 2026, Blender Foundation
+Description: 'Welcome to Blender! Blender is a free and open-source 3D creation suite.
+
+  With Blender, you can create 3D visualizations such as still images, 3D animations
+  and VFX shots. You can also edit videos. It is well suited to individuals and small
+  studios who benefit from its unified pipeline and responsive development process.
+
+  Being a cross-platform application, Blender runs on Linux, macOS, as well as Windows
+  systems. It also has relatively small memory and drive requirements compared to
+  other 3D creation suites. Its interface uses OpenGL to provide a consistent experience
+  across all supported hardware and platforms.'
+Documentations:
+- DocumentLabel: Manual
+  DocumentUrl: https://docs.blender.org/manual/en/latest/
+ElevationRequirement: elevatesSelf
+FileExtensions:
+- blend
+InstallerSwitches:
+  InstallLocation: INSTALL_ROOT="<INSTALLPATH>"
+InstallerType: wix
+Installers:
+- Architecture: x64
+  InstallerSha256: 3FF4EC8A488BE1148AA2BDB2CB229BE21B8050E75931DA617934CAC254DD726C
+  InstallerUrl: https://download.blender.org/release/Blender5.3/blender-5.3.0-windows-x64.msi
+  ProductCode: '{BCCBDF6A-9448-4838-944B-2CB9539D572E}'
+- Architecture: arm64
+  InstallerSha256: 82BF9C0057E288C44D066C201ABE2EA1278D1EBE5DF6CFD54571FCA14DBA27DE
+  InstallerUrl: https://download.blender.org/release/Blender5.3/blender-5.3.0-windows-arm64.msi
+  ProductCode: '{F5B3BBF0-D695-4F32-BA3C-5FB1772FFD40}'
+License: GPL-3.0-or-later
+Localization:
+- Author: Blender Foundation
+  Copyright: 2026, Blender Foundation
+  Description: "Blender \u662F\u4E00\u6B3E\u514D\u8D39\u5F00\u6E90\u7684 3D \u521B\u4F5C\u5957\u4EF6\u3002\n\u4F7F\u7528
+    Blender\uFF0C\u60A8\u53EF\u4EE5\u521B\u5EFA 3D \u53EF\u89C6\u5316\u6548\u679C\uFF0C\u4F8B\u5982\u9759\u6001\u56FE\u50CF\uFF0C3D
+    \u52A8\u753B\uFF0CVFX\uFF08\u89C6\u89C9\u7279\u6548\uFF09\u5FEB\u7167\u548C\u89C6\u9891\u7F16\u8F91\u3002\u5B83\u975E\u5E38\u9002\u5408\u90A3\u4E9B\u53D7\u76CA\u4E8E\u5176\u7EDF\u4E00\u89E3\u51B3\u65B9\u6848\u548C\u54CD\u5E94\u5F0F\u5F00\u53D1\u8FC7\u7A0B\u7684\u72EC\u7ACB\u548C\u5C0F\u578B\u5DE5\u4F5C\u5BA4\u3002\nBlender
+    \u662F\u4E00\u6B3E\u8DE8\u5E73\u53F0\u7684\u5E94\u7528\u5DE5\u5177\uFF0C\u53EF\u4EE5\u5728
+    Linux\u3001macOS \u4EE5\u53CA Windows \u7CFB\u7EDF\u4E0B\u8FD0\u884C\u3002\u4E0E\u5176\u4ED6
+    3D \u5EFA\u6A21\u5DE5\u5177\u76F8\u6BD4\uFF0CBlender \u5BF9\u5185\u5B58\u548C\u9A71\u52A8\u7684\u9700\u6C42\u66F4\u4F4E\u3002\u5176\u754C\u9762\u4F7F\u7528
+    OpenGL\uFF0C\u5728\u6240\u6709\u652F\u6301\u7684\u786C\u4EF6\u4E0E\u5E73\u53F0\u90FD\u80FD\u63D0\u4F9B\u4E00\u81F4\u7684\u7528\u6237\u4F53\u9A8C\u3002"
+  Documentations:
+  - DocumentLabel: "\u624B\u518C"
+    DocumentUrl: https://docs.blender.org/manual/zh-hans/latest/
+  License: GPL-3.0-or-later
+  PackageLocale: zh-CN
+  PackageName: blender
+  Publisher: Blender Foundation
+  ShortDescription: "\u514D\u8D39\u5F00\u6E90\u7684 3D \u521B\u4F5C\u8F6F\u4EF6"
+  Tags:
+  - "\u4E09\u7EF4"
+  - "\u52A8\u753B"
+  - "\u5EFA\u6A21"
+  - "\u6A21\u578B"
+  - "\u6E32\u67D3"
+  - "\u7279\u6548"
+  - "\u89C6\u89C9\u7279\u6548"
+ManifestType: merged
+ManifestVersion: 1.28.0
+Moniker: blender
+PackageIdentifier: BlenderFoundation.Blender
+PackageLocale: en-US
+PackageName: blender
+PackageVersion: 5.3.0
+Publisher: Blender Foundation
+ReleaseDate: 2026-11-10
+Scope: machine
+ShortDescription: Free and Open 3D Creation Software
+Tags:
+- 3d
+- animation
+- model
+- modeling
+- render
+- vfx
+UpgradeBehavior: uninstallPrevious
