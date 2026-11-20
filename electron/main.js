@@ -8,7 +8,6 @@ const { app, BrowserWindow, ipcMain, dialog, shell, screen, net } = require('ele
 const fs = require('fs');
 const path = require('path');
 const core = require('../src/core');
-const github = require('../src/github');
 const runner = require('../src/runner');
 const state = require('../src/state');
 const detect = require('../src/detect');
@@ -16,6 +15,7 @@ const platform = require('../src/platform');
 const paths = require('../src/paths');
 const catalog = require('../src/catalog');
 const selfupdate = require('../src/selfupdate');
+const sources = require('../src/sources');
 const { log, LOG_FILE } = require('../src/log');
 
 // macOS self-updates in place via Squirrel.Mac (electron/macupdate.js), not the launcher model
@@ -48,7 +48,7 @@ function dirHasFiles(dir) {
 }
 function portableDir(cfg, r) {
   if (r.install && r.install.dir) return r.install.dir;
-  return cfg.portableRoot ? `${cfg.portableRoot.replace(/[\\/]+$/, '')}/${r.repo}` : null;
+  return cfg.portableRoot ? `${cfg.portableRoot.replace(/[\\/]+$/, '')}/${core.folderName(r)}` : null;
 }
 
 // Config lives with state in git-updater's own config dir — never the launch cwd.
@@ -78,9 +78,24 @@ function readConfig() {
 function saveConfigFile(cfg) {
   if (!cfg || !Array.isArray(cfg.repos)) throw new Error('config: "repos" must be an array');
   cfg.repos.forEach((r, i) => {
+    // A non-GitHub entry's key is derived from its source HERE, in the main process, on
+    // every save — whatever the renderer or a hand-edit put in owner/repo is overwritten.
+    if (r && r.source) {
+      try {
+        sources.normalizeEntry(r);
+      } catch (e) {
+        throw new Error(`app ${i + 1}: ${e.message}`);
+      }
+    }
     if (!r.owner || !r.repo) throw new Error(`app ${i + 1}: owner and repo are required`);
     if (r.type !== 'portable' && r.type !== 'installer') throw new Error(`app ${i + 1}: type must be portable or installer`);
   });
+  if (cfg.sourcePreference != null) {
+    const known = new Set(sources.providerTypes());
+    cfg.sourcePreference = (Array.isArray(cfg.sourcePreference) ? cfg.sourcePreference : []).filter((t) => known.has(t));
+  }
+  if (cfg.typePreference != null && cfg.typePreference !== 'portable' && cfg.typePreference !== 'installer') delete cfg.typePreference;
+  if (cfg.requireChecksum != null) cfg.requireChecksum = !!cfg.requireChecksum;
   fs.mkdirSync(path.dirname(CONFIG_PATH), { recursive: true });
   if (fs.existsSync(CONFIG_PATH)) {
     const stamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -130,10 +145,10 @@ ipcMain.handle('installed:get', async () => {
     if (r.type === 'installer') {
       let v = null;
       try {
-        v = await detect.installedVersion(r.detect || r.repo);
+        v = await detect.installedVersion(core.detectName(r));
       } catch {}
       let date = rec.installedAt || null;
-      if (!date && v) try { date = await detect.installedDate(r.detect || r.repo); } catch {}
+      if (!date && v) try { date = await detect.installedDate(core.detectName(r)); } catch {}
       out[key] = { current: v, present: !!v, date: v ? date : null, lastAction: rec.lastAction || 'installed' };
     } else {
       const dir = portableDir(cfg, r);
@@ -147,7 +162,7 @@ ipcMain.handle('installed:get', async () => {
       if (!present && !current) {
         let v = null;
         try {
-          v = await detect.installedVersion(r.detect || r.repo);
+          v = await detect.installedVersion(core.detectName(r));
         } catch {}
         if (v) {
           current = v;
@@ -155,7 +170,7 @@ ipcMain.handle('installed:get', async () => {
         }
       }
       let date = rec.installedAt || null;
-      if (!date && present) try { date = await detect.installedDate(r.detect || r.repo); } catch {}
+      if (!date && present) try { date = await detect.installedDate(core.detectName(r)); } catch {}
       out[key] = { current, present, date: present ? date : null, lastAction: rec.lastAction || 'installed' };
     }
   }
@@ -166,14 +181,14 @@ ipcMain.handle('installed:record-completion', async (_e, { appKey, fromVersion, 
   const r = readConfig().repos.find((x) => `${x.owner}/${x.repo}#${x.type}` === appKey);
   if (!r || r.type !== 'installer') throw new Error('installer app not found');
   detect.clearCache();
-  const version = await detect.installedVersion(r.detect || r.repo);
+  const version = await detect.installedVersion(core.detectName(r));
   if (!version || version === fromVersion) throw new Error('installer completion not detected');
   const stt = state.load();
   const installedAt = new Date().toISOString();
   const lastAction = wasInstall ? 'installed' : 'updated';
   // An interactive install supplies status provenance, not a release tag. The registry
   // may use a different version scheme; treating it as a tag can block a later reinstall.
-  stt[appKey] = { ...(stt[appKey] || {}), repo: `${r.owner}/${r.repo}`, type: r.type, installedAt, lastAction };
+  stt[appKey] = { ...(stt[appKey] || {}), repo: core.displayId(r), type: r.type, installedAt, lastAction };
   state.save(stt);
   return { installedAt, lastAction };
 });
@@ -235,7 +250,7 @@ ipcMain.handle('app:launch', async (_e, appKey) => {
         return false;
       }
     };
-    const rel = core.pickLaunchFile(files, r.repo, process.platform, isExec);
+    const rel = core.pickLaunchFile(files, core.appName(r), process.platform, isExec);
     if (rel) {
       const abs = path.join(dir, rel);
       if (fs.existsSync(abs)) target = abs;
@@ -244,15 +259,15 @@ ipcMain.handle('app:launch', async (_e, appKey) => {
     // An installer entry, OR a portable entry with no managed copy — the app was installed
     // by hand (found in the OS inventory, e.g. Deskflow in /Applications). Either way, launch
     // it from the OS's own record.
-    const t = await detect.launchTarget(r.detect || r.repo);
+    const t = await detect.launchTarget(core.detectName(r));
     if (t && t.path && fs.existsSync(t.path)) target = t.path;
     if (!target && t && t.location && fs.existsSync(t.location)) {
-      const rel = core.pickLaunchFile(shallowFiles(t.location, 2), r.repo, process.platform);
+      const rel = core.pickLaunchFile(shallowFiles(t.location, 2), core.appName(r), process.platform);
       if (rel) target = path.join(t.location, rel);
     }
   }
 
-  if (!target) throw new Error(`couldn't find ${r.repo}'s program to open — try Open folder`);
+  if (!target) throw new Error(`couldn't find ${core.appName(r)}'s program to open — try Open folder`);
   log(`launchApp ${appKey} -> ${target}`);
   if (await platform.launchApp(target)) return { ok: true, path: target };
   const err = await shell.openPath(target); // '' on success, else an OS error string
@@ -338,29 +353,145 @@ ipcMain.handle('scan:add', (_e, items) => {
 ipcMain.handle('app:is-running', async (_e, appKey) => {
   const r = readConfig().repos.find((x) => `${x.owner}/${x.repo}#${x.type}` === appKey);
   if (!r) throw new Error('app not found');
-  return detect.isRunning(r.process || r.repo);
+  return detect.isRunning(core.processName(r));
 });
 ipcMain.handle('app:close', async (_e, { appKey, force }) => {
   const r = readConfig().repos.find((x) => `${x.owner}/${x.repo}#${x.type}` === appKey);
   if (!r) throw new Error('app not found');
   log(`closeApp ${appKey} force=${!!force}`);
-  return detect.closeApp(r.process || r.repo, { force: !!force });
+  return detect.closeApp(core.processName(r), { force: !!force });
 });
-// Validate a repo has a usable release before it's added (throws -> rejects).
+const findEntry = (appKey) => {
+  const r = readConfig().repos.find((x) => `${x.owner}/${x.repo}#${x.type}` === appKey);
+  if (!r) throw new Error('app not found');
+  return r;
+};
+const hostInfo = async (entry) => ({
+  flavor: entry.type === 'installer' ? await detect.installedFlavor(core.detectName(entry)) : null,
+  osRelease: detect.osRelease(),
+});
+
+// Validate a GitHub repo has a usable release before it's added (throws -> rejects).
+// Kept for the Edit path of plain GitHub entries; new adds go through source:* below.
 ipcMain.handle('repo:validate', async (_e, { owner, repo, prerelease }) => {
-  const rel = await github.getLatestRelease(owner, repo, { prerelease });
+  const rel = await sources.getLatestRelease({ owner, repo, prerelease }, sources.makeCtx());
   return { ok: true, tag: rel.tag_name };
 });
-ipcMain.handle('release:open', (_e, { owner, repo }) =>
-  shell.openExternal(`https://github.com/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/releases`)
-);
-// Preview which Windows asset auto-pick would choose for the latest release.
+// Open the page that lists an app's releases. The renderer names a tracked app by its
+// key; the URL is built HERE from the entry's source and must be https — the renderer
+// never hands a URL across the bridge.
+ipcMain.handle('release:open', (_e, arg) => {
+  const entry = typeof arg === 'string' ? findEntry(arg) : { owner: arg.owner, repo: arg.repo, type: 'portable' };
+  return shell.openExternal(sources.pageUrl(entry));
+});
+// Where every tracked app comes from: source type, label and listing host, plus what the
+// last install recorded about the file itself. No network.
+ipcMain.handle('sources:describe', () => {
+  const stt = state.load();
+  const out = {};
+  for (const r of readConfig().repos) {
+    const key = `${r.owner}/${r.repo}#${r.type}`;
+    try {
+      const d = sources.describe(r);
+      const rec = stt[key] || {};
+      out[key] = {
+        type: d.type, label: d.label, host: d.listingHost, ref: d.ref,
+        name: core.appName(r),
+        fileHost: rec.fileHost || null,
+        checksum: rec.checksum || null,
+      };
+    } catch (e) {
+      out[key] = { type: 'unknown', label: 'Unknown source', host: '', ref: '', name: core.appName(r), error: e.message };
+    }
+  }
+  return out;
+});
+// Preview exactly what an update would fetch: the file, where from, and whether it can
+// be verified. Same selection as Check and Update — see sources.selectAsset.
 ipcMain.handle('asset:preview', async (_e, appKey) => {
-  const repo = readConfig().repos.find((r) => `${r.owner}/${r.repo}#${r.type}` === appKey);
-  if (!repo) throw new Error('app not found');
-  const rel = await github.getLatestRelease(repo.owner, repo.repo, { prerelease: repo.prerelease, tagPrefix: repo.tagPrefix });
-  const asset = repo.asset ? core.matchAsset(rel.assets, repo.asset) : core.pickAsset(rel.assets, repo.type);
-  return { tag: rel.tag_name, asset: asset.name };
+  const repo = findEntry(appKey);
+  const ctx = sources.makeCtx();
+  const rel = await sources.getLatestRelease(repo, ctx);
+  const asset = sources.selectAsset(repo, rel, await hostInfo(repo));
+  const sum = await sources.resolveChecksum(repo, rel, asset, ctx);
+  return {
+    tag: rel.tag_name,
+    asset: asset.name,
+    url: sources.redact(asset.browser_download_url),
+    host: new URL(asset.browser_download_url).host,
+    listedBy: rel.provenance.listedBy,
+    checksum: sum.state,
+    requires: asset.requires || null,
+  };
+});
+
+// --- Adding apps from any source ----------------------------------------------
+// The Add box takes a GitHub URL, any other URL, or a program name. resolve turns that
+// text into candidates; inspect says what each one would install on THIS machine; add
+// builds the config entry main-side. The renderer never constructs a key or a URL.
+const catalogLookup = (name, platform) => catalog.lookup(name, platform);
+
+ipcMain.handle('source:resolve', async (_e, text) => {
+  const cfg = readConfig();
+  const out = await sources.resolve(String(text || ''), sources.makeCtx(), { catalog: catalogLookup });
+  const pick = sources.autoPick(out.candidates, cfg.sourcePreference);
+  const tracked = new Set(cfg.repos.map((r) => `${r.owner}/${r.repo}`));
+  const candidates = out.candidates.map((c) => {
+    if (c.error) return c;
+    const k = sources.keyParts(c.source);
+    return { ...c, tracked: tracked.has(`${k.owner}/${k.repo}`) };
+  });
+  return { kind: out.kind, candidates, autoPick: pick ? out.candidates.indexOf(pick) : -1 };
+});
+ipcMain.handle('source:inspect', async (_e, { source, prerelease }) => {
+  const k = sources.keyParts(source);
+  const probe = { ...k, source: source.type === 'github' ? undefined : source, name: 'x', prerelease: !!prerelease };
+  return sources.inspect(probe, sources.makeCtx(), await hostInfo({ ...probe, type: 'installer' }));
+});
+ipcMain.handle('source:open', (_e, source) => {
+  const k = sources.keyParts(source);
+  return shell.openExternal(sources.pageUrl({ ...k, type: 'portable', source: source.type === 'github' ? undefined : source }));
+});
+// items: [{ source, name, type, prerelease }]. Returns { added, skipped, keys }.
+ipcMain.handle('source:add', (_e, items) => {
+  if (!Array.isArray(items)) throw new Error('items must be an array');
+  const cfg = readConfig();
+  if (!Array.isArray(cfg.repos)) cfg.repos = [];
+  if (items.some((i) => i && i.type === 'portable') && !cfg.portableRoot) {
+    throw new Error('set the portable apps folder first (Settings), then add portable apps');
+  }
+  const keys = [];
+  let skipped = 0;
+  for (const it of items) {
+    const entry = sources.entryFromCandidate({ source: it.source, name: it.name }, it.type, { prerelease: !!it.prerelease });
+    if (cfg.repos.some((r) => r.owner === entry.owner && r.repo === entry.repo && r.type === entry.type)) {
+      skipped++;
+      continue;
+    }
+    cfg.repos.push(entry);
+    keys.push(`${entry.owner}/${entry.repo}#${entry.type}`);
+    log(`added ${keys[keys.length - 1]} (${core.displayId(entry)}) from ${sources.describe(entry).label}`);
+  }
+  if (keys.length) saveConfigFile(cfg);
+  return { added: keys.length, skipped, keys };
+});
+// Change an existing app's type and/or beta setting WITHOUT rebuilding the entry, so
+// its source and every hand-set override survive the edit.
+ipcMain.handle('app:edit', (_e, { appKey, type, prerelease }) => {
+  const cfg = readConfig();
+  const r = cfg.repos.find((x) => `${x.owner}/${x.repo}#${x.type}` === appKey);
+  if (!r) throw new Error('app not found');
+  if (type !== 'portable' && type !== 'installer') throw new Error('type must be portable or installer');
+  if (type !== r.type && cfg.repos.some((x) => x !== r && x.owner === r.owner && x.repo === r.repo && x.type === type)) {
+    throw new Error(`${core.displayId(r)} is already tracked as ${type}`);
+  }
+  if (type === 'portable' && !cfg.portableRoot && !(r.install && r.install.dir)) throw new Error('set the portable apps folder first (Settings)');
+  // install.dir is kept when switching to Installer so switching back keeps the folder.
+  r.type = type;
+  if (prerelease) r.prerelease = true;
+  else delete r.prerelease;
+  saveConfigFile(cfg);
+  return { key: `${r.owner}/${r.repo}#${type}` };
 });
 // --- Self-update (portable, run-as-is) ----------------------------------------
 // Checked only when the user runs "Check all" — no network at startup, same as
@@ -518,7 +649,8 @@ ipcMain.handle('selfupdate:apply', async (e) => {
     // the OS/Windows certificate store, so a corporate VPN/proxy's SSL-inspection root CA — the
     // one the browser already trusts — is honored here too. Node's own fetch ignores that store
     // and fails with UNABLE_TO_GET_ISSUER_CERT_LOCALLY on such networks.
-    github.setFetch((url, init) => net.fetch(url, init));
+    sources.setFetch((url, init) => net.fetch(url, init)); // routes github.js and every source provider
+    sources.setCacheDir(path.join(paths.dataDir(), 'cache'));
     migrateConfig();
     if (app.isPackaged) selfupdate.cleanupLeftovers(ROOT, app.getVersion()).catch(() => {});
     createWindow();

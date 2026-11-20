@@ -260,13 +260,24 @@ test('resolve: an unrecognised host is probed for a forge API before giving up',
 
 test('resolve: a name consults only the curated lookups it is given', async () => {
   const seen = [];
-  const r = await sources.resolve('handbrake', stubCtx(), {
+  // Linux has no package-index provider, so the catalog is the only place a name can hit.
+  const r = await sources.resolve('handbrake', stubCtx({}, { platform: 'linux' }), {
     catalog: async (name, platform) => { seen.push([name, platform]); return [{ source: { type: 'github', owner: 'HandBrake', repo: 'HandBrake' }, name: 'HandBrake', curated: true, exact: true }]; },
   });
   assert.equal(r.kind, 'name');
-  assert.deepEqual(seen, [['handbrake', 'win32']]);
+  assert.deepEqual(seen, [['handbrake', 'linux']]);
   assert.equal(r.candidates.length, 1);
   assert.equal((await sources.resolve('   ', stubCtx())).candidates.length, 0);
+});
+
+test('resolve: a provider whose index cannot be reached is reported, not fatal', async () => {
+  // On Windows the WinGet provider is consulted; the stub has no route for its index.
+  const r = await sources.resolve('handbrake', stubCtx({}, { platform: 'win32' }), {
+    catalog: async () => [{ source: { type: 'github', owner: 'HandBrake', repo: 'HandBrake' }, name: 'HandBrake', curated: true, exact: true }],
+  });
+  const ok = r.candidates.filter((c) => !c.error);
+  assert.deepEqual(ok.map((c) => c.source.type), ['github'], 'the curated hit still comes back');
+  for (const c of r.candidates.filter((x) => x.error)) assert.match(c.error, /^[A-Za-z]+: /, 'an error row names its provider');
 });
 
 test('autoPick: only with a preference, and only for one established identity', () => {

@@ -221,4 +221,53 @@ function matchInstalled(installed, trackedRepos, platform) {
   return out;
 }
 
-module.exports = { CATALOG, matchInstalled, onPlatform, findInstalled };
+// ---------------------------------------------------------------------------
+// Name lookup — the "shortcut list" behind the Add box.
+//
+// A user types "vlc" or "libre office", not a repository path or a package id. This maps
+// what people actually type to the place the app really comes from. It is deliberately a
+// curated list and not a search engine: every hit is an identity someone checked, which
+// is what makes it safe to add without asking when the user has a preferred source.
+//
+// An entry may carry:
+//   aliases   other names people use for the app
+//   category  where it sits in the Popular apps picker
+//   sources   pinned sources per platform, e.g. { win32: [{ type: 'winget', id: '…' }] }.
+//             The entry's GitHub `repo`, when it has one, is always offered as well.
+// ---------------------------------------------------------------------------
+
+const squash = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+
+function sourcesFor(entry, platform) {
+  const out = [];
+  const pinned = entry.sources && (entry.sources[platform] || entry.sources.all);
+  for (const s of pinned || []) out.push({ ...s });
+  if (entry.repo && !entry.noGithub) {
+    const [owner, repo] = entry.repo.split('/');
+    out.push({ type: 'github', owner, repo });
+  }
+  return out;
+}
+
+// -> Candidate[] (see src/sources/index.js), exact matches first.
+function lookup(name, platform) {
+  const q = squash(name);
+  if (!q) return [];
+  const plat = platform || process.platform;
+  const exact = [];
+  const partial = [];
+  for (const entry of CATALOG) {
+    if (!onPlatform(entry, plat)) continue;
+    const names = [entry.name, ...(entry.aliases || [])].map(squash);
+    const isExact = names.includes(q);
+    // A partial hit needs three characters, so "a" does not match half the list.
+    const isPartial = !isExact && q.length >= 3 && names.some((n) => n.includes(q));
+    if (!isExact && !isPartial) continue;
+    for (const source of sourcesFor(entry, plat)) {
+      (isExact ? exact : partial).push({ source, name: entry.name, curated: true, exact: isExact, category: entry.category || null });
+    }
+  }
+  return [...exact, ...partial];
+}
+
+module.exports = { CATALOG, matchInstalled, onPlatform, findInstalled, lookup, sourcesFor };
