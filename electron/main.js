@@ -459,10 +459,12 @@ ipcMain.handle('source:resolve', async (_e, text) => {
   });
   return { kind: out.kind, candidates, autoPick: pick ? out.candidates.indexOf(pick) : -1 };
 });
+// A candidate is not an installed app yet, so nothing about what happens to be installed
+// may steer which file its preview shows: no installer flavor is passed, only the OS.
 ipcMain.handle('source:inspect', async (_e, { source, prerelease }) => {
   const k = sources.keyParts(source);
-  const probe = { ...k, source: source.type === 'github' ? undefined : source, name: 'x', prerelease: !!prerelease };
-  return sources.inspect(probe, sources.makeCtx(), await hostInfo({ ...probe, type: 'installer' }));
+  const probe = { ...k, source: source.type === 'github' ? undefined : source, name: 'candidate', prerelease: !!prerelease };
+  return sources.inspect(probe, sources.makeCtx(), { osRelease: detect.osRelease() });
 });
 ipcMain.handle('source:open', (_e, source) => {
   const k = sources.keyParts(source);
@@ -647,9 +649,12 @@ function resolveRedirects(url, { checkHop, maxHops }) {
     const finish = (fn, value) => {
       if (done) return;
       done = true;
+      clearTimeout(timer);
       try { req.abort(); } catch {}
       fn(value);
     };
+    // A mirror that accepts the connection and then says nothing must not hang an update.
+    const timer = setTimeout(() => finish(reject, new Error('timed out finding where the download is served from')), 30 * 1000);
     req.setHeader('User-Agent', 'release-watcher');
     req.on('redirect', (_status, _method, redirectUrl) => {
       try {

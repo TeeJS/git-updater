@@ -362,6 +362,12 @@ test('autoPick: only with a preference, and only for one established identity', 
   assert.equal(sources.autoPick([gh, gl], ['github']), gh);
   assert.equal(sources.autoPick([fuzzy], ['gitlab']), null, 'a fuzzy match is never added unprompted');
   assert.equal(sources.autoPick([gl, { ...gl, source: { ...gl.source, project: 'a/b-esr' } }], ['gitlab']), null, 'two exact editions -> ask');
+  // One exact id plus looser neighbours from the same provider (Mozilla.Firefox next to
+  // Mozilla.Firefox.ESR and friends): the neighbours neither qualify nor disqualify it.
+  assert.equal(sources.autoPick([gl, fuzzy, { ...fuzzy, source: { ...fuzzy.source, project: 'e/f' } }], ['gitlab']), gl);
+  // The first preferred provider that has the app decides — an ambiguous one does not
+  // fall through to the next provider.
+  assert.equal(sources.autoPick([fuzzy, gh], ['gitlab', 'github']), null);
   assert.equal(sources.autoPick([{ ...gl, explicit: true }], ['gitlab']), null, 'a pasted URL is always explicit');
 });
 

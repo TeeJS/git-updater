@@ -300,10 +300,19 @@ test('an emulated pick is reported as such', async () => {
 test('two apps can never share one portable folder when either comes from a source', async () => {
   await withWorld({ sums: 'match' }, async ({ entry, dir, statePath }) => {
     const twin = { owner: 'x', repo: 'y', type: 'portable', name: 'Tool', source: { type: 'gitea', host: 'codeberg.org', owner: 'other', repo: 'tool' }, install: { dir } };
+    // BOTH are blocked: config order does not say which app owns the files already there.
     const { results } = await runner.run({ repos: [entry, twin] }, { mode: 'check', statePath });
-    assert.equal(results[0].status, 'updated');
-    assert.equal(results[1].status, 'failed');
-    assert.match(results[1].reason, /portable folder .* is already used by Tool/);
+    assert.deepEqual(results.map((r) => r.status), ['failed', 'failed']);
+    for (const r of results) assert.match(r.reason, /portable folder .* is also used by Tool .*give each its own install\.dir/);
+    // ...and that holds when the run is narrowed to just one of them.
+    const one = await runner.run({ repos: [entry, twin] }, { mode: 'check', statePath, only: KEY });
+    assert.equal(one.results.length, 1);
+    assert.equal(one.results[0].status, 'failed');
+    // Two plain GitHub entries sharing a folder keep their old behaviour.
+    const a = { owner: 'acme', repo: 'tool', type: 'portable', install: { dir } };
+    const b = { owner: 'other', repo: 'tool', type: 'portable', install: { dir } };
+    const gh = await runner.run({ repos: [a, b] }, { mode: 'check', statePath });
+    assert.deepEqual(gh.results.map((r) => r.status), ['updated', 'updated']);
   });
 });
 

@@ -93,30 +93,42 @@ async function run(config, opts = {}) {
   const st = state.load(opts.statePath);
   const only = opts.only ? opts.only.toLowerCase() : null;
   const results = [];
-  // Two apps must never share one portable folder: installing either swaps the whole
-  // directory, so the second would delete the first. GitHub entries are keyed by repo
-  // name as before; a sourced entry's folder comes from its display name, and two
-  // different sources can sanitise to the same one.
-  const folderOwner = new Map();
+  // Normalise every entry first, so identities are final before anything is compared.
+  const badEntry = new Map();
   for (const repo of config.repos) {
-    // Derive a non-GitHub entry's key from its source before anything reads it, so a
-    // hand-edited config cannot claim one identity while pointing at another. An entry
-    // naming a source this build does not know fails on its own row, not the whole run.
-    let bad = null;
     try {
       sources.normalizeEntry(repo);
     } catch (e) {
-      bad = e;
+      badEntry.set(repo, e);
     }
+  }
+  // Two apps must never share one portable folder: installing either swaps the whole
+  // directory, so one would delete the other. Config order says nothing about which app
+  // owns the files already there, so EVERY entry in a shared folder is blocked — computed
+  // over the whole list, before any --only filter — until the user gives them separate
+  // folders. Two plain GitHub entries keep their old behaviour; this applies as soon as
+  // either comes from another source, whose folder is derived from a display name that
+  // two different sources can share.
+  const sharers = new Map();
+  for (const repo of config.repos) {
+    if (badEntry.has(repo) || repo.type !== 'portable' || !repo.install || !repo.install.dir) continue;
+    const k = path.resolve(String(repo.install.dir)).toLowerCase();
+    if (!sharers.has(k)) sharers.set(k, []);
+    sharers.get(k).push(repo);
+  }
+  const clashOf = new Map();
+  for (const group of sharers.values()) {
+    if (group.length < 2 || !group.some((r) => r.source)) continue;
+    for (const r of group) clashOf.set(r, group.filter((x) => x !== r).map(displayId).join(', '));
+  }
+  for (const repo of config.repos) {
+    // A non-GitHub entry's key was derived from its source above, so a hand-edited
+    // config cannot claim one identity while pointing at another. An entry naming a
+    // source this build does not know fails on its own row, not the whole run.
+    const bad = badEntry.get(repo) || null;
     const id = displayId(repo);
     const key = appKey(repo);
-    let clash = null;
-    if (!bad && repo.type === 'portable' && repo.install && repo.install.dir) {
-      const dirKey = path.resolve(String(repo.install.dir)).toLowerCase();
-      const first = folderOwner.get(dirKey);
-      if (first && (repo.source || first.sourced)) clash = first.id;
-      else if (!first) folderOwner.set(dirKey, { id, sourced: !!repo.source });
-    }
+    const clash = clashOf.get(repo) || null;
     if (only) {
       // GitHub ids keep their case-folded match. A non-GitHub key encodes a URL path,
       // where case can be significant, so it is matched exactly (as is its name).
@@ -127,7 +139,7 @@ async function run(config, opts = {}) {
     const markClosed = () => { closed = true; };
     try {
       if (bad) throw bad;
-      if (clash) throw new Error(`its portable folder (${repo.install.dir}) is already used by ${clash} — give one of them its own install.dir in config.json`);
+      if (clash) throw new Error(`its portable folder (${repo.install.dir}) is also used by ${clash} — give each its own install.dir in config.json`);
       const result = await handleRepo(repo, id, st, {
         ...opts,
         portableRoot: config.portableRoot,
@@ -354,8 +366,8 @@ async function handleRepo(repo, id, st, opts) {
   try {
     // The name comes from a remote listing. One safe path segment, and the resolved path
     // must still be inside the staging directory before anything is written to it.
-    const stagedName = gh ? asset.name : sources.safeFileName(asset.name);
-    const file = path.join(tmp, stagedName);
+    let stagedName = gh ? asset.name : sources.safeFileName(asset.name);
+    let file = path.join(tmp, stagedName);
     if (!gh && path.dirname(path.resolve(file)) !== path.resolve(tmp)) throw new Error('the source listed a file whose name is not safe to save');
     emit('downloading', 0);
     // Where the bytes really came from. A source that names a file must serve that file,
@@ -369,6 +381,17 @@ async function handleRepo(repo, id, st, opts) {
       onFinalUrl: (u) => { finalUrl = u; },
     });
     if (!gh) log(`  ${key}: ${src.source ? src.source.label : 'source'} -> ${sources.redact(finalUrl)}`);
+    // Some listings name a download address with no file extension (an update endpoint
+    // rather than a file). Everything downstream decides by extension, so the file is
+    // named from what it actually is — its first and last bytes — never from a guess.
+    if (asset.sniff) {
+      const ext = sniffExtension(file);
+      if (!ext) throw new Error('could not tell what kind of file was downloaded');
+      stagedName += ext;
+      const named = path.join(tmp, stagedName);
+      fs.renameSync(file, named);
+      file = named;
+    }
     emit('verifying');
     let v;
     if (sum) {
@@ -534,6 +557,30 @@ async function handleRepo(repo, id, st, opts) {
   }
 }
 
+// '.zip' | '.dmg' | '.pkg' | null, from the file's own bytes.
+function sniffExtension(file) {
+  let fd;
+  try {
+    fd = fs.openSync(file, 'r');
+    const size = fs.fstatSync(fd).size;
+    const head = Buffer.alloc(8);
+    fs.readSync(fd, head, 0, 8, 0);
+    if (head[0] === 0x50 && head[1] === 0x4b && (head[2] === 0x03 || head[2] === 0x05) && (head[3] === 0x04 || head[3] === 0x06)) return '.zip';
+    if (head.toString('latin1', 0, 4) === 'xar!') return '.pkg';
+    if (size >= 512) {
+      // A UDIF disk image ends with a 512-byte trailer that starts "koly".
+      const tail = Buffer.alloc(4);
+      fs.readSync(fd, tail, 0, 4, size - 512);
+      if (tail.toString('latin1') === 'koly') return '.dmg';
+    }
+    return null;
+  } catch {
+    return null;
+  } finally {
+    if (fd != null) try { fs.closeSync(fd); } catch {}
+  }
+}
+
 function hostOf(url) {
   try {
     return new URL(url).host;
@@ -555,4 +602,4 @@ function fileInfo(asset, sum, finalUrl) {
 }
 
 // retypeIfNoInstaller: former name, kept so the vendored drop-in keeps working.
-module.exports = { run, retypeIfUnavailable, retypeIfNoInstaller: retypeIfUnavailable };
+module.exports = { run, retypeIfUnavailable, retypeIfNoInstaller: retypeIfUnavailable, sniffExtension };

@@ -1,0 +1,5197 @@
+[
+ {
+  "artifacts": [
+   {
+    "preflight_steps": [
+     {
+      "steps": [
+       {
+        "non_recursive": true,
+        "paths": [
+         {
+          "base": "staged_path",
+          "path": "*.app/**/__pycache__"
+         }
+        ],
+        "permissions": "u+w",
+        "type": "set_permissions"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "app": [
+     "Blender.app"
+    ],
+    "target": "/Applications/Blender.app"
+   },
+   {
+    "command_wrapper": [
+     "blender",
+     {
+      "executable": "$APPDIR/Blender.app/Contents/MacOS/Blender"
+     }
+    ],
+    "target": "$HOMEBREW_PREFIX/bin/blender"
+   },
+   {
+    "zap": [
+     {
+      "trash": [
+       "~/Library/Application Support/Blender",
+       "~/Library/Caches/Blender",
+       "~/Library/Saved Application State/org.blenderfoundation.blender.savedState"
+      ]
+     }
+    ]
+   }
+  ],
+  "auto_updates": null,
+  "autobump": true,
+  "bundle_short_version": null,
+  "bundle_version": null,
+  "caveats": null,
+  "caveats_rosetta": null,
+  "conflicts_with": {
+   "cask": [
+    "blender@lts"
+   ]
+  },
+  "container": null,
+  "depends_on": {
+   "macos": {
+    ">=": [
+     "13"
+    ]
+   }
+  },
+  "deprecate_args": null,
+  "deprecated": false,
+  "deprecation_date": null,
+  "deprecation_reason": null,
+  "deprecation_replacement_cask": null,
+  "deprecation_replacement_formula": null,
+  "desc": "3D creation suite",
+  "disable_args": null,
+  "disable_date": null,
+  "disable_reason": null,
+  "disable_replacement_cask": null,
+  "disable_replacement_formula": null,
+  "disabled": false,
+  "full_token": "blender",
+  "homepage": "https://www.blender.org/",
+  "installed": null,
+  "installed_time": null,
+  "languages": [],
+  "name": [
+   "Blender"
+  ],
+  "no_autobump_message": null,
+  "old_tokens": [],
+  "outdated": false,
+  "pinned": false,
+  "pinned_version": null,
+  "rename": [],
+  "ruby_source_checksum": {
+   "sha256": "5277eb0934b2fb8105960f7773d8d268755ecd9331d0e36af8eb384af58c91c4"
+  },
+  "ruby_source_path": "Casks/b/blender.rb",
+  "sha256": "2d802b54766741e612cead50b03ebbc8eb64dadc71eda932573d256b8a784720",
+  "skip_livecheck": false,
+  "supported_platforms": [
+   "golden_gate",
+   "arm64_golden_gate",
+   "tahoe",
+   "arm64_tahoe",
+   "sequoia",
+   "arm64_sequoia",
+   "sonoma",
+   "arm64_sonoma",
+   "ventura",
+   "arm64_ventura"
+  ],
+  "tap": "homebrew/cask",
+  "tap_git_head": "bc429d228452ef0ac57ac508a10e6a39f8e3e32a",
+  "token": "blender",
+  "url": "https://download.blender.org/release/Blender5.3/blender-5.3.0-macos-arm64.dmg",
+  "url_specs": {},
+  "variations": {
+   "golden_gate": {
+    "deprecate_args": {
+     "because": "unsupported",
+     "date": "2027-07-01",
+     "replacement_cask": null,
+     "replacement_formula": null
+    },
+    "deprecation_date": "2027-07-01",
+    "sha256": "009e437b33e5e131340b8d91eb9005d69ef6f1c67eff1402953a7d40cf94638f",
+    "url": "https://download.blender.org/release/Blender4.5/blender-4.5.16-macos-x64.dmg",
+    "version": "4.5.16"
+   },
+   "sequoia": {
+    "deprecate_args": {
+     "because": "unsupported",
+     "date": "2027-07-01",
+     "replacement_cask": null,
+     "replacement_formula": null
+    },
+    "deprecation_date": "2027-07-01",
+    "sha256": "009e437b33e5e131340b8d91eb9005d69ef6f1c67eff1402953a7d40cf94638f",
+    "url": "https://download.blender.org/release/Blender4.5/blender-4.5.16-macos-x64.dmg",
+    "version": "4.5.16"
+   },
+   "sonoma": {
+    "deprecate_args": {
+     "because": "unsupported",
+     "date": "2027-07-01",
+     "replacement_cask": null,
+     "replacement_formula": null
+    },
+    "deprecation_date": "2027-07-01",
+    "sha256": "009e437b33e5e131340b8d91eb9005d69ef6f1c67eff1402953a7d40cf94638f",
+    "url": "https://download.blender.org/release/Blender4.5/blender-4.5.16-macos-x64.dmg",
+    "version": "4.5.16"
+   },
+   "tahoe": {
+    "deprecate_args": {
+     "because": "unsupported",
+     "date": "2027-07-01",
+     "replacement_cask": null,
+     "replacement_formula": null
+    },
+    "deprecation_date": "2027-07-01",
+    "sha256": "009e437b33e5e131340b8d91eb9005d69ef6f1c67eff1402953a7d40cf94638f",
+    "url": "https://download.blender.org/release/Blender4.5/blender-4.5.16-macos-x64.dmg",
+    "version": "4.5.16"
+   },
+   "ventura": {
+    "deprecate_args": {
+     "because": "unsupported",
+     "date": "2027-07-01",
+     "replacement_cask": null,
+     "replacement_formula": null
+    },
+    "deprecation_date": "2027-07-01",
+    "sha256": "009e437b33e5e131340b8d91eb9005d69ef6f1c67eff1402953a7d40cf94638f",
+    "url": "https://download.blender.org/release/Blender4.5/blender-4.5.16-macos-x64.dmg",
+    "version": "4.5.16"
+   },
+   "x86_64_linux": {
+    "deprecate_args": {
+     "because": "unsupported",
+     "date": "2027-07-01",
+     "replacement_cask": null,
+     "replacement_formula": null
+    },
+    "deprecation_date": "2027-07-01",
+    "sha256": "009e437b33e5e131340b8d91eb9005d69ef6f1c67eff1402953a7d40cf94638f",
+    "url": "https://download.blender.org/release/Blender4.5/blender-4.5.16-macos-x64.dmg",
+    "version": "4.5.16"
+   }
+  },
+  "version": "5.3.0"
+ },
+ {
+  "artifacts": [
+   {
+    "uninstall": [
+     {
+      "quit": "org.videolan.vlc"
+     }
+    ]
+   },
+   {
+    "app": [
+     "VLC.app"
+    ],
+    "target": "/Applications/VLC.app"
+   },
+   {
+    "command_wrapper": [
+     "vlc",
+     {
+      "executable": "$APPDIR/VLC.app/Contents/MacOS/VLC"
+     }
+    ],
+    "target": "$HOMEBREW_PREFIX/bin/vlc"
+   },
+   {
+    "zap": [
+     {
+      "trash": [
+       "~/Library/Application Support/com.apple.sharedfilelist/com.apple.LSSharedFileList.ApplicationRecentDocuments/org.videolan.vlc.sfl*",
+       "~/Library/Application Support/org.videolan.vlc",
+       "~/Library/Application Support/VLC",
+       "~/Library/Caches/org.videolan.vlc",
+       "~/Library/HTTPStorages/org.videolan.vlc",
+       "~/Library/Preferences/org.videolan.vlc",
+       "~/Library/Preferences/org.videolan.vlc.plist",
+       "~/Library/Saved Application State/org.videolan.vlc.savedState"
+      ]
+     }
+    ]
+   }
+  ],
+  "auto_updates": true,
+  "autobump": true,
+  "bundle_short_version": null,
+  "bundle_version": null,
+  "caveats": null,
+  "caveats_rosetta": null,
+  "conflicts_with": {
+   "cask": [
+    "vlc@nightly"
+   ]
+  },
+  "container": null,
+  "depends_on": {
+   "macos": {}
+  },
+  "deprecate_args": null,
+  "deprecated": false,
+  "deprecation_date": null,
+  "deprecation_reason": null,
+  "deprecation_replacement_cask": null,
+  "deprecation_replacement_formula": null,
+  "desc": "Multimedia player",
+  "disable_args": null,
+  "disable_date": null,
+  "disable_reason": null,
+  "disable_replacement_cask": null,
+  "disable_replacement_formula": null,
+  "disabled": false,
+  "full_token": "vlc",
+  "homepage": "https://www.videolan.org/vlc/",
+  "installed": null,
+  "installed_time": null,
+  "languages": [],
+  "name": [
+   "VLC media player"
+  ],
+  "no_autobump_message": null,
+  "old_tokens": [],
+  "outdated": false,
+  "pinned": false,
+  "pinned_version": null,
+  "rename": [],
+  "ruby_source_checksum": {
+   "sha256": "3b58cdab0f9524b06fa8a142e6dc0211700a8670007aee3615fb551b0e7add71"
+  },
+  "ruby_source_path": "Casks/v/vlc.rb",
+  "sha256": "64a89d93cdd30b0e97131743e246373db82d6826ea882d265d46d74b136da2b7",
+  "skip_livecheck": false,
+  "supported_platforms": [
+   "golden_gate",
+   "arm64_golden_gate",
+   "tahoe",
+   "arm64_tahoe",
+   "sequoia",
+   "arm64_sequoia",
+   "sonoma",
+   "arm64_sonoma",
+   "ventura",
+   "arm64_ventura",
+   "monterey",
+   "arm64_monterey",
+   "big_sur",
+   "arm64_big_sur"
+  ],
+  "tap": "homebrew/cask",
+  "tap_git_head": "bc429d228452ef0ac57ac508a10e6a39f8e3e32a",
+  "token": "vlc",
+  "url": "https://get.videolan.org/vlc/3.0.24/macosx/vlc-3.0.24-arm64.dmg",
+  "url_specs": {},
+  "variations": {
+   "arm64_linux": {
+    "sha256": null
+   },
+   "big_sur": {
+    "sha256": "1ef6c903e2dc026d4e58ddf7b2a9ed0eb6f8caf80a9a9f46f96490340b962707",
+    "url": "https://get.videolan.org/vlc/3.0.24/macosx/vlc-3.0.24-intel64.dmg"
+   },
+   "golden_gate": {
+    "sha256": "1ef6c903e2dc026d4e58ddf7b2a9ed0eb6f8caf80a9a9f46f96490340b962707",
+    "url": "https://get.videolan.org/vlc/3.0.24/macosx/vlc-3.0.24-intel64.dmg"
+   },
+   "monterey": {
+    "sha256": "1ef6c903e2dc026d4e58ddf7b2a9ed0eb6f8caf80a9a9f46f96490340b962707",
+    "url": "https://get.videolan.org/vlc/3.0.24/macosx/vlc-3.0.24-intel64.dmg"
+   },
+   "sequoia": {
+    "sha256": "1ef6c903e2dc026d4e58ddf7b2a9ed0eb6f8caf80a9a9f46f96490340b962707",
+    "url": "https://get.videolan.org/vlc/3.0.24/macosx/vlc-3.0.24-intel64.dmg"
+   },
+   "sonoma": {
+    "sha256": "1ef6c903e2dc026d4e58ddf7b2a9ed0eb6f8caf80a9a9f46f96490340b962707",
+    "url": "https://get.videolan.org/vlc/3.0.24/macosx/vlc-3.0.24-intel64.dmg"
+   },
+   "tahoe": {
+    "sha256": "1ef6c903e2dc026d4e58ddf7b2a9ed0eb6f8caf80a9a9f46f96490340b962707",
+    "url": "https://get.videolan.org/vlc/3.0.24/macosx/vlc-3.0.24-intel64.dmg"
+   },
+   "ventura": {
+    "sha256": "1ef6c903e2dc026d4e58ddf7b2a9ed0eb6f8caf80a9a9f46f96490340b962707",
+    "url": "https://get.videolan.org/vlc/3.0.24/macosx/vlc-3.0.24-intel64.dmg"
+   },
+   "x86_64_linux": {
+    "sha256": null,
+    "url": "https://get.videolan.org/vlc/3.0.24/macosx/vlc-3.0.24-intel64.dmg"
+   }
+  },
+  "version": "3.0.24"
+ },
+ {
+  "artifacts": [
+   {
+    "uninstall": [
+     {
+      "quit": "org.mozilla.firefox"
+     }
+    ]
+   },
+   {
+    "app": [
+     "Firefox.app"
+    ],
+    "target": "/Applications/Firefox.app"
+   },
+   {
+    "command_wrapper": [
+     "firefox",
+     {
+      "executable": "$APPDIR/Firefox.app/Contents/MacOS/firefox"
+     }
+    ],
+    "target": "$HOMEBREW_PREFIX/bin/firefox"
+   },
+   {
+    "zap": [
+     {
+      "rmdir": [
+       "~/Library/Application Support/Mozilla",
+       "~/Library/Caches/Mozilla",
+       "~/Library/Caches/Mozilla/updates",
+       "~/Library/Caches/Mozilla/updates/Applications"
+      ],
+      "trash": [
+       "/Library/Logs/DiagnosticReports/firefox_*",
+       "~/Library/Application Support/com.apple.sharedfilelist/com.apple.LSSharedFileList.ApplicationRecentDocuments/org.mozilla.firefox.sfl*",
+       "~/Library/Application Support/CrashReporter/firefox_*",
+       "~/Library/Application Support/Firefox",
+       "~/Library/Caches/Firefox",
+       "~/Library/Caches/Mozilla/updates/Applications/Firefox",
+       "~/Library/Caches/org.mozilla.crashreporter",
+       "~/Library/Caches/org.mozilla.firefox",
+       "~/Library/Preferences/org.mozilla.crashreporter.plist",
+       "~/Library/Preferences/org.mozilla.firefox.plist",
+       "~/Library/Saved Application State/org.mozilla.firefox.savedState",
+       "~/Library/WebKit/org.mozilla.firefox"
+      ]
+     }
+    ]
+   }
+  ],
+  "auto_updates": true,
+  "autobump": true,
+  "bundle_short_version": "159.0",
+  "bundle_version": "15926.10.22",
+  "caveats": null,
+  "caveats_rosetta": null,
+  "conflicts_with": {
+   "cask": [
+    "firefox@beta",
+    "firefox@cn",
+    "firefox@esr"
+   ]
+  },
+  "container": null,
+  "depends_on": {
+   "macos": {}
+  },
+  "deprecate_args": null,
+  "deprecated": false,
+  "deprecation_date": null,
+  "deprecation_reason": null,
+  "deprecation_replacement_cask": null,
+  "deprecation_replacement_formula": null,
+  "desc": "Web browser",
+  "disable_args": null,
+  "disable_date": null,
+  "disable_reason": null,
+  "disable_replacement_cask": null,
+  "disable_replacement_formula": null,
+  "disabled": false,
+  "full_token": "firefox",
+  "homepage": "https://www.mozilla.org/firefox/",
+  "installed": null,
+  "installed_time": null,
+  "language_variations": [
+   {
+    "default": false,
+    "languages": [
+     "ach"
+    ],
+    "sha256": "86d97243c68d881bc80192821261973db6ae08076d4afaa25c459b42aa20646f",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/ach/Firefox%20160.0.1.dmg",
+    "value": "ach"
+   },
+   {
+    "default": false,
+    "languages": [
+     "af"
+    ],
+    "sha256": "207d82b05455a56f425c9ff17ae4e07c9dc95d9754dff7844ddfcbf5c1605e77",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/af/Firefox%20160.0.1.dmg",
+    "value": "af"
+   },
+   {
+    "default": false,
+    "languages": [
+     "an"
+    ],
+    "sha256": "49bd3775ab75f15d3a0584ae7acea2b6d6c7adea4b74e6e0732bd49222db0d56",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/an/Firefox%20160.0.1.dmg",
+    "value": "an"
+   },
+   {
+    "default": false,
+    "languages": [
+     "ar"
+    ],
+    "sha256": "613c79cbdba3d3929b735fcdadacfc25d2681d0d383df81ce0d3b6f4cde6303d",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/ar/Firefox%20160.0.1.dmg",
+    "value": "ar"
+   },
+   {
+    "default": false,
+    "languages": [
+     "ast"
+    ],
+    "sha256": "2bd83e36b8f165e0ffe35b713039ef611898c50baa1397f9e88a6803e6646ce4",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/ast/Firefox%20160.0.1.dmg",
+    "value": "ast"
+   },
+   {
+    "default": false,
+    "languages": [
+     "az"
+    ],
+    "sha256": "6cec9db5755fa7f16768d597d221fcdfa509f7f3f530e2c3e84d9ca5cd4aa22e",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/az/Firefox%20160.0.1.dmg",
+    "value": "az"
+   },
+   {
+    "default": false,
+    "languages": [
+     "be"
+    ],
+    "sha256": "55181e65ed1812aceaa94a752864119b14d762a2b152aff062fd282f8eceebb3",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/be/Firefox%20160.0.1.dmg",
+    "value": "be"
+   },
+   {
+    "default": false,
+    "languages": [
+     "bg"
+    ],
+    "sha256": "d96291c93ba4b948a112d2bdc0fe89e87136642e35ab3e359cd665754df7b8ba",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/bg/Firefox%20160.0.1.dmg",
+    "value": "bg"
+   },
+   {
+    "default": false,
+    "languages": [
+     "bn"
+    ],
+    "sha256": "f121062a6659059464ae036386374c4377d177c8519c3c2265ac69adc32df6e2",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/bn/Firefox%20160.0.1.dmg",
+    "value": "bn"
+   },
+   {
+    "default": false,
+    "languages": [
+     "br"
+    ],
+    "sha256": "ca9cb4dbd5ca70e98b6f30f984cb55e9866941c234411f2a42c4860441dd9e57",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/br/Firefox%20160.0.1.dmg",
+    "value": "br"
+   },
+   {
+    "default": false,
+    "languages": [
+     "bs"
+    ],
+    "sha256": "40c6af799c8e3a54d78eef565d13ce6ce442bb6c5d0d3649393ea79e9c4e924f",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/bs/Firefox%20160.0.1.dmg",
+    "value": "bs"
+   },
+   {
+    "default": false,
+    "languages": [
+     "ca"
+    ],
+    "sha256": "f87839865725f6c766500f0b0bc5f8c7b2f034e588a8960fc0aceb117557652e",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/ca/Firefox%20160.0.1.dmg",
+    "value": "ca"
+   },
+   {
+    "default": false,
+    "languages": [
+     "cak"
+    ],
+    "sha256": "5725ceb3fb867ee11f5892c9b066b7803b76889dcadac43059abdbc14fabb0e1",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/cak/Firefox%20160.0.1.dmg",
+    "value": "cak"
+   },
+   {
+    "default": false,
+    "languages": [
+     "cs"
+    ],
+    "sha256": "39bb76a1f0c995e356b286ef2ebf00ce966b977a46e062a0bd0ac736559f2739",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/cs/Firefox%20160.0.1.dmg",
+    "value": "cs"
+   },
+   {
+    "default": false,
+    "languages": [
+     "cy"
+    ],
+    "sha256": "014af17e2fdc40b93304376ecbcc25077b938e22b5143badcab1bd03a1e1bce2",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/cy/Firefox%20160.0.1.dmg",
+    "value": "cy"
+   },
+   {
+    "default": false,
+    "languages": [
+     "da"
+    ],
+    "sha256": "f8bda2b549c413fe870be6e70866d2ba450645f7378d8f14adeddfcda34d3fe1",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/da/Firefox%20160.0.1.dmg",
+    "value": "da"
+   },
+   {
+    "default": false,
+    "languages": [
+     "de"
+    ],
+    "sha256": "4118c7c8f12bad5eb4fd84334e36837d9948515c62e9064133d345177967e681",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/de/Firefox%20160.0.1.dmg",
+    "value": "de"
+   },
+   {
+    "default": false,
+    "languages": [
+     "dsb"
+    ],
+    "sha256": "6b2564f3c6a9e81c1766b9a541aea1551fbb3344bcdf9fa779794d02fa1256cb",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/dsb/Firefox%20160.0.1.dmg",
+    "value": "dsb"
+   },
+   {
+    "default": false,
+    "languages": [
+     "el"
+    ],
+    "sha256": "8929310f58f9b7fdae9e8b7a004547dd2c7f8f8677c21d5d1afb112514f5cdb9",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/el/Firefox%20160.0.1.dmg",
+    "value": "el"
+   },
+   {
+    "default": false,
+    "languages": [
+     "en-CA"
+    ],
+    "sha256": "aa7da12327b8ad534c292989b30cab08f199dde04068d775c2136742c9792773",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/en-CA/Firefox%20160.0.1.dmg",
+    "value": "en-CA"
+   },
+   {
+    "default": false,
+    "languages": [
+     "en-GB"
+    ],
+    "sha256": "061429235e2a003791941a8eb8546f268539d24f216e39662bdf1aef72c85d35",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/en-GB/Firefox%20160.0.1.dmg",
+    "value": "en-GB"
+   },
+   {
+    "default": true,
+    "languages": [
+     "en"
+    ],
+    "value": "en-US"
+   },
+   {
+    "default": false,
+    "languages": [
+     "eo"
+    ],
+    "sha256": "8cfaa38bdb7a960245e94f8f3da90b6477abedaa8fa32fdc0a1239dc1ba135f1",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/eo/Firefox%20160.0.1.dmg",
+    "value": "eo"
+   },
+   {
+    "default": false,
+    "languages": [
+     "es-AR"
+    ],
+    "sha256": "9543921ee7e46ccf85f1db92eaccf579cd2162fbe5515bd1a4b5e2f870ecd218",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/es-AR/Firefox%20160.0.1.dmg",
+    "value": "es-AR"
+   },
+   {
+    "default": false,
+    "languages": [
+     "es-CL"
+    ],
+    "sha256": "215780516ac2f8a0e36df6b8b1b704271a677d3d9e8bfe85f8f37c93d1ea81a4",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/es-CL/Firefox%20160.0.1.dmg",
+    "value": "es-CL"
+   },
+   {
+    "default": false,
+    "languages": [
+     "es-ES"
+    ],
+    "sha256": "494f5ba34039a7abc0a5e55edd2e7ed73f215fbe0d098207c129dc49873adc4e",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/es-ES/Firefox%20160.0.1.dmg",
+    "value": "es-ES"
+   },
+   {
+    "default": false,
+    "languages": [
+     "es-MX"
+    ],
+    "sha256": "14679bc72dc0bf155257bbdbf0afc2c69331577ed3b7694792f4d7c0bdeb7989",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/es-MX/Firefox%20160.0.1.dmg",
+    "value": "es-MX"
+   },
+   {
+    "default": false,
+    "languages": [
+     "et"
+    ],
+    "sha256": "8819b2abc0b3db10c332052da7a30dfb29e8b7a68c9a574a49f233336661ff0d",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/et/Firefox%20160.0.1.dmg",
+    "value": "et"
+   },
+   {
+    "default": false,
+    "languages": [
+     "eu"
+    ],
+    "sha256": "4042a6cceed2634f8718a0837bd40a15b3390c3c08aa610210100435326843fb",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/eu/Firefox%20160.0.1.dmg",
+    "value": "eu"
+   },
+   {
+    "default": false,
+    "languages": [
+     "fa"
+    ],
+    "sha256": "8deddd52aea3f95c183a7406fbda5cc226be9aaefcfedb3b6e5f2156adb564b7",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/fa/Firefox%20160.0.1.dmg",
+    "value": "fa"
+   },
+   {
+    "default": false,
+    "languages": [
+     "ff"
+    ],
+    "sha256": "2aad0e1bac321215d69a7276f14a91c37e9744a79390992ef4f302a7ad474055",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/ff/Firefox%20160.0.1.dmg",
+    "value": "ff"
+   },
+   {
+    "default": false,
+    "languages": [
+     "fi"
+    ],
+    "sha256": "2588ac3daf724262f029e37e513eb524da9348cb5dde4d72d6bbbd505e00c7cc",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/fi/Firefox%20160.0.1.dmg",
+    "value": "fi"
+   },
+   {
+    "default": false,
+    "languages": [
+     "fr"
+    ],
+    "sha256": "efeec7784fc37f91eebdf8c371fb0ca3b7fd79c14e6b9574efa2e6173c8ced93",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/fr/Firefox%20160.0.1.dmg",
+    "value": "fr"
+   },
+   {
+    "default": false,
+    "languages": [
+     "fur"
+    ],
+    "sha256": "2f87908f326ca9c3e99c75886029ac705d338bf27a5afc8721ffb3ef96078c90",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/fur/Firefox%20160.0.1.dmg",
+    "value": "fur"
+   },
+   {
+    "default": false,
+    "languages": [
+     "fy"
+    ],
+    "sha256": "cca8ca2e9ce4f5f8c8de8e26209494401d0d0c0f6b134422319ad86a2f185fd6",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/fy-NL/Firefox%20160.0.1.dmg",
+    "value": "fy-NL"
+   },
+   {
+    "default": false,
+    "languages": [
+     "ga"
+    ],
+    "sha256": "855aa6e23e771d2a5d8afcd3678b8a9a31290a1e4da88b2b18ec8e156befd159",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/ga-IE/Firefox%20160.0.1.dmg",
+    "value": "ga-IE"
+   },
+   {
+    "default": false,
+    "languages": [
+     "gd"
+    ],
+    "sha256": "87063fcecef6eb04c7de732b14bef64c138445b9537f2e03d85ffaf0f4926e11",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/gd/Firefox%20160.0.1.dmg",
+    "value": "gd"
+   },
+   {
+    "default": false,
+    "languages": [
+     "gl"
+    ],
+    "sha256": "88565903027c74725e530dc5aaeec8324db8564f4e09a2c2d7fb5bb539b66b21",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/gl/Firefox%20160.0.1.dmg",
+    "value": "gl"
+   },
+   {
+    "default": false,
+    "languages": [
+     "gn"
+    ],
+    "sha256": "599f70d265645352f8ff8bcef9afafdbfc9004007b86cd5255fc3863febe7573",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/gn/Firefox%20160.0.1.dmg",
+    "value": "gn"
+   },
+   {
+    "default": false,
+    "languages": [
+     "gu"
+    ],
+    "sha256": "0a0d203de83068dc1e4cef3fcd1537b7755a5bcd5a1680d83b00cd11dbb48b03",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/gu-IN/Firefox%20160.0.1.dmg",
+    "value": "gu-IN"
+   },
+   {
+    "default": false,
+    "languages": [
+     "he"
+    ],
+    "sha256": "042b12bbde0abd2b2088b77c288b383026352b72c6c35422760949c87133ab15",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/he/Firefox%20160.0.1.dmg",
+    "value": "he"
+   },
+   {
+    "default": false,
+    "languages": [
+     "hi"
+    ],
+    "sha256": "9c042564a49a5a191ce74f2c209f01c20ee1763e7118c69c66f8086fa03109dc",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/hi-IN/Firefox%20160.0.1.dmg",
+    "value": "hi-IN"
+   },
+   {
+    "default": false,
+    "languages": [
+     "hr"
+    ],
+    "sha256": "91c6a9854bb137d3d6b763bbe5832a7f1d984016ab521618fe30cc6f75750dca",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/hr/Firefox%20160.0.1.dmg",
+    "value": "hr"
+   },
+   {
+    "default": false,
+    "languages": [
+     "hsb"
+    ],
+    "sha256": "72ba1cdfd71d147933531469d04af77e2442d199f3a95879eb276b61d924714d",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/hsb/Firefox%20160.0.1.dmg",
+    "value": "hsb"
+   },
+   {
+    "default": false,
+    "languages": [
+     "hu"
+    ],
+    "sha256": "edeb216471bc1aa7381f7d2a24f262ff7accade1932a17a40aed58928ee5244e",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/hu/Firefox%20160.0.1.dmg",
+    "value": "hu"
+   },
+   {
+    "default": false,
+    "languages": [
+     "hy"
+    ],
+    "sha256": "6df7cfd2f71c5c3e562b88e11116c22a9f3f71a7f0527e0f5cf9ca6eacc3a122",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/hy-AM/Firefox%20160.0.1.dmg",
+    "value": "hy-AM"
+   },
+   {
+    "default": false,
+    "languages": [
+     "ia"
+    ],
+    "sha256": "026d64fb9c516d270a481473b7a3c7a69a59fab52565262fa2a3634d36c24f96",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/ia/Firefox%20160.0.1.dmg",
+    "value": "ia"
+   },
+   {
+    "default": false,
+    "languages": [
+     "id"
+    ],
+    "sha256": "b788c9c8744f308acef1f3f022ea0c565e35be5ed6e9e3270bb7354827623408",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/id/Firefox%20160.0.1.dmg",
+    "value": "id"
+   },
+   {
+    "default": false,
+    "languages": [
+     "in"
+    ],
+    "sha256": "9c042564a49a5a191ce74f2c209f01c20ee1763e7118c69c66f8086fa03109dc",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/hi-IN/Firefox%20160.0.1.dmg",
+    "value": "hi-IN"
+   },
+   {
+    "default": false,
+    "languages": [
+     "is"
+    ],
+    "sha256": "8cc9a1e50e6a6601599ec707a98c004d7843c698346df540a75e2cccd9529b5d",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/is/Firefox%20160.0.1.dmg",
+    "value": "is"
+   },
+   {
+    "default": false,
+    "languages": [
+     "it"
+    ],
+    "sha256": "18e89951fc77049896e83c31186d48da31cd8e9fbc6b0e51a4f469bb00467db3",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/it/Firefox%20160.0.1.dmg",
+    "value": "it"
+   },
+   {
+    "default": false,
+    "languages": [
+     "ja"
+    ],
+    "sha256": "8d1da50294583a654f6b44af70936b6f058c862040956f76cd93588531bb61da",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/ja-JP-mac/Firefox%20160.0.1.dmg",
+    "value": "ja-JP-mac"
+   },
+   {
+    "default": false,
+    "languages": [
+     "ka"
+    ],
+    "sha256": "3d83e630352a29db17308cd3713ea8b324bbd21c9eb6d6242e571657cf6ca747",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/ka/Firefox%20160.0.1.dmg",
+    "value": "ka"
+   },
+   {
+    "default": false,
+    "languages": [
+     "kab"
+    ],
+    "sha256": "aa7918de610a22c5a2b959df3b77080967b3a3f73d7bf0ff7801cedb11c6f39f",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/kab/Firefox%20160.0.1.dmg",
+    "value": "kab"
+   },
+   {
+    "default": false,
+    "languages": [
+     "kk"
+    ],
+    "sha256": "d289cbfd973ccb526103854a0cf311a65cf878ae2d4071a3e8b10d06a33544a7",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/kk/Firefox%20160.0.1.dmg",
+    "value": "kk"
+   },
+   {
+    "default": false,
+    "languages": [
+     "km"
+    ],
+    "sha256": "a4a64ce91ee2c1d2913e28bf34fd1d6a9edb39655dbc5023fff23b7f6366d9e2",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/km/Firefox%20160.0.1.dmg",
+    "value": "km"
+   },
+   {
+    "default": false,
+    "languages": [
+     "kn"
+    ],
+    "sha256": "40678fc6986215544feddd98faf08c665e13d184d7763e2dddd8fd521b22ae74",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/kn/Firefox%20160.0.1.dmg",
+    "value": "kn"
+   },
+   {
+    "default": false,
+    "languages": [
+     "ko"
+    ],
+    "sha256": "04c1f194e5c0eb4fe435285ce7a5afba1c3f126c7c0145859b74b6bda9220c59",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/ko/Firefox%20160.0.1.dmg",
+    "value": "ko"
+   },
+   {
+    "default": false,
+    "languages": [
+     "lij"
+    ],
+    "sha256": "a7e1afefc9ff95529ef9497d14051d447ba69d454858ff9af17adbdb95db3afd",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/lij/Firefox%20160.0.1.dmg",
+    "value": "lij"
+   },
+   {
+    "default": false,
+    "languages": [
+     "lt"
+    ],
+    "sha256": "2f6e3aa2757255d83f03617194e9e6f12879ea0b5fbe16f6a513e0066a0c1dd8",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/lt/Firefox%20160.0.1.dmg",
+    "value": "lt"
+   },
+   {
+    "default": false,
+    "languages": [
+     "lv"
+    ],
+    "sha256": "092d649b510786ac22765bbaa67df53e4378063930ddbfd71c517a6d8dd1c10b",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/lv/Firefox%20160.0.1.dmg",
+    "value": "lv"
+   },
+   {
+    "default": false,
+    "languages": [
+     "mk"
+    ],
+    "sha256": "6b8cc0415ac37584cc508f49c478f458a85c86f66c372d2609e41761f7a9d2fa",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/mk/Firefox%20160.0.1.dmg",
+    "value": "mk"
+   },
+   {
+    "default": false,
+    "languages": [
+     "mr"
+    ],
+    "sha256": "9be6efc95a5e7b25950cb4abea431bb45bae91e45ffbd627b9134baf8b19b36f",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/mr/Firefox%20160.0.1.dmg",
+    "value": "mr"
+   },
+   {
+    "default": false,
+    "languages": [
+     "ms"
+    ],
+    "sha256": "c1e2fde190255956a48a3a5698ba63ae0ebb730112d498eb47657ec91fb42751",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/ms/Firefox%20160.0.1.dmg",
+    "value": "ms"
+   },
+   {
+    "default": false,
+    "languages": [
+     "my"
+    ],
+    "sha256": "141d32dd4138cf03601bef9ce2bca058c7f1893e1ebfc72488cdd0f03ed7d9c1",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/my/Firefox%20160.0.1.dmg",
+    "value": "my"
+   },
+   {
+    "default": false,
+    "languages": [
+     "nb"
+    ],
+    "sha256": "c7b43a347e69bbffe28f77edea38f209a9b2e48508a9cc51e578804316d638b3",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/nb-NO/Firefox%20160.0.1.dmg",
+    "value": "nb-NO"
+   },
+   {
+    "default": false,
+    "languages": [
+     "ne"
+    ],
+    "sha256": "0bf056bc5723e4fff3b3bd99a664964e16a3ce5ddacf9cdb9d8e24c094138944",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/ne-NP/Firefox%20160.0.1.dmg",
+    "value": "ne-NP"
+   },
+   {
+    "default": false,
+    "languages": [
+     "nl"
+    ],
+    "sha256": "31041845bf5b25367bb7a7f74b40965856a033d4063ed693297721d1b75eb8ab",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/nl/Firefox%20160.0.1.dmg",
+    "value": "nl"
+   },
+   {
+    "default": false,
+    "languages": [
+     "nn"
+    ],
+    "sha256": "a5dd7f94a923f76566cf98ca6e31c5bcff22a394853ef93b17e0eaaa3dee2a5b",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/nn-NO/Firefox%20160.0.1.dmg",
+    "value": "nn-NO"
+   },
+   {
+    "default": false,
+    "languages": [
+     "oc"
+    ],
+    "sha256": "687cc8d86ca12713c8fbf38715dd6cb66482fc8cf26ab6ac24a22763d961f111",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/oc/Firefox%20160.0.1.dmg",
+    "value": "oc"
+   },
+   {
+    "default": false,
+    "languages": [
+     "pa-IN"
+    ],
+    "sha256": "06d107a88cad89e2018105099ee539a4a4617d3ccc4414de63b704698afd9642",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/pa-IN/Firefox%20160.0.1.dmg",
+    "value": "pa-IN"
+   },
+   {
+    "default": false,
+    "languages": [
+     "pl"
+    ],
+    "sha256": "89ff37bb2184b08369eeb0af1da4c9cf7cde0a14f8d306f81772aec32d887cee",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/pl/Firefox%20160.0.1.dmg",
+    "value": "pl"
+   },
+   {
+    "default": false,
+    "languages": [
+     "pt-BR"
+    ],
+    "sha256": "9e591d23c5e99569d89380c4707531e01c18fd539a3e521baa94c96f11e1d108",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/pt-BR/Firefox%20160.0.1.dmg",
+    "value": "pt-BR"
+   },
+   {
+    "default": false,
+    "languages": [
+     "pt"
+    ],
+    "sha256": "60c4d8771c6b6985f5c3c3772e6f081b0966108b7a47b6c60a5945b90ab5322b",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/pt-PT/Firefox%20160.0.1.dmg",
+    "value": "pt-PT"
+   },
+   {
+    "default": false,
+    "languages": [
+     "rm"
+    ],
+    "sha256": "b9b9914a288f36951df26c806ec62becdaf7a42e3091fe03093fd92f20290bf7",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/rm/Firefox%20160.0.1.dmg",
+    "value": "rm"
+   },
+   {
+    "default": false,
+    "languages": [
+     "ro"
+    ],
+    "sha256": "24007f5b016522159e10cb962291c37fdc9ee586a64c48905b9f2b0f0fe88fa8",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/ro/Firefox%20160.0.1.dmg",
+    "value": "ro"
+   },
+   {
+    "default": false,
+    "languages": [
+     "ru"
+    ],
+    "sha256": "cadac498687fd78a21d92767dccaba9a486b25c77c67510b52e87f926b6ebe87",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/ru/Firefox%20160.0.1.dmg",
+    "value": "ru"
+   },
+   {
+    "default": false,
+    "languages": [
+     "sat"
+    ],
+    "sha256": "58ed14e0933fd6e2fe0ccb976d6553d3c11c9c105e6ba7fd8f986532e0ddb042",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/sat/Firefox%20160.0.1.dmg",
+    "value": "sat"
+   },
+   {
+    "default": false,
+    "languages": [
+     "sc"
+    ],
+    "sha256": "d1a919b40eb05b0e5a097207d678e15583325dd8656d288b315b1207a9175d97",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/sc/Firefox%20160.0.1.dmg",
+    "value": "sc"
+   },
+   {
+    "default": false,
+    "languages": [
+     "sco"
+    ],
+    "sha256": "68f331ddebc30db0db479d69bb4a3bb180c4ad3c026a4d75111dd521f9810731",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/sco/Firefox%20160.0.1.dmg",
+    "value": "sco"
+   },
+   {
+    "default": false,
+    "languages": [
+     "si"
+    ],
+    "sha256": "cb67e2fa40c23ea764d3524add656739cd1ff0af66a1f5ea476ed6b96dd061c9",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/si/Firefox%20160.0.1.dmg",
+    "value": "si"
+   },
+   {
+    "default": false,
+    "languages": [
+     "sk"
+    ],
+    "sha256": "d97403c646e247e0b898ec6ddc3b154fb659947e32a66619c8023961bb66bbbc",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/sk/Firefox%20160.0.1.dmg",
+    "value": "sk"
+   },
+   {
+    "default": false,
+    "languages": [
+     "skr"
+    ],
+    "sha256": "011896ced3a44ed8120090222f328ca80ee4605d7150606dcfbc7bde95d59e3e",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/skr/Firefox%20160.0.1.dmg",
+    "value": "skr"
+   },
+   {
+    "default": false,
+    "languages": [
+     "sl"
+    ],
+    "sha256": "62d4a8996a2bb9b8c40cb850ab6b5ef1a98d103ee49ac539f406fb534a58dca0",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/sl/Firefox%20160.0.1.dmg",
+    "value": "sl"
+   },
+   {
+    "default": false,
+    "languages": [
+     "son"
+    ],
+    "sha256": "b8104a018cbab738b54ab4042e6e3cafada3ab29ada32c62b81e1c1d7ec673f2",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/son/Firefox%20160.0.1.dmg",
+    "value": "son"
+   },
+   {
+    "default": false,
+    "languages": [
+     "sq"
+    ],
+    "sha256": "cc1d1f059131bef8bf611b00f15f5fcb507c1d224a0e5e1deb696eeaa8e1f2ff",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/sq/Firefox%20160.0.1.dmg",
+    "value": "sq"
+   },
+   {
+    "default": false,
+    "languages": [
+     "sr"
+    ],
+    "sha256": "0a7bdf4bb9504ab51b86eeaff9282f77eac764c2c5a8da395dd5f0429e8dfac0",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/sr/Firefox%20160.0.1.dmg",
+    "value": "sr"
+   },
+   {
+    "default": false,
+    "languages": [
+     "sv"
+    ],
+    "sha256": "9554bc3ae90eb11a4f914153fafc7001da21cf25c5913acadd6535be52bed1f4",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/sv-SE/Firefox%20160.0.1.dmg",
+    "value": "sv-SE"
+   },
+   {
+    "default": false,
+    "languages": [
+     "szl"
+    ],
+    "sha256": "9a3c45a1dd8708037c6bbf0221b5288206d375764489f162dd079ee70f235d68",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/szl/Firefox%20160.0.1.dmg",
+    "value": "szl"
+   },
+   {
+    "default": false,
+    "languages": [
+     "ta"
+    ],
+    "sha256": "a85783a5e2bc8bac5e5ec90e0c22bd9b0e6af1d8fbff75cf4801e14c997f820c",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/ta/Firefox%20160.0.1.dmg",
+    "value": "ta"
+   },
+   {
+    "default": false,
+    "languages": [
+     "te"
+    ],
+    "sha256": "46911cb62075f8f381d378cf3d4802a694b3aadf7024d457212ab9a4732d4046",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/te/Firefox%20160.0.1.dmg",
+    "value": "te"
+   },
+   {
+    "default": false,
+    "languages": [
+     "tg"
+    ],
+    "sha256": "483885e0dae3bfbefd900da6f97fdc0028229b1d8b31bae7701ca5ba3c251995",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/tg/Firefox%20160.0.1.dmg",
+    "value": "tg"
+   },
+   {
+    "default": false,
+    "languages": [
+     "th"
+    ],
+    "sha256": "db0f380ac3bedf619468c987299e02437cee5ed7663d7643aa84821650866ebb",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/th/Firefox%20160.0.1.dmg",
+    "value": "th"
+   },
+   {
+    "default": false,
+    "languages": [
+     "tl"
+    ],
+    "sha256": "f18c8bb4c4ca82e11aa9f894bafeb0ef0e668976c2447aadf9605917ee7586f2",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/tl/Firefox%20160.0.1.dmg",
+    "value": "tl"
+   },
+   {
+    "default": false,
+    "languages": [
+     "tr"
+    ],
+    "sha256": "48198af6edaa38c67f5cd97637917aeba48f080a3f3c77ae42e7aa7ac0fc5abc",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/tr/Firefox%20160.0.1.dmg",
+    "value": "tr"
+   },
+   {
+    "default": false,
+    "languages": [
+     "trs"
+    ],
+    "sha256": "d2cac190b6bfbdf7172ec4eee517b944c3343e127f9cbc32d4900cf0ddf99327",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/trs/Firefox%20160.0.1.dmg",
+    "value": "trs"
+   },
+   {
+    "default": false,
+    "languages": [
+     "uk"
+    ],
+    "sha256": "5d4c4360900ef6f4acc667c529f4308afbd57135fbf501f707790af263d93ffb",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/uk/Firefox%20160.0.1.dmg",
+    "value": "uk"
+   },
+   {
+    "default": false,
+    "languages": [
+     "ur"
+    ],
+    "sha256": "6a62d3168bb69b9da86137500de9faf4a7440546150cdc23b9030a4249330779",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/ur/Firefox%20160.0.1.dmg",
+    "value": "ur"
+   },
+   {
+    "default": false,
+    "languages": [
+     "uz"
+    ],
+    "sha256": "ccf83a8ae894f8bc7aff379c84ba29c00177cf00c50571a7fc73d1b081b9b37b",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/uz/Firefox%20160.0.1.dmg",
+    "value": "uz"
+   },
+   {
+    "default": false,
+    "languages": [
+     "vi"
+    ],
+    "sha256": "1855821dd90d3ff92b013b9254c32a350ce35667118299f5b953b27bb60ad908",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/vi/Firefox%20160.0.1.dmg",
+    "value": "vi"
+   },
+   {
+    "default": false,
+    "languages": [
+     "xh"
+    ],
+    "sha256": "e77a64cabc0fd0538328e924911cad83da952954b54fe534912130e276b94d05",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/xh/Firefox%20160.0.1.dmg",
+    "value": "xh"
+   },
+   {
+    "default": false,
+    "languages": [
+     "zh-TW"
+    ],
+    "sha256": "acdee899ce1723431c8e5020491dd602c10b0abd305f7ed2ddc1cd7547fea8b6",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/zh-TW/Firefox%20160.0.1.dmg",
+    "value": "zh-TW"
+   },
+   {
+    "default": false,
+    "languages": [
+     "zh"
+    ],
+    "sha256": "b11def29e27c792bcdaed85b43dce55384c0f67045c5674b76619bf6d139e9f6",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/zh-CN/Firefox%20160.0.1.dmg",
+    "value": "zh-CN"
+   }
+  ],
+  "languages": [
+   "ach",
+   "af",
+   "an",
+   "ar",
+   "ast",
+   "az",
+   "be",
+   "bg",
+   "bn",
+   "br",
+   "bs",
+   "ca",
+   "cak",
+   "cs",
+   "cy",
+   "da",
+   "de",
+   "dsb",
+   "el",
+   "en-CA",
+   "en-GB",
+   "en",
+   "eo",
+   "es-AR",
+   "es-CL",
+   "es-ES",
+   "es-MX",
+   "et",
+   "eu",
+   "fa",
+   "ff",
+   "fi",
+   "fr",
+   "fur",
+   "fy",
+   "ga",
+   "gd",
+   "gl",
+   "gn",
+   "gu",
+   "he",
+   "hi",
+   "hr",
+   "hsb",
+   "hu",
+   "hy",
+   "ia",
+   "id",
+   "in",
+   "is",
+   "it",
+   "ja",
+   "ka",
+   "kab",
+   "kk",
+   "km",
+   "kn",
+   "ko",
+   "lij",
+   "lt",
+   "lv",
+   "mk",
+   "mr",
+   "ms",
+   "my",
+   "nb",
+   "ne",
+   "nl",
+   "nn",
+   "oc",
+   "pa-IN",
+   "pl",
+   "pt-BR",
+   "pt",
+   "rm",
+   "ro",
+   "ru",
+   "sat",
+   "sc",
+   "sco",
+   "si",
+   "sk",
+   "skr",
+   "sl",
+   "son",
+   "sq",
+   "sr",
+   "sv",
+   "szl",
+   "ta",
+   "te",
+   "tg",
+   "th",
+   "tl",
+   "tr",
+   "trs",
+   "uk",
+   "ur",
+   "uz",
+   "vi",
+   "xh",
+   "zh-TW",
+   "zh"
+  ],
+  "name": [
+   "Mozilla Firefox"
+  ],
+  "no_autobump_message": null,
+  "old_tokens": [],
+  "outdated": false,
+  "pinned": false,
+  "pinned_version": null,
+  "rename": [],
+  "ruby_source_checksum": {
+   "sha256": "a773e77e98e3a9557b8cf6f4d33bcb8900632484e4c180f349ec76bb6869dd81"
+  },
+  "ruby_source_path": "Casks/f/firefox.rb",
+  "sha256": "db9a522291d82cbe9a2b2922822def4db0a79d4fa3e614979039d705b13b1c25",
+  "skip_livecheck": false,
+  "supported_platforms": [
+   "golden_gate",
+   "arm64_golden_gate",
+   "tahoe",
+   "arm64_tahoe",
+   "sequoia",
+   "arm64_sequoia",
+   "sonoma",
+   "arm64_sonoma",
+   "ventura",
+   "arm64_ventura",
+   "monterey",
+   "arm64_monterey",
+   "big_sur",
+   "arm64_big_sur"
+  ],
+  "tap": "homebrew/cask",
+  "tap_git_head": "bc429d228452ef0ac57ac508a10e6a39f8e3e32a",
+  "token": "firefox",
+  "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/en-US/Firefox%20160.0.1.dmg",
+  "url_specs": {},
+  "variations": {},
+  "version": "160.0.1"
+ },
+ {
+  "artifacts": [
+   {
+    "uninstall": [
+     {
+      "delete": "/Library/Logs/DiagnosticReports/firefox_*",
+      "quit": "org.mozilla.firefox"
+     }
+    ]
+   },
+   {
+    "app": [
+     "Firefox.app"
+    ],
+    "target": "/Applications/Firefox.app"
+   },
+   {
+    "zap": [
+     {
+      "rmdir": [
+       "~/Library/Application Support/Mozilla",
+       "~/Library/Caches/Mozilla",
+       "~/Library/Caches/Mozilla/updates",
+       "~/Library/Caches/Mozilla/updates/Applications"
+      ],
+      "trash": [
+       "~/Library/Application Support/com.apple.sharedfilelist/com.apple.LSSharedFileList.ApplicationRecentDocuments/org.mozilla.firefox.sfl*",
+       "~/Library/Application Support/CrashReporter/firefox_*",
+       "~/Library/Application Support/Firefox",
+       "~/Library/Caches/Firefox",
+       "~/Library/Caches/Mozilla/updates/Applications/Firefox",
+       "~/Library/Caches/org.mozilla.crashreporter",
+       "~/Library/Caches/org.mozilla.firefox",
+       "~/Library/Preferences/org.mozilla.crashreporter.plist",
+       "~/Library/Preferences/org.mozilla.firefox.plist",
+       "~/Library/Saved Application State/org.mozilla.firefox.savedState",
+       "~/Library/WebKit/org.mozilla.firefox"
+      ]
+     }
+    ]
+   }
+  ],
+  "auto_updates": true,
+  "autobump": true,
+  "bundle_short_version": "159.0",
+  "bundle_version": "15926.10.22",
+  "caveats": null,
+  "caveats_rosetta": null,
+  "conflicts_with": {
+   "cask": [
+    "firefox",
+    "firefox@beta",
+    "firefox@cn"
+   ]
+  },
+  "container": null,
+  "depends_on": {
+   "macos": {}
+  },
+  "deprecate_args": null,
+  "deprecated": false,
+  "deprecation_date": null,
+  "deprecation_reason": null,
+  "deprecation_replacement_cask": null,
+  "deprecation_replacement_formula": null,
+  "desc": "Web browser",
+  "disable_args": null,
+  "disable_date": null,
+  "disable_reason": null,
+  "disable_replacement_cask": null,
+  "disable_replacement_formula": null,
+  "disabled": false,
+  "full_token": "firefox@esr",
+  "homepage": "https://www.mozilla.org/en-US/firefox/all/#product-desktop-esr",
+  "installed": null,
+  "installed_time": null,
+  "language_variations": [
+   {
+    "default": false,
+    "languages": [
+     "af"
+    ],
+    "sha256": "b7a31b67ab4422424ddddf48f1a24efa92563cb08211506a2b7adb4c63b41849",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/153.7.0esr/mac/af/Firefox%20153.7.0esr.dmg",
+    "value": "af"
+   },
+   {
+    "default": false,
+    "languages": [
+     "ar"
+    ],
+    "sha256": "fa5e002d64abce8be8a00faa2826a24df7fa6b8d50791257c178c29d1dffcc03",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/153.7.0esr/mac/ar/Firefox%20153.7.0esr.dmg",
+    "value": "ar"
+   },
+   {
+    "default": false,
+    "languages": [
+     "be"
+    ],
+    "sha256": "f524d7c7c7c163913695c9dafb0a69b5f29570b837a7abe492fb64e7f8573a42",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/153.7.0esr/mac/be/Firefox%20153.7.0esr.dmg",
+    "value": "be"
+   },
+   {
+    "default": false,
+    "languages": [
+     "bg"
+    ],
+    "sha256": "8731824c4be90eac9321090c90ef87a9b74d9d5bcca23774b028dc90abacd5fc",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/153.7.0esr/mac/bg/Firefox%20153.7.0esr.dmg",
+    "value": "bg"
+   },
+   {
+    "default": false,
+    "languages": [
+     "bn"
+    ],
+    "sha256": "68e0e3ec028047f0b1bc96038cbb28eb3191bcd2677f8c3c140d6b0c4faba0d4",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/153.7.0esr/mac/bn/Firefox%20153.7.0esr.dmg",
+    "value": "bn"
+   },
+   {
+    "default": false,
+    "languages": [
+     "ca"
+    ],
+    "sha256": "fe45c50ec52141a402823f2a3cf402faa248aa640a255aad8719556eda7b3a2d",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/153.7.0esr/mac/ca/Firefox%20153.7.0esr.dmg",
+    "value": "ca"
+   },
+   {
+    "default": false,
+    "languages": [
+     "cs"
+    ],
+    "sha256": "2cc043775f9011579686a126b1d5d30c88b9d4804799bc3143f819249155a5d3",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/153.7.0esr/mac/cs/Firefox%20153.7.0esr.dmg",
+    "value": "cs"
+   },
+   {
+    "default": false,
+    "languages": [
+     "de"
+    ],
+    "sha256": "337ee461598a0849ea163831ddb42eaaab42435ddc88b872d7e7c624a143ba1b",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/153.7.0esr/mac/de/Firefox%20153.7.0esr.dmg",
+    "value": "de"
+   },
+   {
+    "default": false,
+    "languages": [
+     "en-CA"
+    ],
+    "sha256": "6ce6164ea3cb282614026e4627553c9b617125c5bb5bb0439bb65c0b8f7913f3",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/153.7.0esr/mac/en-CA/Firefox%20153.7.0esr.dmg",
+    "value": "en-CA"
+   },
+   {
+    "default": false,
+    "languages": [
+     "en-GB"
+    ],
+    "sha256": "7a4d8a0f923a9ad1b43af13a765bbc978b67d4747f2d9abb53cfe955a6c9219d",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/153.7.0esr/mac/en-GB/Firefox%20153.7.0esr.dmg",
+    "value": "en-GB"
+   },
+   {
+    "default": true,
+    "languages": [
+     "en"
+    ],
+    "value": "en-US"
+   },
+   {
+    "default": false,
+    "languages": [
+     "eo"
+    ],
+    "sha256": "d6930371be900c9447c1f4a3a2d1daea60bba47107f8a3e88c864ba85b0189ee",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/153.7.0esr/mac/eo/Firefox%20153.7.0esr.dmg",
+    "value": "eo"
+   },
+   {
+    "default": false,
+    "languages": [
+     "es-AR"
+    ],
+    "sha256": "43c1b4a85a76367c4d640331e20aa9e6e035a18648dec7bec032b861886e8568",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/153.7.0esr/mac/es-AR/Firefox%20153.7.0esr.dmg",
+    "value": "es-AR"
+   },
+   {
+    "default": false,
+    "languages": [
+     "es-CL"
+    ],
+    "sha256": "cf1e65c0950d60e1ea74d015d6c59686f03b736cb42c9cbad521b3afa6d5cb26",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/153.7.0esr/mac/es-CL/Firefox%20153.7.0esr.dmg",
+    "value": "es-CL"
+   },
+   {
+    "default": false,
+    "languages": [
+     "es-ES"
+    ],
+    "sha256": "2cc5be5ade80cf039d92724ff94055cd7ef69dbda324d07e7f4b735d48906969",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/153.7.0esr/mac/es-ES/Firefox%20153.7.0esr.dmg",
+    "value": "es-ES"
+   },
+   {
+    "default": false,
+    "languages": [
+     "fa"
+    ],
+    "sha256": "9e2fc2a2a2d5c49da995d9e994a958743338bc22599bab025f5b241ffb73c26d",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/153.7.0esr/mac/fa/Firefox%20153.7.0esr.dmg",
+    "value": "fa"
+   },
+   {
+    "default": false,
+    "languages": [
+     "ff"
+    ],
+    "sha256": "8e5a5e0a5d844004e1c23df07a8423cc40c9bc95971a83fdb2573b20a1b34a86",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/153.7.0esr/mac/ff/Firefox%20153.7.0esr.dmg",
+    "value": "ff"
+   },
+   {
+    "default": false,
+    "languages": [
+     "fi"
+    ],
+    "sha256": "998a7008d5ee791ef8e882e88de8bfe0420a145bde6e43685fbc73361f2382f4",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/153.7.0esr/mac/fi/Firefox%20153.7.0esr.dmg",
+    "value": "fi"
+   },
+   {
+    "default": false,
+    "languages": [
+     "fr"
+    ],
+    "sha256": "a2660e2750617bb6c27c7c7b5d190b4684c59a5960ad6c89fc900c2bd6535c9d",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/153.7.0esr/mac/fr/Firefox%20153.7.0esr.dmg",
+    "value": "fr"
+   },
+   {
+    "default": false,
+    "languages": [
+     "gl"
+    ],
+    "sha256": "70d1c7d73ecdc864d9928c7398251d793b9a07513448a3dc342bc9d7f084794d",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/153.7.0esr/mac/gl/Firefox%20153.7.0esr.dmg",
+    "value": "gl"
+   },
+   {
+    "default": false,
+    "languages": [
+     "gn"
+    ],
+    "sha256": "0dae2c778f1abb8492f65c8087f0c2e25c5abacfe80879f560655b135824330a",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/153.7.0esr/mac/gn/Firefox%20153.7.0esr.dmg",
+    "value": "gn"
+   },
+   {
+    "default": false,
+    "languages": [
+     "gu"
+    ],
+    "sha256": "24f84f5bee2ad4066b289e9167271ba154b8c2d435ef5f16701e402b6a6bffc5",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/153.7.0esr/mac/gu-IN/Firefox%20153.7.0esr.dmg",
+    "value": "gu-IN"
+   },
+   {
+    "default": false,
+    "languages": [
+     "he"
+    ],
+    "sha256": "5625f45c21d8906aab4d2c6ed11bd66152dd9fe50ce88134dba35d9a1b8eab2e",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/153.7.0esr/mac/he/Firefox%20153.7.0esr.dmg",
+    "value": "he"
+   },
+   {
+    "default": false,
+    "languages": [
+     "hi"
+    ],
+    "sha256": "bf71a69f9fef0e6b0c69f9be64ab43858753bb628709b80e496e032552a51ba0",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/153.7.0esr/mac/hi-IN/Firefox%20153.7.0esr.dmg",
+    "value": "hi-IN"
+   },
+   {
+    "default": false,
+    "languages": [
+     "in"
+    ],
+    "sha256": "bf71a69f9fef0e6b0c69f9be64ab43858753bb628709b80e496e032552a51ba0",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/153.7.0esr/mac/hi-IN/Firefox%20153.7.0esr.dmg",
+    "value": "hi-IN"
+   },
+   {
+    "default": false,
+    "languages": [
+     "it"
+    ],
+    "sha256": "efd579a6bed82bde5a399234bcf8259358739ed41c3a6385afa33d7afd4fcd7c",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/153.7.0esr/mac/it/Firefox%20153.7.0esr.dmg",
+    "value": "it"
+   },
+   {
+    "default": false,
+    "languages": [
+     "ja"
+    ],
+    "sha256": "421b4aa3e4ed0ea38e1f4ca356ba32312533dfddae754fbf5e91c3e4a7f4399b",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/153.7.0esr/mac/ja-JP-mac/Firefox%20153.7.0esr.dmg",
+    "value": "ja-JP-mac"
+   },
+   {
+    "default": false,
+    "languages": [
+     "ka"
+    ],
+    "sha256": "ccc6dba5144345776381af2bfd301d05ba93e42be252749bd06ce498ccd45e41",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/153.7.0esr/mac/ka/Firefox%20153.7.0esr.dmg",
+    "value": "ka"
+   },
+   {
+    "default": false,
+    "languages": [
+     "ko"
+    ],
+    "sha256": "a5acc168b1ce12346ceb319a291bab49f765f26cf3ea9edd6637df5af1e45dcd",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/153.7.0esr/mac/ko/Firefox%20153.7.0esr.dmg",
+    "value": "ko"
+   },
+   {
+    "default": false,
+    "languages": [
+     "mr"
+    ],
+    "sha256": "e18dbae8948c21963d07de5f863d97c5ff84b537dc03b96be319e4f04024154a",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/153.7.0esr/mac/mr/Firefox%20153.7.0esr.dmg",
+    "value": "mr"
+   },
+   {
+    "default": false,
+    "languages": [
+     "my"
+    ],
+    "sha256": "8fc914e0f55265441a3ea25a50f322ee6f39b25f1b6be6bbb69b36607bb17a03",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/153.7.0esr/mac/my/Firefox%20153.7.0esr.dmg",
+    "value": "my"
+   },
+   {
+    "default": false,
+    "languages": [
+     "ne"
+    ],
+    "sha256": "88e13dfe7fcd9bc5b9719db5027e34f8e4b985917969d17a3791dd888b473cc0",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/153.7.0esr/mac/ne-NP/Firefox%20153.7.0esr.dmg",
+    "value": "ne-NP"
+   },
+   {
+    "default": false,
+    "languages": [
+     "nl"
+    ],
+    "sha256": "d936addcde4acdfd07ca03ec64eadcbb019ce5114a53c7467f73f937e3f1e3b7",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/153.7.0esr/mac/nl/Firefox%20153.7.0esr.dmg",
+    "value": "nl"
+   },
+   {
+    "default": false,
+    "languages": [
+     "pa-IN"
+    ],
+    "sha256": "0d3f412c4419bc41d77ab34cce6aa7343d2d9befd0faf087fe29e7da3441e33a",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/153.7.0esr/mac/pa-IN/Firefox%20153.7.0esr.dmg",
+    "value": "pa-IN"
+   },
+   {
+    "default": false,
+    "languages": [
+     "pl"
+    ],
+    "sha256": "9db180b91ace50a21a576ecdaad42ed151f42f9d423eacd39b706891e0e6d675",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/153.7.0esr/mac/pl/Firefox%20153.7.0esr.dmg",
+    "value": "pl"
+   },
+   {
+    "default": false,
+    "languages": [
+     "pt-BR"
+    ],
+    "sha256": "ce53b27a79372ab6fd7bab44e624b6e2cd96e1e164640cecd90db312e8556679",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/153.7.0esr/mac/pt-BR/Firefox%20153.7.0esr.dmg",
+    "value": "pt-BR"
+   },
+   {
+    "default": false,
+    "languages": [
+     "pt"
+    ],
+    "sha256": "a8bc4ad85b70079487f0e01b7cab255725b3c91b7a38dc176df11f9ada8dd780",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/153.7.0esr/mac/pt-PT/Firefox%20153.7.0esr.dmg",
+    "value": "pt-PT"
+   },
+   {
+    "default": false,
+    "languages": [
+     "ru"
+    ],
+    "sha256": "8e64f320e0dc55a7082d3b6ab314a0a2e7d45586bfe36ea90f67be4e0f13335d",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/153.7.0esr/mac/ru/Firefox%20153.7.0esr.dmg",
+    "value": "ru"
+   },
+   {
+    "default": false,
+    "languages": [
+     "si"
+    ],
+    "sha256": "1cf4bd8b6d5c5b500a9e3e3685bf29b8906944b3b0debca314cfe468ecd860a9",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/153.7.0esr/mac/si/Firefox%20153.7.0esr.dmg",
+    "value": "si"
+   },
+   {
+    "default": false,
+    "languages": [
+     "sq"
+    ],
+    "sha256": "50896eb4922aa7ec15df048d6879442e6d336804bc1740da0fed56f9c3b42a4b",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/153.7.0esr/mac/sq/Firefox%20153.7.0esr.dmg",
+    "value": "sq"
+   },
+   {
+    "default": false,
+    "languages": [
+     "sr"
+    ],
+    "sha256": "625d9f69a5afbf32cf12b1b1cc82021699fa5d23a545544fbdc1ac3c15b671ff",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/153.7.0esr/mac/sr/Firefox%20153.7.0esr.dmg",
+    "value": "sr"
+   },
+   {
+    "default": false,
+    "languages": [
+     "sv"
+    ],
+    "sha256": "c831ef564ecf114162bf2b0c2529df0235272c3df31cbd74d395fdece591694b",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/153.7.0esr/mac/sv-SE/Firefox%20153.7.0esr.dmg",
+    "value": "sv-SE"
+   },
+   {
+    "default": false,
+    "languages": [
+     "ta"
+    ],
+    "sha256": "8534a757fc3b2e8a279d9bed33356ecb3d48dec929d30fa0866a6086cebd4859",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/153.7.0esr/mac/ta/Firefox%20153.7.0esr.dmg",
+    "value": "ta"
+   },
+   {
+    "default": false,
+    "languages": [
+     "te"
+    ],
+    "sha256": "51898f64974a7d1b43631854de0c6ee66038086f51d05a775c33ac39746a2085",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/153.7.0esr/mac/te/Firefox%20153.7.0esr.dmg",
+    "value": "te"
+   },
+   {
+    "default": false,
+    "languages": [
+     "th"
+    ],
+    "sha256": "8164cf95bcd019f9dfa3d54bf75361ff2b3b86751ea4c668bf7e6d176150b128",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/153.7.0esr/mac/th/Firefox%20153.7.0esr.dmg",
+    "value": "th"
+   },
+   {
+    "default": false,
+    "languages": [
+     "tl"
+    ],
+    "sha256": "1cc656ce3104ff429cabb4a96342d85854d9119bc08ae64818a98ad76cdabd63",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/153.7.0esr/mac/tl/Firefox%20153.7.0esr.dmg",
+    "value": "tl"
+   },
+   {
+    "default": false,
+    "languages": [
+     "tr"
+    ],
+    "sha256": "db551098fc41286194ad52fe6c23a47843ef80842595c3f82d237a9f27d04570",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/153.7.0esr/mac/tr/Firefox%20153.7.0esr.dmg",
+    "value": "tr"
+   },
+   {
+    "default": false,
+    "languages": [
+     "uk"
+    ],
+    "sha256": "2d7da279f9398773201c45816f2b8d20b5d0d6b9fb501bec8769e296f6899715",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/153.7.0esr/mac/uk/Firefox%20153.7.0esr.dmg",
+    "value": "uk"
+   },
+   {
+    "default": false,
+    "languages": [
+     "ur"
+    ],
+    "sha256": "e085f8d676625f5c705096a842460c38955b006fe96c6f739ca31eb494f5f39b",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/153.7.0esr/mac/ur/Firefox%20153.7.0esr.dmg",
+    "value": "ur"
+   },
+   {
+    "default": false,
+    "languages": [
+     "zh-TW"
+    ],
+    "sha256": "3f07a08268523b857ee89edb4458ae9440334126c8c395a7cc62b9fceb2dafe8",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/153.7.0esr/mac/zh-TW/Firefox%20153.7.0esr.dmg",
+    "value": "zh-TW"
+   },
+   {
+    "default": false,
+    "languages": [
+     "zh"
+    ],
+    "sha256": "3559b74462077d5d9c3b802ac72e5a3a98728aa803a2ad59dedaab83cdf716b2",
+    "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/153.7.0esr/mac/zh-CN/Firefox%20153.7.0esr.dmg",
+    "value": "zh-CN"
+   }
+  ],
+  "languages": [
+   "af",
+   "ar",
+   "be",
+   "bg",
+   "bn",
+   "ca",
+   "cs",
+   "de",
+   "en-CA",
+   "en-GB",
+   "en",
+   "eo",
+   "es-AR",
+   "es-CL",
+   "es-ES",
+   "fa",
+   "ff",
+   "fi",
+   "fr",
+   "gl",
+   "gn",
+   "gu",
+   "he",
+   "hi",
+   "in",
+   "it",
+   "ja",
+   "ka",
+   "ko",
+   "mr",
+   "my",
+   "ne",
+   "nl",
+   "pa-IN",
+   "pl",
+   "pt-BR",
+   "pt",
+   "ru",
+   "si",
+   "sq",
+   "sr",
+   "sv",
+   "ta",
+   "te",
+   "th",
+   "tl",
+   "tr",
+   "uk",
+   "ur",
+   "zh-TW",
+   "zh"
+  ],
+  "name": [
+   "Mozilla Firefox ESR",
+   "Mozilla Firefox Extended Support Release"
+  ],
+  "no_autobump_message": null,
+  "old_tokens": [],
+  "outdated": false,
+  "pinned": false,
+  "pinned_version": null,
+  "rename": [],
+  "ruby_source_checksum": {
+   "sha256": "4530bedb56a547456cc0fa8bea83f20073505764b814832de1cb2af75cb0fa0d"
+  },
+  "ruby_source_path": "Casks/f/firefox@esr.rb",
+  "sha256": "3db34b9bb00340528f6c2e6b99ab465eb7f269516ade4aec9161fb8ecd9dc8c3",
+  "skip_livecheck": false,
+  "supported_platforms": [
+   "golden_gate",
+   "arm64_golden_gate",
+   "tahoe",
+   "arm64_tahoe",
+   "sequoia",
+   "arm64_sequoia",
+   "sonoma",
+   "arm64_sonoma",
+   "ventura",
+   "arm64_ventura",
+   "monterey",
+   "arm64_monterey",
+   "big_sur",
+   "arm64_big_sur"
+  ],
+  "tap": "homebrew/cask",
+  "tap_git_head": "bc429d228452ef0ac57ac508a10e6a39f8e3e32a",
+  "token": "firefox@esr",
+  "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/153.7.0esr/mac/en-US/Firefox%20153.7.0esr.dmg",
+  "url_specs": {},
+  "variations": {},
+  "version": "153.7.0"
+ },
+ {
+  "artifacts": [
+   {
+    "app": [
+     "LibreOffice.app"
+    ],
+    "target": "/Applications/LibreOffice.app"
+   },
+   {
+    "binary": [
+     "$APPDIR/LibreOffice.app/Contents/MacOS/gengal"
+    ],
+    "target": "$HOMEBREW_PREFIX/bin/gengal"
+   },
+   {
+    "binary": [
+     "$APPDIR/LibreOffice.app/Contents/MacOS/regview"
+    ],
+    "target": "$HOMEBREW_PREFIX/bin/regview"
+   },
+   {
+    "binary": [
+     "$APPDIR/LibreOffice.app/Contents/MacOS/senddoc"
+    ],
+    "target": "$HOMEBREW_PREFIX/bin/senddoc"
+   },
+   {
+    "binary": [
+     "$APPDIR/LibreOffice.app/Contents/MacOS/uno"
+    ],
+    "target": "$HOMEBREW_PREFIX/bin/uno"
+   },
+   {
+    "binary": [
+     "$APPDIR/LibreOffice.app/Contents/MacOS/unopkg"
+    ],
+    "target": "$HOMEBREW_PREFIX/bin/unopkg"
+   },
+   {
+    "binary": [
+     "$APPDIR/LibreOffice.app/Contents/MacOS/uri-encode"
+    ],
+    "target": "$HOMEBREW_PREFIX/bin/uri-encode"
+   },
+   {
+    "binary": [
+     "$APPDIR/LibreOffice.app/Contents/MacOS/xpdfimport"
+    ],
+    "target": "$HOMEBREW_PREFIX/bin/xpdfimport"
+   },
+   {
+    "command_wrapper": [
+     "soffice",
+     {
+      "executable": "$APPDIR/LibreOffice.app/Contents/MacOS/soffice"
+     }
+    ],
+    "target": "$HOMEBREW_PREFIX/bin/soffice"
+   },
+   {
+    "binary": [
+     "$APPDIR/LibreOffice.app/Contents/MacOS/unoinfo"
+    ],
+    "target": "$HOMEBREW_PREFIX/bin/unoinfo"
+   },
+   {
+    "zap": [
+     {
+      "trash": [
+       "~/Library/Application Support/com.apple.sharedfilelist/com.apple.LSSharedFileList.ApplicationRecentDocuments/org.libreoffice.script.sfl*",
+       "~/Library/Application Support/LibreOffice",
+       "~/Library/Preferences/org.libreoffice.script.plist",
+       "~/Library/Saved Application State/org.libreoffice.script.savedState"
+      ]
+     }
+    ]
+   }
+  ],
+  "auto_updates": null,
+  "autobump": true,
+  "bundle_short_version": null,
+  "bundle_version": null,
+  "caveats": null,
+  "caveats_rosetta": null,
+  "conflicts_with": {
+   "cask": [
+    "libreoffice-still"
+   ]
+  },
+  "container": null,
+  "depends_on": {
+   "macos": {}
+  },
+  "deprecate_args": null,
+  "deprecated": false,
+  "deprecation_date": null,
+  "deprecation_reason": null,
+  "deprecation_replacement_cask": null,
+  "deprecation_replacement_formula": null,
+  "desc": "Free cross-platform office suite, fresh version",
+  "disable_args": null,
+  "disable_date": null,
+  "disable_reason": null,
+  "disable_replacement_cask": null,
+  "disable_replacement_formula": null,
+  "disabled": false,
+  "full_token": "libreoffice",
+  "homepage": "https://www.libreoffice.org/",
+  "installed": null,
+  "installed_time": null,
+  "languages": [],
+  "name": [
+   "LibreOffice"
+  ],
+  "no_autobump_message": null,
+  "old_tokens": [],
+  "outdated": false,
+  "pinned": false,
+  "pinned_version": null,
+  "rename": [],
+  "ruby_source_checksum": {
+   "sha256": "3877f1d0f9a41de0ef6864a1484a6809ecebca8caadef85b6dea7571ec0b78ff"
+  },
+  "ruby_source_path": "Casks/l/libreoffice.rb",
+  "sha256": "de943203795e5057785f65515063e2db5eb60b0bb6d8e2534fec59e5cc5fb988",
+  "skip_livecheck": false,
+  "supported_platforms": [
+   "golden_gate",
+   "arm64_golden_gate",
+   "tahoe",
+   "arm64_tahoe",
+   "sequoia",
+   "arm64_sequoia",
+   "sonoma",
+   "arm64_sonoma",
+   "ventura",
+   "arm64_ventura",
+   "monterey",
+   "arm64_monterey",
+   "big_sur",
+   "arm64_big_sur"
+  ],
+  "tap": "homebrew/cask",
+  "tap_git_head": "bc429d228452ef0ac57ac508a10e6a39f8e3e32a",
+  "token": "libreoffice",
+  "url": "https://download.documentfoundation.org/libreoffice/stable/26.8.3/mac/aarch64/LibreOffice_26.8.3_MacOS_aarch64.dmg",
+  "url_specs": {},
+  "variations": {
+   "arm64_linux": {
+    "sha256": null
+   },
+   "big_sur": {
+    "sha256": "bb3c35d628780510915ad9e759d7ed898094d7985d01b2181bd1d4ecd94fd159",
+    "url": "https://download.documentfoundation.org/libreoffice/stable/26.8.3/mac/x86_64/LibreOffice_26.8.3_MacOS_x86-64.dmg"
+   },
+   "golden_gate": {
+    "sha256": "bb3c35d628780510915ad9e759d7ed898094d7985d01b2181bd1d4ecd94fd159",
+    "url": "https://download.documentfoundation.org/libreoffice/stable/26.8.3/mac/x86_64/LibreOffice_26.8.3_MacOS_x86-64.dmg"
+   },
+   "monterey": {
+    "sha256": "bb3c35d628780510915ad9e759d7ed898094d7985d01b2181bd1d4ecd94fd159",
+    "url": "https://download.documentfoundation.org/libreoffice/stable/26.8.3/mac/x86_64/LibreOffice_26.8.3_MacOS_x86-64.dmg"
+   },
+   "sequoia": {
+    "sha256": "bb3c35d628780510915ad9e759d7ed898094d7985d01b2181bd1d4ecd94fd159",
+    "url": "https://download.documentfoundation.org/libreoffice/stable/26.8.3/mac/x86_64/LibreOffice_26.8.3_MacOS_x86-64.dmg"
+   },
+   "sonoma": {
+    "sha256": "bb3c35d628780510915ad9e759d7ed898094d7985d01b2181bd1d4ecd94fd159",
+    "url": "https://download.documentfoundation.org/libreoffice/stable/26.8.3/mac/x86_64/LibreOffice_26.8.3_MacOS_x86-64.dmg"
+   },
+   "tahoe": {
+    "sha256": "bb3c35d628780510915ad9e759d7ed898094d7985d01b2181bd1d4ecd94fd159",
+    "url": "https://download.documentfoundation.org/libreoffice/stable/26.8.3/mac/x86_64/LibreOffice_26.8.3_MacOS_x86-64.dmg"
+   },
+   "ventura": {
+    "sha256": "bb3c35d628780510915ad9e759d7ed898094d7985d01b2181bd1d4ecd94fd159",
+    "url": "https://download.documentfoundation.org/libreoffice/stable/26.8.3/mac/x86_64/LibreOffice_26.8.3_MacOS_x86-64.dmg"
+   },
+   "x86_64_linux": {
+    "sha256": null,
+    "url": "https://download.documentfoundation.org/libreoffice/stable/26.8.3/mac/x86_64/LibreOffice_26.8.3_MacOS_x86-64.dmg"
+   }
+  },
+  "version": "26.8.3"
+ },
+ {
+  "artifacts": [
+   {
+    "app": [
+     "LibreOffice.app"
+    ],
+    "target": "/Applications/LibreOffice.app"
+   },
+   {
+    "binary": [
+     "$APPDIR/LibreOffice.app/Contents/MacOS/gengal"
+    ],
+    "target": "$HOMEBREW_PREFIX/bin/gengal"
+   },
+   {
+    "binary": [
+     "$APPDIR/LibreOffice.app/Contents/MacOS/regview"
+    ],
+    "target": "$HOMEBREW_PREFIX/bin/regview"
+   },
+   {
+    "binary": [
+     "$APPDIR/LibreOffice.app/Contents/MacOS/senddoc"
+    ],
+    "target": "$HOMEBREW_PREFIX/bin/senddoc"
+   },
+   {
+    "binary": [
+     "$APPDIR/LibreOffice.app/Contents/MacOS/uno"
+    ],
+    "target": "$HOMEBREW_PREFIX/bin/uno"
+   },
+   {
+    "binary": [
+     "$APPDIR/LibreOffice.app/Contents/MacOS/unopkg"
+    ],
+    "target": "$HOMEBREW_PREFIX/bin/unopkg"
+   },
+   {
+    "binary": [
+     "$APPDIR/LibreOffice.app/Contents/MacOS/uri-encode"
+    ],
+    "target": "$HOMEBREW_PREFIX/bin/uri-encode"
+   },
+   {
+    "binary": [
+     "$APPDIR/LibreOffice.app/Contents/MacOS/xpdfimport"
+    ],
+    "target": "$HOMEBREW_PREFIX/bin/xpdfimport"
+   },
+   {
+    "command_wrapper": [
+     "soffice",
+     {
+      "executable": "$APPDIR/LibreOffice.app/Contents/MacOS/soffice"
+     }
+    ],
+    "target": "$HOMEBREW_PREFIX/bin/soffice"
+   },
+   {
+    "binary": [
+     "$APPDIR/LibreOffice.app/Contents/MacOS/unoinfo"
+    ],
+    "target": "$HOMEBREW_PREFIX/bin/unoinfo"
+   },
+   {
+    "zap": [
+     {
+      "trash": [
+       "~/Library/Application Support/com.apple.sharedfilelist/com.apple.LSSharedFileList.ApplicationRecentDocuments/org.libreoffice.script.sfl*",
+       "~/Library/Application Support/LibreOffice",
+       "~/Library/Preferences/org.libreoffice.script.plist",
+       "~/Library/Saved Application State/org.libreoffice.script.savedState"
+      ]
+     }
+    ]
+   }
+  ],
+  "auto_updates": null,
+  "autobump": true,
+  "bundle_short_version": null,
+  "bundle_version": null,
+  "caveats": null,
+  "caveats_rosetta": null,
+  "conflicts_with": {
+   "cask": [
+    "libreoffice"
+   ]
+  },
+  "container": null,
+  "depends_on": {
+   "macos": {}
+  },
+  "deprecate_args": null,
+  "deprecated": false,
+  "deprecation_date": null,
+  "deprecation_reason": null,
+  "deprecation_replacement_cask": null,
+  "deprecation_replacement_formula": null,
+  "desc": "Free cross-platform office suite, stable version recommended for enterprises",
+  "disable_args": null,
+  "disable_date": null,
+  "disable_reason": null,
+  "disable_replacement_cask": null,
+  "disable_replacement_formula": null,
+  "disabled": false,
+  "full_token": "libreoffice-still",
+  "homepage": "https://www.libreoffice.org/",
+  "installed": null,
+  "installed_time": null,
+  "languages": [],
+  "name": [
+   "LibreOffice Still"
+  ],
+  "no_autobump_message": null,
+  "old_tokens": [],
+  "outdated": false,
+  "pinned": false,
+  "pinned_version": null,
+  "rename": [],
+  "ruby_source_checksum": {
+   "sha256": "b8579c3f90b992b2a1e556f9e58f4a7beca746925bfcbb23c7e03bb37ef9db25"
+  },
+  "ruby_source_path": "Casks/l/libreoffice-still.rb",
+  "sha256": "58601808ae2b919c82dc7c4d6a26389de0e167f344ca48e5b6c9189218eb95ae",
+  "skip_livecheck": false,
+  "supported_platforms": [
+   "golden_gate",
+   "arm64_golden_gate",
+   "tahoe",
+   "arm64_tahoe",
+   "sequoia",
+   "arm64_sequoia",
+   "sonoma",
+   "arm64_sonoma",
+   "ventura",
+   "arm64_ventura",
+   "monterey",
+   "arm64_monterey",
+   "big_sur",
+   "arm64_big_sur"
+  ],
+  "tap": "homebrew/cask",
+  "tap_git_head": "bc429d228452ef0ac57ac508a10e6a39f8e3e32a",
+  "token": "libreoffice-still",
+  "url": "https://download.documentfoundation.org/libreoffice/stable/26.2.7/mac/aarch64/LibreOffice_26.2.7_MacOS_aarch64.dmg",
+  "url_specs": {},
+  "variations": {
+   "arm64_linux": {
+    "sha256": null
+   },
+   "big_sur": {
+    "sha256": "26a830205c617cc624b2a83783ef46434a4d6c337c3a873f79c43012171f83de",
+    "url": "https://download.documentfoundation.org/libreoffice/stable/26.2.7/mac/x86_64/LibreOffice_26.2.7_MacOS_x86-64.dmg"
+   },
+   "golden_gate": {
+    "sha256": "26a830205c617cc624b2a83783ef46434a4d6c337c3a873f79c43012171f83de",
+    "url": "https://download.documentfoundation.org/libreoffice/stable/26.2.7/mac/x86_64/LibreOffice_26.2.7_MacOS_x86-64.dmg"
+   },
+   "monterey": {
+    "sha256": "26a830205c617cc624b2a83783ef46434a4d6c337c3a873f79c43012171f83de",
+    "url": "https://download.documentfoundation.org/libreoffice/stable/26.2.7/mac/x86_64/LibreOffice_26.2.7_MacOS_x86-64.dmg"
+   },
+   "sequoia": {
+    "sha256": "26a830205c617cc624b2a83783ef46434a4d6c337c3a873f79c43012171f83de",
+    "url": "https://download.documentfoundation.org/libreoffice/stable/26.2.7/mac/x86_64/LibreOffice_26.2.7_MacOS_x86-64.dmg"
+   },
+   "sonoma": {
+    "sha256": "26a830205c617cc624b2a83783ef46434a4d6c337c3a873f79c43012171f83de",
+    "url": "https://download.documentfoundation.org/libreoffice/stable/26.2.7/mac/x86_64/LibreOffice_26.2.7_MacOS_x86-64.dmg"
+   },
+   "tahoe": {
+    "sha256": "26a830205c617cc624b2a83783ef46434a4d6c337c3a873f79c43012171f83de",
+    "url": "https://download.documentfoundation.org/libreoffice/stable/26.2.7/mac/x86_64/LibreOffice_26.2.7_MacOS_x86-64.dmg"
+   },
+   "ventura": {
+    "sha256": "26a830205c617cc624b2a83783ef46434a4d6c337c3a873f79c43012171f83de",
+    "url": "https://download.documentfoundation.org/libreoffice/stable/26.2.7/mac/x86_64/LibreOffice_26.2.7_MacOS_x86-64.dmg"
+   },
+   "x86_64_linux": {
+    "sha256": null,
+    "url": "https://download.documentfoundation.org/libreoffice/stable/26.2.7/mac/x86_64/LibreOffice_26.2.7_MacOS_x86-64.dmg"
+   }
+  },
+  "version": "26.2.7"
+ },
+ {
+  "artifacts": [
+   {
+    "uninstall": [
+     {
+      "launchctl": "com.microsoft.VSCode.ShipIt",
+      "quit": "com.microsoft.VSCode"
+     }
+    ]
+   },
+   {
+    "app": [
+     "Visual Studio Code.app"
+    ],
+    "target": "/Applications/Visual Studio Code.app"
+   },
+   {
+    "binary": [
+     "$APPDIR/Visual Studio Code.app/Contents/Resources/app/bin/code"
+    ],
+    "target": "$HOMEBREW_PREFIX/bin/code"
+   },
+   {
+    "binary": [
+     "$APPDIR/Visual Studio Code.app/Contents/Resources/app/bin/code-tunnel"
+    ],
+    "target": "$HOMEBREW_PREFIX/bin/code-tunnel"
+   },
+   {
+    "zap": [
+     {
+      "trash": [
+       "~/.vscode",
+       "~/Library/Application Support/Code",
+       "~/Library/Application Support/com.apple.sharedfilelist/com.apple.LSSharedFileList.ApplicationRecentDocuments/com.microsoft.vscode.sfl*",
+       "~/Library/Caches/com.microsoft.VSCode",
+       "~/Library/Caches/com.microsoft.VSCode.ShipIt",
+       "~/Library/HTTPStorages/com.microsoft.VSCode",
+       "~/Library/Preferences/ByHost/com.microsoft.VSCode.ShipIt.*.plist",
+       "~/Library/Preferences/com.microsoft.VSCode.helper.plist",
+       "~/Library/Preferences/com.microsoft.VSCode.plist",
+       "~/Library/Saved Application State/com.microsoft.VSCode.savedState"
+      ]
+     }
+    ]
+   }
+  ],
+  "auto_updates": true,
+  "autobump": true,
+  "bundle_short_version": null,
+  "bundle_version": null,
+  "caveats": null,
+  "caveats_rosetta": null,
+  "conflicts_with": null,
+  "container": null,
+  "depends_on": {
+   "macos": {}
+  },
+  "deprecate_args": null,
+  "deprecated": false,
+  "deprecation_date": null,
+  "deprecation_reason": null,
+  "deprecation_replacement_cask": null,
+  "deprecation_replacement_formula": null,
+  "desc": "Open-source code editor",
+  "disable_args": null,
+  "disable_date": null,
+  "disable_reason": null,
+  "disable_replacement_cask": null,
+  "disable_replacement_formula": null,
+  "disabled": false,
+  "full_token": "visual-studio-code",
+  "homepage": "https://code.visualstudio.com/",
+  "installed": null,
+  "installed_time": null,
+  "languages": [],
+  "name": [
+   "Microsoft Visual Studio Code",
+   "VS Code"
+  ],
+  "no_autobump_message": null,
+  "old_tokens": [],
+  "outdated": false,
+  "pinned": false,
+  "pinned_version": null,
+  "rename": [],
+  "ruby_source_checksum": {
+   "sha256": "d72f308625c294ab01fcddb53fe9b9ac544182605f66304f242be8229385e6e9"
+  },
+  "ruby_source_path": "Casks/v/visual-studio-code.rb",
+  "sha256": "149d944feb599b076b48406b174e1c3cd1d510e9d673854777a20a6f4116a59a",
+  "skip_livecheck": false,
+  "supported_platforms": [
+   "golden_gate",
+   "arm64_golden_gate",
+   "tahoe",
+   "arm64_tahoe",
+   "sequoia",
+   "arm64_sequoia",
+   "sonoma",
+   "arm64_sonoma",
+   "ventura",
+   "arm64_ventura",
+   "monterey",
+   "arm64_monterey",
+   "big_sur",
+   "arm64_big_sur"
+  ],
+  "tap": "homebrew/cask",
+  "tap_git_head": "bc429d228452ef0ac57ac508a10e6a39f8e3e32a",
+  "token": "visual-studio-code",
+  "url": "https://update.code.visualstudio.com/1.147.0/darwin-arm64/stable",
+  "url_specs": {},
+  "variations": {
+   "arm64_big_sur": {
+    "sha256": "35dd438808dde1dd1f65490ffe7713ed64102324c0809efbec0b4eb2809b218b",
+    "skip_livecheck": true,
+    "url": "https://update.code.visualstudio.com/1.106.3/darwin-arm64/stable",
+    "version": "1.106.3"
+   },
+   "arm64_linux": {
+    "sha256": null,
+    "url": "https://update.code.visualstudio.com//darwin-arm64/stable",
+    "version": null
+   },
+   "big_sur": {
+    "sha256": "c41872149a205f3a3be3e5d3a8f04920407a0762531e607f78dc93f4d4813cda",
+    "skip_livecheck": true,
+    "url": "https://update.code.visualstudio.com/1.106.3/darwin/stable",
+    "version": "1.106.3"
+   },
+   "golden_gate": {
+    "sha256": "a91677b96c1a73de366f54cb4a497c8095459e07e95457ffab985820f93fb298",
+    "url": "https://update.code.visualstudio.com/1.147.0/darwin/stable"
+   },
+   "monterey": {
+    "sha256": "a91677b96c1a73de366f54cb4a497c8095459e07e95457ffab985820f93fb298",
+    "url": "https://update.code.visualstudio.com/1.147.0/darwin/stable"
+   },
+   "sequoia": {
+    "sha256": "a91677b96c1a73de366f54cb4a497c8095459e07e95457ffab985820f93fb298",
+    "url": "https://update.code.visualstudio.com/1.147.0/darwin/stable"
+   },
+   "sonoma": {
+    "sha256": "a91677b96c1a73de366f54cb4a497c8095459e07e95457ffab985820f93fb298",
+    "url": "https://update.code.visualstudio.com/1.147.0/darwin/stable"
+   },
+   "tahoe": {
+    "sha256": "a91677b96c1a73de366f54cb4a497c8095459e07e95457ffab985820f93fb298",
+    "url": "https://update.code.visualstudio.com/1.147.0/darwin/stable"
+   },
+   "ventura": {
+    "sha256": "a91677b96c1a73de366f54cb4a497c8095459e07e95457ffab985820f93fb298",
+    "url": "https://update.code.visualstudio.com/1.147.0/darwin/stable"
+   },
+   "x86_64_linux": {
+    "sha256": null,
+    "url": "https://update.code.visualstudio.com//darwin/stable",
+    "version": null
+   }
+  },
+  "version": "1.147.0"
+ },
+ {
+  "artifacts": [
+   {
+    "app": [
+     "HandBrake.app"
+    ],
+    "target": "/Applications/HandBrake.app"
+   },
+   {
+    "zap": [
+     {
+      "trash": [
+       "~/Library/Application Support/com.apple.sharedfilelist/com.apple.LSSharedFileList.ApplicationRecentDocuments/fr.handbrake.handbrake.sfl*",
+       "~/Library/Application Support/HandBrake",
+       "~/Library/Caches/fr.handbrake.HandBrake",
+       "~/Library/Preferences/fr.handbrake.HandBrake.plist",
+       "~/Library/Saved Application State/fr.handbrake.HandBrake.savedState"
+      ]
+     }
+    ]
+   }
+  ],
+  "auto_updates": true,
+  "autobump": true,
+  "bundle_short_version": null,
+  "bundle_version": null,
+  "caveats": null,
+  "caveats_rosetta": null,
+  "conflicts_with": null,
+  "container": null,
+  "depends_on": {
+   "macos": {}
+  },
+  "deprecate_args": null,
+  "deprecated": false,
+  "deprecation_date": null,
+  "deprecation_reason": null,
+  "deprecation_replacement_cask": null,
+  "deprecation_replacement_formula": null,
+  "desc": "Open-source video transcoder",
+  "disable_args": null,
+  "disable_date": null,
+  "disable_reason": null,
+  "disable_replacement_cask": null,
+  "disable_replacement_formula": null,
+  "disabled": false,
+  "full_token": "handbrake-app",
+  "homepage": "https://handbrake.fr/",
+  "installed": null,
+  "installed_time": null,
+  "languages": [],
+  "name": [
+   "HandBrake"
+  ],
+  "no_autobump_message": null,
+  "old_tokens": [
+   "handbrake"
+  ],
+  "outdated": false,
+  "pinned": false,
+  "pinned_version": null,
+  "rename": [],
+  "ruby_source_checksum": {
+   "sha256": "31cb4538e16cbd4c983a907178c0f231bc5d03b8921268f2d75f03bbc4ad8a58"
+  },
+  "ruby_source_path": "Casks/h/handbrake-app.rb",
+  "sha256": "4afe27aaa77a7bbb0dcda1a335d96a5f53649f2649fb84de6982ffecc35de9d7",
+  "skip_livecheck": false,
+  "supported_platforms": [
+   "golden_gate",
+   "arm64_golden_gate",
+   "tahoe",
+   "arm64_tahoe",
+   "sequoia",
+   "arm64_sequoia",
+   "sonoma",
+   "arm64_sonoma",
+   "ventura",
+   "arm64_ventura",
+   "monterey",
+   "arm64_monterey",
+   "big_sur",
+   "arm64_big_sur"
+  ],
+  "tap": "homebrew/cask",
+  "tap_git_head": "bc429d228452ef0ac57ac508a10e6a39f8e3e32a",
+  "token": "handbrake-app",
+  "url": "https://handbrake.fr/rotation.php?file=HandBrake-1.11.2.dmg&update=true",
+  "url_specs": {},
+  "variations": {},
+  "version": "1.11.2"
+ },
+ {
+  "artifacts": [
+   {
+    "suite": [
+     "KiCad"
+    ],
+    "target": "/Applications/KiCad"
+   },
+   {
+    "artifact": [
+     "demos",
+     {
+      "target": "/Library/Application Support/kicad/demos"
+     }
+    ],
+    "target": "/Library/Application Support/kicad/demos"
+   },
+   {
+    "binary": [
+     "$APPDIR/KiCad/KiCad.app/Contents/MacOS/idf2vrml"
+    ],
+    "target": "$HOMEBREW_PREFIX/bin/idf2vrml"
+   },
+   {
+    "binary": [
+     "$APPDIR/KiCad/KiCad.app/Contents/MacOS/idfcyl"
+    ],
+    "target": "$HOMEBREW_PREFIX/bin/idfcyl"
+   },
+   {
+    "binary": [
+     "$APPDIR/KiCad/KiCad.app/Contents/MacOS/kicad-cli"
+    ],
+    "target": "$HOMEBREW_PREFIX/bin/kicad-cli"
+   },
+   {
+    "binary": [
+     "$APPDIR/KiCad/KiCad.app/Contents/MacOS/idfrect"
+    ],
+    "target": "$HOMEBREW_PREFIX/bin/idfrect"
+   },
+   {
+    "binary": [
+     "$APPDIR/KiCad/KiCad.app/Contents/MacOS/dxf2idf"
+    ],
+    "target": "$HOMEBREW_PREFIX/bin/dxf2idf"
+   },
+   {
+    "zap": [
+     {
+      "delete": "/Library/Application Support/kicad",
+      "trash": [
+       "~/Library/Application Support/kicad",
+       "~/Library/Caches/KiCad",
+       "~/Library/Preferences/kicad",
+       "~/Library/Preferences/org.kicad-pcb.*",
+       "~/Library/Preferences/org.kicad.*",
+       "~/Library/Saved Application State/org.kicad-pcb.*",
+       "~/Library/Saved Application State/org.kicad.*"
+      ]
+     }
+    ]
+   }
+  ],
+  "auto_updates": null,
+  "autobump": true,
+  "bundle_short_version": null,
+  "bundle_version": null,
+  "caveats": null,
+  "caveats_rosetta": null,
+  "conflicts_with": null,
+  "container": null,
+  "depends_on": {
+   "macos": {}
+  },
+  "deprecate_args": null,
+  "deprecated": false,
+  "deprecation_date": null,
+  "deprecation_reason": null,
+  "deprecation_replacement_cask": null,
+  "deprecation_replacement_formula": null,
+  "desc": "Electronics design automation suite",
+  "disable_args": null,
+  "disable_date": null,
+  "disable_reason": null,
+  "disable_replacement_cask": null,
+  "disable_replacement_formula": null,
+  "disabled": false,
+  "full_token": "kicad",
+  "homepage": "https://kicad.org/",
+  "installed": null,
+  "installed_time": null,
+  "languages": [],
+  "name": [
+   "KiCad"
+  ],
+  "no_autobump_message": null,
+  "old_tokens": [],
+  "outdated": false,
+  "pinned": false,
+  "pinned_version": null,
+  "rename": [],
+  "ruby_source_checksum": {
+   "sha256": "d5f5916b47c1a00d0799a3c51982d0284a9a03ca013d25df8da790e288a24d6a"
+  },
+  "ruby_source_path": "Casks/k/kicad.rb",
+  "sha256": "501d3e2933a385f1833497469f55326662df7e5d40401239826c40d6fa583f16",
+  "skip_livecheck": false,
+  "supported_platforms": [
+   "golden_gate",
+   "arm64_golden_gate",
+   "tahoe",
+   "arm64_tahoe",
+   "sequoia",
+   "arm64_sequoia",
+   "sonoma",
+   "arm64_sonoma",
+   "ventura",
+   "arm64_ventura",
+   "monterey",
+   "arm64_monterey",
+   "big_sur",
+   "arm64_big_sur"
+  ],
+  "tap": "homebrew/cask",
+  "tap_git_head": "bc429d228452ef0ac57ac508a10e6a39f8e3e32a",
+  "token": "kicad",
+  "url": "https://github.com/KiCad/kicad-source-mirror/releases/download/10.0.8/kicad-unified-universal-10.0.8.dmg",
+  "url_specs": {},
+  "variations": {},
+  "version": "10.0.8"
+ },
+ {
+  "artifacts": [
+   {
+    "app": [
+     "QGIS-final-4_2_3.app"
+    ],
+    "target": "/Applications/QGIS-final-4_2_3.app"
+   },
+   {
+    "zap": [
+     {
+      "trash": [
+       "~/Library/Application Support/QGIS",
+       "~/Library/Caches/QGIS",
+       "~/Library/Saved Application State/org.qgis.qgis*.savedState"
+      ]
+     }
+    ]
+   }
+  ],
+  "auto_updates": null,
+  "autobump": true,
+  "bundle_short_version": null,
+  "bundle_version": null,
+  "caveats": null,
+  "caveats_rosetta": null,
+  "conflicts_with": null,
+  "container": null,
+  "depends_on": {
+   "macos": {}
+  },
+  "deprecate_args": null,
+  "deprecated": false,
+  "deprecation_date": null,
+  "deprecation_reason": null,
+  "deprecation_replacement_cask": null,
+  "deprecation_replacement_formula": null,
+  "desc": "Geographic Information System",
+  "disable_args": null,
+  "disable_date": null,
+  "disable_reason": null,
+  "disable_replacement_cask": null,
+  "disable_replacement_formula": null,
+  "disabled": false,
+  "full_token": "qgis",
+  "homepage": "https://www.qgis.org/",
+  "installed": null,
+  "installed_time": null,
+  "languages": [],
+  "name": [
+   "QGIS"
+  ],
+  "no_autobump_message": null,
+  "old_tokens": [],
+  "outdated": false,
+  "pinned": false,
+  "pinned_version": null,
+  "rename": [],
+  "ruby_source_checksum": {
+   "sha256": "1b28c3a88d6977becddcb7742dde8b49a103c719638f8bf673b113420a8c5b94"
+  },
+  "ruby_source_path": "Casks/q/qgis.rb",
+  "sha256": "cf3af3d3d228a0e2a0ab7fb6b37052ae78064d0aef93b12f41f9bd724fd23401",
+  "skip_livecheck": false,
+  "supported_platforms": [
+   "golden_gate",
+   "arm64_golden_gate",
+   "tahoe",
+   "arm64_tahoe",
+   "sequoia",
+   "arm64_sequoia",
+   "sonoma",
+   "arm64_sonoma",
+   "ventura",
+   "arm64_ventura",
+   "monterey",
+   "arm64_monterey",
+   "big_sur",
+   "arm64_big_sur"
+  ],
+  "tap": "homebrew/cask",
+  "tap_git_head": "bc429d228452ef0ac57ac508a10e6a39f8e3e32a",
+  "token": "qgis",
+  "url": "https://download.qgis.org/downloads/macos/pr/qgis_pr_final-4_2_3.dmg",
+  "url_specs": {},
+  "variations": {},
+  "version": "4.2.3"
+ },
+ {
+  "artifacts": [
+   {
+    "uninstall": [
+     {
+      "quit": "com.google.Chrome"
+     }
+    ]
+   },
+   {
+    "app": [
+     "Google Chrome.app"
+    ],
+    "target": "/Applications/Google Chrome.app"
+   },
+   {
+    "zap": [
+     {
+      "launchctl": [
+       "com.google.keystone.agent",
+       "com.google.keystone.daemon"
+      ],
+      "rmdir": [
+       "/Library/Google",
+       "~/Library/Application Support/Google",
+       "~/Library/Caches/Google",
+       "~/Library/Google"
+      ],
+      "trash": [
+       "/Library/Caches/com.google.SoftwareUpdate.*",
+       "/Library/Google/Google Chrome Brand.plist",
+       "/Library/Google/GoogleSoftwareUpdate",
+       "~/Library/Application Support/com.apple.sharedfilelist/com.apple.LSSharedFileList.ApplicationRecentDocuments/com.google.chrome.app.*.sfl*",
+       "~/Library/Application Support/com.apple.sharedfilelist/com.apple.LSSharedFileList.ApplicationRecentDocuments/com.google.chrome.sfl*",
+       "~/Library/Application Support/Google/Chrome",
+       "~/Library/Caches/com.google.Chrome",
+       "~/Library/Caches/com.google.Chrome.helper.*",
+       "~/Library/Caches/com.google.Keystone",
+       "~/Library/Caches/com.google.Keystone.Agent",
+       "~/Library/Caches/com.google.SoftwareUpdate",
+       "~/Library/Caches/Google/Chrome",
+       "~/Library/Google/Google Chrome Brand.plist",
+       "~/Library/Google/GoogleSoftwareUpdate",
+       "~/Library/LaunchAgents/com.google.keystone.agent.plist",
+       "~/Library/LaunchAgents/com.google.keystone.xpcservice.plist",
+       "~/Library/Logs/GoogleSoftwareUpdateAgent.log",
+       "~/Library/Preferences/com.google.Chrome.plist",
+       "~/Library/Preferences/com.google.Keystone.Agent.plist",
+       "~/Library/Saved Application State/com.google.Chrome.app.*.savedState",
+       "~/Library/Saved Application State/com.google.Chrome.savedState",
+       "~/Library/WebKit/com.google.Chrome"
+      ]
+     }
+    ]
+   }
+  ],
+  "auto_updates": true,
+  "autobump": true,
+  "bundle_short_version": "156.0.8078.80",
+  "bundle_version": "8078.80",
+  "caveats": null,
+  "caveats_rosetta": null,
+  "conflicts_with": null,
+  "container": null,
+  "depends_on": {
+   "macos": {
+    ">=": [
+     "13"
+    ]
+   }
+  },
+  "deprecate_args": null,
+  "deprecated": false,
+  "deprecation_date": null,
+  "deprecation_reason": null,
+  "deprecation_replacement_cask": null,
+  "deprecation_replacement_formula": null,
+  "desc": "Web browser",
+  "disable_args": null,
+  "disable_date": null,
+  "disable_reason": null,
+  "disable_replacement_cask": null,
+  "disable_replacement_formula": null,
+  "disabled": false,
+  "full_token": "google-chrome",
+  "homepage": "https://www.google.com/chrome/",
+  "installed": null,
+  "installed_time": null,
+  "languages": [],
+  "name": [
+   "Google Chrome"
+  ],
+  "no_autobump_message": null,
+  "old_tokens": [],
+  "outdated": false,
+  "pinned": false,
+  "pinned_version": null,
+  "rename": [],
+  "ruby_source_checksum": {
+   "sha256": "cffed9bca48ffbac641f999066fbd2768135da6ecccb823018e769ae4428915f"
+  },
+  "ruby_source_path": "Casks/g/google-chrome.rb",
+  "sha256": "no_check",
+  "skip_livecheck": false,
+  "supported_platforms": [
+   "golden_gate",
+   "arm64_golden_gate",
+   "tahoe",
+   "arm64_tahoe",
+   "sequoia",
+   "arm64_sequoia",
+   "sonoma",
+   "arm64_sonoma",
+   "ventura",
+   "arm64_ventura"
+  ],
+  "tap": "homebrew/cask",
+  "tap_git_head": "bc429d228452ef0ac57ac508a10e6a39f8e3e32a",
+  "token": "google-chrome",
+  "url": "https://dl.google.com/chrome/mac/universal/stable/GGRO/googlechrome.dmg",
+  "url_specs": {},
+  "variations": {},
+  "version": "158.0.8127.37"
+ },
+ {
+  "artifacts": [
+   {
+    "uninstall": [
+     {
+      "delete": [
+       "/Applications/zoom.us.app",
+       "/Library/Internet Plug-Ins/ZoomUsPlugIn.plugin",
+       "/Library/Logs/DiagnosticReports/zoom.us*",
+       "/Library/PrivilegedHelperTools/us.zoom.ZoomDaemon"
+      ],
+      "launchctl": [
+       "us.zoom.updater",
+       "us.zoom.updater.login.check",
+       "us.zoom.ZoomDaemon"
+      ],
+      "pkgutil": "us.zoom.pkg.videomeeting",
+      "signal": [
+       "KILL",
+       "us.zoom.xos"
+      ]
+     }
+    ]
+   },
+   {
+    "pkg": [
+     "zoomusInstallerFull.pkg"
+    ]
+   },
+   {
+    "postflight_steps": [
+     {
+      "steps": [
+       {
+        "attempts": 3,
+        "failure_message": "Unable to forcibly close zoom.us.app",
+        "match": "full",
+        "name": "/Applications/zoom.us.app",
+        "notices": [
+         "The Zoom package postinstall script launches the Zoom app",
+         "Attempting to close zoom.us.app to avoid unwanted user intervention"
+        ],
+        "type": "terminate_process"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "zap": [
+     {
+      "delete": "/Library/Logs/zoomusinstall.log",
+      "trash": [
+       "~/.zoomus",
+       "~/Desktop/Zoom",
+       "~/Documents/Zoom",
+       "~/Library/Application Scripts/*.ZoomClient3rd",
+       "~/Library/Application Support/CloudDocs/session/containers/iCloud.us.zoom.videomeetings",
+       "~/Library/Application Support/CloudDocs/session/containers/iCloud.us.zoom.videomeetings.plist",
+       "~/Library/Application Support/com.apple.sharedfilelist/com.apple.LSSharedFileList.ApplicationRecentDocuments/us.zoom*.sfl*",
+       "~/Library/Application Support/CrashReporter/zoom.us*",
+       "~/Library/Application Support/zoom.us",
+       "~/Library/Application Support/ZoomUpdater",
+       "~/Library/Caches/us.zoom.xos",
+       "~/Library/Cookies/us.zoom.xos.binarycookies",
+       "~/Library/Group Containers/*.ZoomClient3rd",
+       "~/Library/HTTPStorages/us.zoom.xos",
+       "~/Library/HTTPStorages/us.zoom.xos.binarycookies",
+       "~/Library/Internet Plug-Ins/ZoomUsPlugIn.plugin",
+       "~/Library/Logs/zoom.us",
+       "~/Library/Logs/zoominstall.log",
+       "~/Library/Logs/ZoomPhone",
+       "~/Library/Preferences/us.zoom.*.plist",
+       "~/Library/Preferences/ZoomChat.plist",
+       "~/Library/Saved Application State/us.zoom.xos.savedState",
+       "~/Library/WebKit/us.zoom.xos"
+      ]
+     }
+    ]
+   }
+  ],
+  "auto_updates": true,
+  "autobump": true,
+  "bundle_short_version": null,
+  "bundle_version": null,
+  "caveats": null,
+  "caveats_rosetta": null,
+  "conflicts_with": {
+   "cask": [
+    "zoom-for-it-admins"
+   ]
+  },
+  "container": null,
+  "depends_on": {},
+  "deprecate_args": null,
+  "deprecated": false,
+  "deprecation_date": null,
+  "deprecation_reason": null,
+  "deprecation_replacement_cask": null,
+  "deprecation_replacement_formula": null,
+  "desc": "Video communication and virtual meeting platform",
+  "disable_args": null,
+  "disable_date": null,
+  "disable_reason": null,
+  "disable_replacement_cask": null,
+  "disable_replacement_formula": null,
+  "disabled": false,
+  "full_token": "zoom",
+  "homepage": "https://www.zoom.us/",
+  "installed": null,
+  "installed_time": null,
+  "languages": [],
+  "name": [
+   "Zoom"
+  ],
+  "no_autobump_message": null,
+  "old_tokens": [],
+  "outdated": false,
+  "pinned": false,
+  "pinned_version": null,
+  "rename": [],
+  "ruby_source_checksum": {
+   "sha256": "57e449dc0421bc751f9e9b7690dc0f1a2f05408a8aa2709f8736a929af19dde2"
+  },
+  "ruby_source_path": "Casks/z/zoom.rb",
+  "sha256": "4c26ebed8bd29ce258ac9dbe0f2b327fad0a0734246ea588339a2cc5fd10533e",
+  "skip_livecheck": false,
+  "supported_platforms": [
+   "golden_gate",
+   "arm64_golden_gate",
+   "tahoe",
+   "arm64_tahoe",
+   "sequoia",
+   "arm64_sequoia",
+   "sonoma",
+   "arm64_sonoma",
+   "ventura",
+   "arm64_ventura",
+   "monterey",
+   "arm64_monterey",
+   "big_sur",
+   "arm64_big_sur",
+   "x86_64_linux"
+  ],
+  "tap": "homebrew/cask",
+  "tap_git_head": "bc429d228452ef0ac57ac508a10e6a39f8e3e32a",
+  "token": "zoom",
+  "url": "https://cdn.zoom.us/prod/7.2.5.90525/arm64/zoomusInstallerFull.pkg",
+  "url_specs": {},
+  "variations": {
+   "arm64_linux": {
+    "artifacts": [
+     {
+      "binary": [
+       "zoom/ZoomLauncher",
+       {
+        "target": "zoom"
+       }
+      ],
+      "target": "$HOMEBREW_PREFIX/bin/zoom"
+     },
+     {
+      "zap": [
+       {
+        "trash": [
+         "~/.config/zoom",
+         "~/.config/zoom.conf",
+         "~/.config/zoomus.conf",
+         "~/.zoom"
+        ]
+       }
+      ]
+     }
+    ],
+    "auto_updates": null,
+    "conflicts_with": null,
+    "depends_on": {
+     "arch": [
+      {
+       "bits": 64,
+       "type": "intel"
+      }
+     ]
+    },
+    "sha256": null,
+    "url": "https://cdn.zoom.us/prod/7.2.5.6661/zoom_x86_64.tar.xz",
+    "version": "7.2.5.6661"
+   },
+   "big_sur": {
+    "sha256": "1750c316d15ed69d8fc8bfd3720b2c366291bd29144d6cb7c0032cd9b92114cb",
+    "url": "https://cdn.zoom.us/prod/7.2.5.90525/zoomusInstallerFull.pkg"
+   },
+   "golden_gate": {
+    "sha256": "1750c316d15ed69d8fc8bfd3720b2c366291bd29144d6cb7c0032cd9b92114cb",
+    "url": "https://cdn.zoom.us/prod/7.2.5.90525/zoomusInstallerFull.pkg"
+   },
+   "monterey": {
+    "sha256": "1750c316d15ed69d8fc8bfd3720b2c366291bd29144d6cb7c0032cd9b92114cb",
+    "url": "https://cdn.zoom.us/prod/7.2.5.90525/zoomusInstallerFull.pkg"
+   },
+   "sequoia": {
+    "sha256": "1750c316d15ed69d8fc8bfd3720b2c366291bd29144d6cb7c0032cd9b92114cb",
+    "url": "https://cdn.zoom.us/prod/7.2.5.90525/zoomusInstallerFull.pkg"
+   },
+   "sonoma": {
+    "sha256": "1750c316d15ed69d8fc8bfd3720b2c366291bd29144d6cb7c0032cd9b92114cb",
+    "url": "https://cdn.zoom.us/prod/7.2.5.90525/zoomusInstallerFull.pkg"
+   },
+   "tahoe": {
+    "sha256": "1750c316d15ed69d8fc8bfd3720b2c366291bd29144d6cb7c0032cd9b92114cb",
+    "url": "https://cdn.zoom.us/prod/7.2.5.90525/zoomusInstallerFull.pkg"
+   },
+   "ventura": {
+    "sha256": "1750c316d15ed69d8fc8bfd3720b2c366291bd29144d6cb7c0032cd9b92114cb",
+    "url": "https://cdn.zoom.us/prod/7.2.5.90525/zoomusInstallerFull.pkg"
+   },
+   "x86_64_linux": {
+    "artifacts": [
+     {
+      "binary": [
+       "zoom/ZoomLauncher",
+       {
+        "target": "zoom"
+       }
+      ],
+      "target": "$HOMEBREW_PREFIX/bin/zoom"
+     },
+     {
+      "zap": [
+       {
+        "trash": [
+         "~/.config/zoom",
+         "~/.config/zoom.conf",
+         "~/.config/zoomus.conf",
+         "~/.zoom"
+        ]
+       }
+      ]
+     }
+    ],
+    "auto_updates": null,
+    "conflicts_with": null,
+    "depends_on": {
+     "arch": [
+      {
+       "bits": 64,
+       "type": "intel"
+      }
+     ]
+    },
+    "sha256": "257ba8c65a92b12fd82a90a73da7859e48c3365ef71f74abb84361f087525f30",
+    "url": "https://cdn.zoom.us/prod/7.2.5.6661/zoom_x86_64.tar.xz",
+    "version": "7.2.5.6661"
+   }
+  },
+  "version": "7.2.5.90525"
+ },
+ {
+  "artifacts": [
+   {
+    "uninstall": [
+     {
+      "delete": [
+       "/Library/PrivilegedHelperTools/com.docker.socket",
+       "/Library/PrivilegedHelperTools/com.docker.vmnetd"
+      ],
+      "launchctl": [
+       "com.docker.helper",
+       "com.docker.socket",
+       "com.docker.vmnetd"
+      ],
+      "quit": [
+       "com.docker.docker",
+       "com.electron.dockerdesktop"
+      ],
+      "rmdir": "~/.docker/bin"
+     }
+    ]
+   },
+   {
+    "app": [
+     "Docker.app"
+    ],
+    "target": "/Applications/Docker.app"
+   },
+   {
+    "binary": [
+     "$APPDIR/Docker.app/Contents/Resources/bin/docker-credential-desktop",
+     {
+      "target": "/usr/local/bin/docker-credential-desktop"
+     }
+    ],
+    "target": "/usr/local/bin/docker-credential-desktop"
+   },
+   {
+    "binary": [
+     "$APPDIR/Docker.app/Contents/Resources/bin/docker-credential-osxkeychain",
+     {
+      "target": "/usr/local/bin/docker-credential-osxkeychain"
+     }
+    ],
+    "target": "/usr/local/bin/docker-credential-osxkeychain"
+   },
+   {
+    "binary": [
+     "$APPDIR/Docker.app/Contents/Resources/bin/kubectl",
+     {
+      "target": "/usr/local/bin/kubectl.docker"
+     }
+    ],
+    "target": "/usr/local/bin/kubectl.docker"
+   },
+   {
+    "binary": [
+     "$APPDIR/Docker.app/Contents/Resources/cli-plugins/docker-compose",
+     {
+      "target": "/usr/local/cli-plugins/docker-compose"
+     }
+    ],
+    "target": "/usr/local/cli-plugins/docker-compose"
+   },
+   {
+    "binary": [
+     "$APPDIR/Docker.app/Contents/Resources/bin/docker",
+     {
+      "target": "/usr/local/bin/docker"
+     }
+    ],
+    "target": "/usr/local/bin/docker"
+   },
+   {
+    "bash_completion": [
+     "$APPDIR/Docker.app/Contents/Resources/etc/docker.bash-completion"
+    ],
+    "target": "$HOMEBREW_PREFIX/etc/bash_completion.d/docker"
+   },
+   {
+    "bash_completion": [
+     "$APPDIR/Docker.app/Contents/Resources/etc/docker-compose.bash-completion"
+    ],
+    "target": "$HOMEBREW_PREFIX/etc/bash_completion.d/docker-compose"
+   },
+   {
+    "target": "$HOMEBREW_PREFIX/share/zsh/site-functions/_docker-compose",
+    "zsh_completion": [
+     "$APPDIR/Docker.app/Contents/Resources/etc/docker-compose.zsh-completion"
+    ]
+   },
+   {
+    "target": "$HOMEBREW_PREFIX/share/zsh/site-functions/_docker",
+    "zsh_completion": [
+     "$APPDIR/Docker.app/Contents/Resources/etc/docker.zsh-completion"
+    ]
+   },
+   {
+    "fish_completion": [
+     "$APPDIR/Docker.app/Contents/Resources/etc/docker-compose.fish-completion"
+    ],
+    "target": "$HOMEBREW_PREFIX/share/fish/vendor_completions.d/docker-compose.fish"
+   },
+   {
+    "fish_completion": [
+     "$APPDIR/Docker.app/Contents/Resources/etc/docker.fish-completion"
+    ],
+    "target": "$HOMEBREW_PREFIX/share/fish/vendor_completions.d/docker.fish"
+   },
+   {
+    "postflight_steps": [
+     {
+      "steps": [
+       {
+        "force": true,
+        "guards": [
+         {
+          "condition": "unless_exists",
+          "id": "1",
+          "path": "/usr/local/bin/kubectl"
+         }
+        ],
+        "source": {
+         "path": "{{appdir}}/Docker.app/Contents/Resources/bin/kubectl"
+        },
+        "sudo": "if_needed",
+        "target": {
+         "path": "/usr/local/bin/kubectl"
+        },
+        "type": "symlink",
+        "uninstall": true
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "zap": [
+     {
+      "rmdir": [
+       "~/Library/Caches/com.plausiblelabs.crashreporter.data",
+       "~/Library/Caches/KSCrashReports"
+      ],
+      "trash": [
+       "/usr/local/bin/docker-compose.backup",
+       "/usr/local/bin/docker.backup",
+       "~/.docker",
+       "~/Library/Application Scripts/com.docker.helper",
+       "~/Library/Application Scripts/group.com.docker",
+       "~/Library/Application Support/com.apple.sharedfilelist/com.apple.LSSharedFileList.ApplicationRecentDocuments/com.docker.helper.sfl*",
+       "~/Library/Application Support/com.apple.sharedfilelist/com.apple.LSSharedFileList.ApplicationRecentDocuments/com.electron.dockerdesktop.sfl*",
+       "~/Library/Application Support/com.bugsnag.Bugsnag/com.docker.docker",
+       "~/Library/Application Support/Docker Desktop",
+       "~/Library/Application Support/docker-secrets-engine",
+       "~/Library/Caches/com.docker.docker",
+       "~/Library/Caches/com.plausiblelabs.crashreporter.data/com.docker.docker",
+       "~/Library/Caches/Docker Desktop",
+       "~/Library/Caches/docker-secrets-engine",
+       "~/Library/Caches/KSCrashReports/Docker",
+       "~/Library/Containers/com.docker.docker",
+       "~/Library/Containers/com.docker.helper",
+       "~/Library/Group Containers/group.com.docker",
+       "~/Library/HTTPStorages/com.docker.docker",
+       "~/Library/HTTPStorages/com.docker.docker.binarycookies",
+       "~/Library/Logs/Docker Desktop",
+       "~/Library/Preferences/com.docker.docker.plist",
+       "~/Library/Preferences/com.electron.docker-frontend.plist",
+       "~/Library/Preferences/com.electron.dockerdesktop.plist",
+       "~/Library/Saved Application State/com.electron.docker-frontend.savedState",
+       "~/Library/Saved Application State/com.electron.dockerdesktop.savedState"
+      ]
+     }
+    ]
+   }
+  ],
+  "auto_updates": true,
+  "autobump": true,
+  "bundle_short_version": null,
+  "bundle_version": null,
+  "caveats": null,
+  "caveats_rosetta": null,
+  "conflicts_with": {
+   "cask": [
+    "rancher"
+   ]
+  },
+  "container": null,
+  "depends_on": {
+   "macos": {
+    ">=": [
+     "14"
+    ]
+   }
+  },
+  "deprecate_args": null,
+  "deprecated": false,
+  "deprecation_date": null,
+  "deprecation_reason": null,
+  "deprecation_replacement_cask": null,
+  "deprecation_replacement_formula": null,
+  "desc": "App to build and share containerised applications and microservices",
+  "disable_args": null,
+  "disable_date": null,
+  "disable_reason": null,
+  "disable_replacement_cask": null,
+  "disable_replacement_formula": null,
+  "disabled": false,
+  "full_token": "docker-desktop",
+  "homepage": "https://www.docker.com/products/docker-desktop",
+  "installed": null,
+  "installed_time": null,
+  "languages": [],
+  "name": [
+   "Docker Desktop",
+   "Docker Community Edition",
+   "Docker CE"
+  ],
+  "no_autobump_message": null,
+  "old_tokens": [
+   "docker"
+  ],
+  "outdated": false,
+  "pinned": false,
+  "pinned_version": null,
+  "rename": [],
+  "ruby_source_checksum": {
+   "sha256": "957f3106538884a4a58ae3de4638e7e8579d81bb13089a7742b697b53e98f919"
+  },
+  "ruby_source_path": "Casks/d/docker-desktop.rb",
+  "sha256": "0ede7f9917b55c396a17b03c069cadf457a7d21904bc264c6d398fe132da7fb9",
+  "skip_livecheck": false,
+  "supported_platforms": [
+   "golden_gate",
+   "arm64_golden_gate",
+   "tahoe",
+   "arm64_tahoe",
+   "sequoia",
+   "arm64_sequoia",
+   "sonoma",
+   "arm64_sonoma"
+  ],
+  "tap": "homebrew/cask",
+  "tap_git_head": "bc429d228452ef0ac57ac508a10e6a39f8e3e32a",
+  "token": "docker-desktop",
+  "url": "https://desktop.docker.com/mac/main/arm64/245822/Docker.dmg",
+  "url_specs": {},
+  "variations": {
+   "arm64_linux": {
+    "sha256": null
+   },
+   "golden_gate": {
+    "artifacts": [
+     {
+      "uninstall": [
+       {
+        "delete": [
+         "/Library/PrivilegedHelperTools/com.docker.socket",
+         "/Library/PrivilegedHelperTools/com.docker.vmnetd"
+        ],
+        "launchctl": [
+         "com.docker.helper",
+         "com.docker.socket",
+         "com.docker.vmnetd"
+        ],
+        "quit": [
+         "com.docker.docker",
+         "com.electron.dockerdesktop"
+        ],
+        "rmdir": "~/.docker/bin"
+       }
+      ]
+     },
+     {
+      "app": [
+       "Docker.app"
+      ],
+      "target": "/Applications/Docker.app"
+     },
+     {
+      "binary": [
+       "$APPDIR/Docker.app/Contents/Resources/bin/docker-credential-desktop",
+       {
+        "target": "/usr/local/bin/docker-credential-desktop"
+       }
+      ],
+      "target": "/usr/local/bin/docker-credential-desktop"
+     },
+     {
+      "binary": [
+       "$APPDIR/Docker.app/Contents/Resources/bin/docker-credential-osxkeychain",
+       {
+        "target": "/usr/local/bin/docker-credential-osxkeychain"
+       }
+      ],
+      "target": "/usr/local/bin/docker-credential-osxkeychain"
+     },
+     {
+      "binary": [
+       "$APPDIR/Docker.app/Contents/Resources/bin/com.docker.hyperkit",
+       {
+        "target": "/usr/local/bin/hyperkit"
+       }
+      ],
+      "target": "/usr/local/bin/hyperkit"
+     },
+     {
+      "binary": [
+       "$APPDIR/Docker.app/Contents/Resources/cli-plugins/docker-compose",
+       {
+        "target": "/usr/local/cli-plugins/docker-compose"
+       }
+      ],
+      "target": "/usr/local/cli-plugins/docker-compose"
+     },
+     {
+      "binary": [
+       "$APPDIR/Docker.app/Contents/Resources/bin/kubectl",
+       {
+        "target": "/usr/local/bin/kubectl.docker"
+       }
+      ],
+      "target": "/usr/local/bin/kubectl.docker"
+     },
+     {
+      "binary": [
+       "$APPDIR/Docker.app/Contents/Resources/bin/docker",
+       {
+        "target": "/usr/local/bin/docker"
+       }
+      ],
+      "target": "/usr/local/bin/docker"
+     },
+     {
+      "bash_completion": [
+       "$APPDIR/Docker.app/Contents/Resources/etc/docker.bash-completion"
+      ],
+      "target": "$HOMEBREW_PREFIX/etc/bash_completion.d/docker"
+     },
+     {
+      "bash_completion": [
+       "$APPDIR/Docker.app/Contents/Resources/etc/docker-compose.bash-completion"
+      ],
+      "target": "$HOMEBREW_PREFIX/etc/bash_completion.d/docker-compose"
+     },
+     {
+      "target": "$HOMEBREW_PREFIX/share/zsh/site-functions/_docker-compose",
+      "zsh_completion": [
+       "$APPDIR/Docker.app/Contents/Resources/etc/docker-compose.zsh-completion"
+      ]
+     },
+     {
+      "target": "$HOMEBREW_PREFIX/share/zsh/site-functions/_docker",
+      "zsh_completion": [
+       "$APPDIR/Docker.app/Contents/Resources/etc/docker.zsh-completion"
+      ]
+     },
+     {
+      "fish_completion": [
+       "$APPDIR/Docker.app/Contents/Resources/etc/docker-compose.fish-completion"
+      ],
+      "target": "$HOMEBREW_PREFIX/share/fish/vendor_completions.d/docker-compose.fish"
+     },
+     {
+      "fish_completion": [
+       "$APPDIR/Docker.app/Contents/Resources/etc/docker.fish-completion"
+      ],
+      "target": "$HOMEBREW_PREFIX/share/fish/vendor_completions.d/docker.fish"
+     },
+     {
+      "postflight_steps": [
+       {
+        "steps": [
+         {
+          "force": true,
+          "guards": [
+           {
+            "condition": "unless_exists",
+            "id": "1",
+            "path": "/usr/local/bin/kubectl"
+           }
+          ],
+          "source": {
+           "path": "{{appdir}}/Docker.app/Contents/Resources/bin/kubectl"
+          },
+          "sudo": "if_needed",
+          "target": {
+           "path": "/usr/local/bin/kubectl"
+          },
+          "type": "symlink",
+          "uninstall": true
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "zap": [
+       {
+        "rmdir": [
+         "~/Library/Caches/com.plausiblelabs.crashreporter.data",
+         "~/Library/Caches/KSCrashReports"
+        ],
+        "trash": [
+         "/usr/local/bin/docker-compose.backup",
+         "/usr/local/bin/docker.backup",
+         "~/.docker",
+         "~/Library/Application Scripts/com.docker.helper",
+         "~/Library/Application Scripts/group.com.docker",
+         "~/Library/Application Support/com.apple.sharedfilelist/com.apple.LSSharedFileList.ApplicationRecentDocuments/com.docker.helper.sfl*",
+         "~/Library/Application Support/com.apple.sharedfilelist/com.apple.LSSharedFileList.ApplicationRecentDocuments/com.electron.dockerdesktop.sfl*",
+         "~/Library/Application Support/com.bugsnag.Bugsnag/com.docker.docker",
+         "~/Library/Application Support/Docker Desktop",
+         "~/Library/Application Support/docker-secrets-engine",
+         "~/Library/Caches/com.docker.docker",
+         "~/Library/Caches/com.plausiblelabs.crashreporter.data/com.docker.docker",
+         "~/Library/Caches/Docker Desktop",
+         "~/Library/Caches/docker-secrets-engine",
+         "~/Library/Caches/KSCrashReports/Docker",
+         "~/Library/Containers/com.docker.docker",
+         "~/Library/Containers/com.docker.helper",
+         "~/Library/Group Containers/group.com.docker",
+         "~/Library/HTTPStorages/com.docker.docker",
+         "~/Library/HTTPStorages/com.docker.docker.binarycookies",
+         "~/Library/Logs/Docker Desktop",
+         "~/Library/Preferences/com.docker.docker.plist",
+         "~/Library/Preferences/com.electron.docker-frontend.plist",
+         "~/Library/Preferences/com.electron.dockerdesktop.plist",
+         "~/Library/Saved Application State/com.electron.docker-frontend.savedState",
+         "~/Library/Saved Application State/com.electron.dockerdesktop.savedState"
+        ]
+       }
+      ]
+     }
+    ],
+    "sha256": "0584a21e7503a4e12e25c7c829ef9439ceca6f453842e47ade9d1961c2fbd2af",
+    "url": "https://desktop.docker.com/mac/main/amd64/245822/Docker.dmg"
+   },
+   "sequoia": {
+    "artifacts": [
+     {
+      "uninstall": [
+       {
+        "delete": [
+         "/Library/PrivilegedHelperTools/com.docker.socket",
+         "/Library/PrivilegedHelperTools/com.docker.vmnetd"
+        ],
+        "launchctl": [
+         "com.docker.helper",
+         "com.docker.socket",
+         "com.docker.vmnetd"
+        ],
+        "quit": [
+         "com.docker.docker",
+         "com.electron.dockerdesktop"
+        ],
+        "rmdir": "~/.docker/bin"
+       }
+      ]
+     },
+     {
+      "app": [
+       "Docker.app"
+      ],
+      "target": "/Applications/Docker.app"
+     },
+     {
+      "binary": [
+       "$APPDIR/Docker.app/Contents/Resources/bin/docker-credential-desktop",
+       {
+        "target": "/usr/local/bin/docker-credential-desktop"
+       }
+      ],
+      "target": "/usr/local/bin/docker-credential-desktop"
+     },
+     {
+      "binary": [
+       "$APPDIR/Docker.app/Contents/Resources/bin/docker-credential-osxkeychain",
+       {
+        "target": "/usr/local/bin/docker-credential-osxkeychain"
+       }
+      ],
+      "target": "/usr/local/bin/docker-credential-osxkeychain"
+     },
+     {
+      "binary": [
+       "$APPDIR/Docker.app/Contents/Resources/bin/com.docker.hyperkit",
+       {
+        "target": "/usr/local/bin/hyperkit"
+       }
+      ],
+      "target": "/usr/local/bin/hyperkit"
+     },
+     {
+      "binary": [
+       "$APPDIR/Docker.app/Contents/Resources/cli-plugins/docker-compose",
+       {
+        "target": "/usr/local/cli-plugins/docker-compose"
+       }
+      ],
+      "target": "/usr/local/cli-plugins/docker-compose"
+     },
+     {
+      "binary": [
+       "$APPDIR/Docker.app/Contents/Resources/bin/kubectl",
+       {
+        "target": "/usr/local/bin/kubectl.docker"
+       }
+      ],
+      "target": "/usr/local/bin/kubectl.docker"
+     },
+     {
+      "binary": [
+       "$APPDIR/Docker.app/Contents/Resources/bin/docker",
+       {
+        "target": "/usr/local/bin/docker"
+       }
+      ],
+      "target": "/usr/local/bin/docker"
+     },
+     {
+      "bash_completion": [
+       "$APPDIR/Docker.app/Contents/Resources/etc/docker.bash-completion"
+      ],
+      "target": "$HOMEBREW_PREFIX/etc/bash_completion.d/docker"
+     },
+     {
+      "bash_completion": [
+       "$APPDIR/Docker.app/Contents/Resources/etc/docker-compose.bash-completion"
+      ],
+      "target": "$HOMEBREW_PREFIX/etc/bash_completion.d/docker-compose"
+     },
+     {
+      "target": "$HOMEBREW_PREFIX/share/zsh/site-functions/_docker-compose",
+      "zsh_completion": [
+       "$APPDIR/Docker.app/Contents/Resources/etc/docker-compose.zsh-completion"
+      ]
+     },
+     {
+      "target": "$HOMEBREW_PREFIX/share/zsh/site-functions/_docker",
+      "zsh_completion": [
+       "$APPDIR/Docker.app/Contents/Resources/etc/docker.zsh-completion"
+      ]
+     },
+     {
+      "fish_completion": [
+       "$APPDIR/Docker.app/Contents/Resources/etc/docker-compose.fish-completion"
+      ],
+      "target": "$HOMEBREW_PREFIX/share/fish/vendor_completions.d/docker-compose.fish"
+     },
+     {
+      "fish_completion": [
+       "$APPDIR/Docker.app/Contents/Resources/etc/docker.fish-completion"
+      ],
+      "target": "$HOMEBREW_PREFIX/share/fish/vendor_completions.d/docker.fish"
+     },
+     {
+      "postflight_steps": [
+       {
+        "steps": [
+         {
+          "force": true,
+          "guards": [
+           {
+            "condition": "unless_exists",
+            "id": "1",
+            "path": "/usr/local/bin/kubectl"
+           }
+          ],
+          "source": {
+           "path": "{{appdir}}/Docker.app/Contents/Resources/bin/kubectl"
+          },
+          "sudo": "if_needed",
+          "target": {
+           "path": "/usr/local/bin/kubectl"
+          },
+          "type": "symlink",
+          "uninstall": true
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "zap": [
+       {
+        "rmdir": [
+         "~/Library/Caches/com.plausiblelabs.crashreporter.data",
+         "~/Library/Caches/KSCrashReports"
+        ],
+        "trash": [
+         "/usr/local/bin/docker-compose.backup",
+         "/usr/local/bin/docker.backup",
+         "~/.docker",
+         "~/Library/Application Scripts/com.docker.helper",
+         "~/Library/Application Scripts/group.com.docker",
+         "~/Library/Application Support/com.apple.sharedfilelist/com.apple.LSSharedFileList.ApplicationRecentDocuments/com.docker.helper.sfl*",
+         "~/Library/Application Support/com.apple.sharedfilelist/com.apple.LSSharedFileList.ApplicationRecentDocuments/com.electron.dockerdesktop.sfl*",
+         "~/Library/Application Support/com.bugsnag.Bugsnag/com.docker.docker",
+         "~/Library/Application Support/Docker Desktop",
+         "~/Library/Application Support/docker-secrets-engine",
+         "~/Library/Caches/com.docker.docker",
+         "~/Library/Caches/com.plausiblelabs.crashreporter.data/com.docker.docker",
+         "~/Library/Caches/Docker Desktop",
+         "~/Library/Caches/docker-secrets-engine",
+         "~/Library/Caches/KSCrashReports/Docker",
+         "~/Library/Containers/com.docker.docker",
+         "~/Library/Containers/com.docker.helper",
+         "~/Library/Group Containers/group.com.docker",
+         "~/Library/HTTPStorages/com.docker.docker",
+         "~/Library/HTTPStorages/com.docker.docker.binarycookies",
+         "~/Library/Logs/Docker Desktop",
+         "~/Library/Preferences/com.docker.docker.plist",
+         "~/Library/Preferences/com.electron.docker-frontend.plist",
+         "~/Library/Preferences/com.electron.dockerdesktop.plist",
+         "~/Library/Saved Application State/com.electron.docker-frontend.savedState",
+         "~/Library/Saved Application State/com.electron.dockerdesktop.savedState"
+        ]
+       }
+      ]
+     }
+    ],
+    "sha256": "0584a21e7503a4e12e25c7c829ef9439ceca6f453842e47ade9d1961c2fbd2af",
+    "url": "https://desktop.docker.com/mac/main/amd64/245822/Docker.dmg"
+   },
+   "sonoma": {
+    "artifacts": [
+     {
+      "uninstall": [
+       {
+        "delete": [
+         "/Library/PrivilegedHelperTools/com.docker.socket",
+         "/Library/PrivilegedHelperTools/com.docker.vmnetd"
+        ],
+        "launchctl": [
+         "com.docker.helper",
+         "com.docker.socket",
+         "com.docker.vmnetd"
+        ],
+        "quit": [
+         "com.docker.docker",
+         "com.electron.dockerdesktop"
+        ],
+        "rmdir": "~/.docker/bin"
+       }
+      ]
+     },
+     {
+      "app": [
+       "Docker.app"
+      ],
+      "target": "/Applications/Docker.app"
+     },
+     {
+      "binary": [
+       "$APPDIR/Docker.app/Contents/Resources/bin/docker-credential-desktop",
+       {
+        "target": "/usr/local/bin/docker-credential-desktop"
+       }
+      ],
+      "target": "/usr/local/bin/docker-credential-desktop"
+     },
+     {
+      "binary": [
+       "$APPDIR/Docker.app/Contents/Resources/bin/docker-credential-osxkeychain",
+       {
+        "target": "/usr/local/bin/docker-credential-osxkeychain"
+       }
+      ],
+      "target": "/usr/local/bin/docker-credential-osxkeychain"
+     },
+     {
+      "binary": [
+       "$APPDIR/Docker.app/Contents/Resources/bin/com.docker.hyperkit",
+       {
+        "target": "/usr/local/bin/hyperkit"
+       }
+      ],
+      "target": "/usr/local/bin/hyperkit"
+     },
+     {
+      "binary": [
+       "$APPDIR/Docker.app/Contents/Resources/cli-plugins/docker-compose",
+       {
+        "target": "/usr/local/cli-plugins/docker-compose"
+       }
+      ],
+      "target": "/usr/local/cli-plugins/docker-compose"
+     },
+     {
+      "binary": [
+       "$APPDIR/Docker.app/Contents/Resources/bin/kubectl",
+       {
+        "target": "/usr/local/bin/kubectl.docker"
+       }
+      ],
+      "target": "/usr/local/bin/kubectl.docker"
+     },
+     {
+      "binary": [
+       "$APPDIR/Docker.app/Contents/Resources/bin/docker",
+       {
+        "target": "/usr/local/bin/docker"
+       }
+      ],
+      "target": "/usr/local/bin/docker"
+     },
+     {
+      "bash_completion": [
+       "$APPDIR/Docker.app/Contents/Resources/etc/docker.bash-completion"
+      ],
+      "target": "$HOMEBREW_PREFIX/etc/bash_completion.d/docker"
+     },
+     {
+      "bash_completion": [
+       "$APPDIR/Docker.app/Contents/Resources/etc/docker-compose.bash-completion"
+      ],
+      "target": "$HOMEBREW_PREFIX/etc/bash_completion.d/docker-compose"
+     },
+     {
+      "target": "$HOMEBREW_PREFIX/share/zsh/site-functions/_docker-compose",
+      "zsh_completion": [
+       "$APPDIR/Docker.app/Contents/Resources/etc/docker-compose.zsh-completion"
+      ]
+     },
+     {
+      "target": "$HOMEBREW_PREFIX/share/zsh/site-functions/_docker",
+      "zsh_completion": [
+       "$APPDIR/Docker.app/Contents/Resources/etc/docker.zsh-completion"
+      ]
+     },
+     {
+      "fish_completion": [
+       "$APPDIR/Docker.app/Contents/Resources/etc/docker-compose.fish-completion"
+      ],
+      "target": "$HOMEBREW_PREFIX/share/fish/vendor_completions.d/docker-compose.fish"
+     },
+     {
+      "fish_completion": [
+       "$APPDIR/Docker.app/Contents/Resources/etc/docker.fish-completion"
+      ],
+      "target": "$HOMEBREW_PREFIX/share/fish/vendor_completions.d/docker.fish"
+     },
+     {
+      "postflight_steps": [
+       {
+        "steps": [
+         {
+          "force": true,
+          "guards": [
+           {
+            "condition": "unless_exists",
+            "id": "1",
+            "path": "/usr/local/bin/kubectl"
+           }
+          ],
+          "source": {
+           "path": "{{appdir}}/Docker.app/Contents/Resources/bin/kubectl"
+          },
+          "sudo": "if_needed",
+          "target": {
+           "path": "/usr/local/bin/kubectl"
+          },
+          "type": "symlink",
+          "uninstall": true
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "zap": [
+       {
+        "rmdir": [
+         "~/Library/Caches/com.plausiblelabs.crashreporter.data",
+         "~/Library/Caches/KSCrashReports"
+        ],
+        "trash": [
+         "/usr/local/bin/docker-compose.backup",
+         "/usr/local/bin/docker.backup",
+         "~/.docker",
+         "~/Library/Application Scripts/com.docker.helper",
+         "~/Library/Application Scripts/group.com.docker",
+         "~/Library/Application Support/com.apple.sharedfilelist/com.apple.LSSharedFileList.ApplicationRecentDocuments/com.docker.helper.sfl*",
+         "~/Library/Application Support/com.apple.sharedfilelist/com.apple.LSSharedFileList.ApplicationRecentDocuments/com.electron.dockerdesktop.sfl*",
+         "~/Library/Application Support/com.bugsnag.Bugsnag/com.docker.docker",
+         "~/Library/Application Support/Docker Desktop",
+         "~/Library/Application Support/docker-secrets-engine",
+         "~/Library/Caches/com.docker.docker",
+         "~/Library/Caches/com.plausiblelabs.crashreporter.data/com.docker.docker",
+         "~/Library/Caches/Docker Desktop",
+         "~/Library/Caches/docker-secrets-engine",
+         "~/Library/Caches/KSCrashReports/Docker",
+         "~/Library/Containers/com.docker.docker",
+         "~/Library/Containers/com.docker.helper",
+         "~/Library/Group Containers/group.com.docker",
+         "~/Library/HTTPStorages/com.docker.docker",
+         "~/Library/HTTPStorages/com.docker.docker.binarycookies",
+         "~/Library/Logs/Docker Desktop",
+         "~/Library/Preferences/com.docker.docker.plist",
+         "~/Library/Preferences/com.electron.docker-frontend.plist",
+         "~/Library/Preferences/com.electron.dockerdesktop.plist",
+         "~/Library/Saved Application State/com.electron.docker-frontend.savedState",
+         "~/Library/Saved Application State/com.electron.dockerdesktop.savedState"
+        ]
+       }
+      ]
+     }
+    ],
+    "sha256": "0584a21e7503a4e12e25c7c829ef9439ceca6f453842e47ade9d1961c2fbd2af",
+    "url": "https://desktop.docker.com/mac/main/amd64/245822/Docker.dmg"
+   },
+   "tahoe": {
+    "artifacts": [
+     {
+      "uninstall": [
+       {
+        "delete": [
+         "/Library/PrivilegedHelperTools/com.docker.socket",
+         "/Library/PrivilegedHelperTools/com.docker.vmnetd"
+        ],
+        "launchctl": [
+         "com.docker.helper",
+         "com.docker.socket",
+         "com.docker.vmnetd"
+        ],
+        "quit": [
+         "com.docker.docker",
+         "com.electron.dockerdesktop"
+        ],
+        "rmdir": "~/.docker/bin"
+       }
+      ]
+     },
+     {
+      "app": [
+       "Docker.app"
+      ],
+      "target": "/Applications/Docker.app"
+     },
+     {
+      "binary": [
+       "$APPDIR/Docker.app/Contents/Resources/bin/docker-credential-desktop",
+       {
+        "target": "/usr/local/bin/docker-credential-desktop"
+       }
+      ],
+      "target": "/usr/local/bin/docker-credential-desktop"
+     },
+     {
+      "binary": [
+       "$APPDIR/Docker.app/Contents/Resources/bin/docker-credential-osxkeychain",
+       {
+        "target": "/usr/local/bin/docker-credential-osxkeychain"
+       }
+      ],
+      "target": "/usr/local/bin/docker-credential-osxkeychain"
+     },
+     {
+      "binary": [
+       "$APPDIR/Docker.app/Contents/Resources/bin/com.docker.hyperkit",
+       {
+        "target": "/usr/local/bin/hyperkit"
+       }
+      ],
+      "target": "/usr/local/bin/hyperkit"
+     },
+     {
+      "binary": [
+       "$APPDIR/Docker.app/Contents/Resources/cli-plugins/docker-compose",
+       {
+        "target": "/usr/local/cli-plugins/docker-compose"
+       }
+      ],
+      "target": "/usr/local/cli-plugins/docker-compose"
+     },
+     {
+      "binary": [
+       "$APPDIR/Docker.app/Contents/Resources/bin/kubectl",
+       {
+        "target": "/usr/local/bin/kubectl.docker"
+       }
+      ],
+      "target": "/usr/local/bin/kubectl.docker"
+     },
+     {
+      "binary": [
+       "$APPDIR/Docker.app/Contents/Resources/bin/docker",
+       {
+        "target": "/usr/local/bin/docker"
+       }
+      ],
+      "target": "/usr/local/bin/docker"
+     },
+     {
+      "bash_completion": [
+       "$APPDIR/Docker.app/Contents/Resources/etc/docker.bash-completion"
+      ],
+      "target": "$HOMEBREW_PREFIX/etc/bash_completion.d/docker"
+     },
+     {
+      "bash_completion": [
+       "$APPDIR/Docker.app/Contents/Resources/etc/docker-compose.bash-completion"
+      ],
+      "target": "$HOMEBREW_PREFIX/etc/bash_completion.d/docker-compose"
+     },
+     {
+      "target": "$HOMEBREW_PREFIX/share/zsh/site-functions/_docker-compose",
+      "zsh_completion": [
+       "$APPDIR/Docker.app/Contents/Resources/etc/docker-compose.zsh-completion"
+      ]
+     },
+     {
+      "target": "$HOMEBREW_PREFIX/share/zsh/site-functions/_docker",
+      "zsh_completion": [
+       "$APPDIR/Docker.app/Contents/Resources/etc/docker.zsh-completion"
+      ]
+     },
+     {
+      "fish_completion": [
+       "$APPDIR/Docker.app/Contents/Resources/etc/docker-compose.fish-completion"
+      ],
+      "target": "$HOMEBREW_PREFIX/share/fish/vendor_completions.d/docker-compose.fish"
+     },
+     {
+      "fish_completion": [
+       "$APPDIR/Docker.app/Contents/Resources/etc/docker.fish-completion"
+      ],
+      "target": "$HOMEBREW_PREFIX/share/fish/vendor_completions.d/docker.fish"
+     },
+     {
+      "postflight_steps": [
+       {
+        "steps": [
+         {
+          "force": true,
+          "guards": [
+           {
+            "condition": "unless_exists",
+            "id": "1",
+            "path": "/usr/local/bin/kubectl"
+           }
+          ],
+          "source": {
+           "path": "{{appdir}}/Docker.app/Contents/Resources/bin/kubectl"
+          },
+          "sudo": "if_needed",
+          "target": {
+           "path": "/usr/local/bin/kubectl"
+          },
+          "type": "symlink",
+          "uninstall": true
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "zap": [
+       {
+        "rmdir": [
+         "~/Library/Caches/com.plausiblelabs.crashreporter.data",
+         "~/Library/Caches/KSCrashReports"
+        ],
+        "trash": [
+         "/usr/local/bin/docker-compose.backup",
+         "/usr/local/bin/docker.backup",
+         "~/.docker",
+         "~/Library/Application Scripts/com.docker.helper",
+         "~/Library/Application Scripts/group.com.docker",
+         "~/Library/Application Support/com.apple.sharedfilelist/com.apple.LSSharedFileList.ApplicationRecentDocuments/com.docker.helper.sfl*",
+         "~/Library/Application Support/com.apple.sharedfilelist/com.apple.LSSharedFileList.ApplicationRecentDocuments/com.electron.dockerdesktop.sfl*",
+         "~/Library/Application Support/com.bugsnag.Bugsnag/com.docker.docker",
+         "~/Library/Application Support/Docker Desktop",
+         "~/Library/Application Support/docker-secrets-engine",
+         "~/Library/Caches/com.docker.docker",
+         "~/Library/Caches/com.plausiblelabs.crashreporter.data/com.docker.docker",
+         "~/Library/Caches/Docker Desktop",
+         "~/Library/Caches/docker-secrets-engine",
+         "~/Library/Caches/KSCrashReports/Docker",
+         "~/Library/Containers/com.docker.docker",
+         "~/Library/Containers/com.docker.helper",
+         "~/Library/Group Containers/group.com.docker",
+         "~/Library/HTTPStorages/com.docker.docker",
+         "~/Library/HTTPStorages/com.docker.docker.binarycookies",
+         "~/Library/Logs/Docker Desktop",
+         "~/Library/Preferences/com.docker.docker.plist",
+         "~/Library/Preferences/com.electron.docker-frontend.plist",
+         "~/Library/Preferences/com.electron.dockerdesktop.plist",
+         "~/Library/Saved Application State/com.electron.docker-frontend.savedState",
+         "~/Library/Saved Application State/com.electron.dockerdesktop.savedState"
+        ]
+       }
+      ]
+     }
+    ],
+    "sha256": "0584a21e7503a4e12e25c7c829ef9439ceca6f453842e47ade9d1961c2fbd2af",
+    "url": "https://desktop.docker.com/mac/main/amd64/245822/Docker.dmg"
+   },
+   "x86_64_linux": {
+    "artifacts": [
+     {
+      "uninstall": [
+       {
+        "delete": [
+         "/Library/PrivilegedHelperTools/com.docker.socket",
+         "/Library/PrivilegedHelperTools/com.docker.vmnetd"
+        ],
+        "launchctl": [
+         "com.docker.helper",
+         "com.docker.socket",
+         "com.docker.vmnetd"
+        ],
+        "quit": [
+         "com.docker.docker",
+         "com.electron.dockerdesktop"
+        ],
+        "rmdir": "~/.docker/bin"
+       }
+      ]
+     },
+     {
+      "app": [
+       "Docker.app"
+      ],
+      "target": "/Applications/Docker.app"
+     },
+     {
+      "binary": [
+       "$APPDIR/Docker.app/Contents/Resources/bin/docker-credential-desktop",
+       {
+        "target": "/usr/local/bin/docker-credential-desktop"
+       }
+      ],
+      "target": "/usr/local/bin/docker-credential-desktop"
+     },
+     {
+      "binary": [
+       "$APPDIR/Docker.app/Contents/Resources/bin/docker-credential-osxkeychain",
+       {
+        "target": "/usr/local/bin/docker-credential-osxkeychain"
+       }
+      ],
+      "target": "/usr/local/bin/docker-credential-osxkeychain"
+     },
+     {
+      "binary": [
+       "$APPDIR/Docker.app/Contents/Resources/bin/com.docker.hyperkit",
+       {
+        "target": "/usr/local/bin/hyperkit"
+       }
+      ],
+      "target": "/usr/local/bin/hyperkit"
+     },
+     {
+      "binary": [
+       "$APPDIR/Docker.app/Contents/Resources/cli-plugins/docker-compose",
+       {
+        "target": "/usr/local/cli-plugins/docker-compose"
+       }
+      ],
+      "target": "/usr/local/cli-plugins/docker-compose"
+     },
+     {
+      "binary": [
+       "$APPDIR/Docker.app/Contents/Resources/bin/kubectl",
+       {
+        "target": "/usr/local/bin/kubectl.docker"
+       }
+      ],
+      "target": "/usr/local/bin/kubectl.docker"
+     },
+     {
+      "binary": [
+       "$APPDIR/Docker.app/Contents/Resources/bin/docker",
+       {
+        "target": "/usr/local/bin/docker"
+       }
+      ],
+      "target": "/usr/local/bin/docker"
+     },
+     {
+      "bash_completion": [
+       "$APPDIR/Docker.app/Contents/Resources/etc/docker.bash-completion"
+      ],
+      "target": "$HOMEBREW_PREFIX/etc/bash_completion.d/docker"
+     },
+     {
+      "bash_completion": [
+       "$APPDIR/Docker.app/Contents/Resources/etc/docker-compose.bash-completion"
+      ],
+      "target": "$HOMEBREW_PREFIX/etc/bash_completion.d/docker-compose"
+     },
+     {
+      "target": "$HOMEBREW_PREFIX/share/zsh/site-functions/_docker-compose",
+      "zsh_completion": [
+       "$APPDIR/Docker.app/Contents/Resources/etc/docker-compose.zsh-completion"
+      ]
+     },
+     {
+      "target": "$HOMEBREW_PREFIX/share/zsh/site-functions/_docker",
+      "zsh_completion": [
+       "$APPDIR/Docker.app/Contents/Resources/etc/docker.zsh-completion"
+      ]
+     },
+     {
+      "fish_completion": [
+       "$APPDIR/Docker.app/Contents/Resources/etc/docker-compose.fish-completion"
+      ],
+      "target": "$HOMEBREW_PREFIX/share/fish/vendor_completions.d/docker-compose.fish"
+     },
+     {
+      "fish_completion": [
+       "$APPDIR/Docker.app/Contents/Resources/etc/docker.fish-completion"
+      ],
+      "target": "$HOMEBREW_PREFIX/share/fish/vendor_completions.d/docker.fish"
+     },
+     {
+      "postflight_steps": [
+       {
+        "steps": [
+         {
+          "force": true,
+          "guards": [
+           {
+            "condition": "unless_exists",
+            "id": "1",
+            "path": "/usr/local/bin/kubectl"
+           }
+          ],
+          "source": {
+           "path": "{{appdir}}/Docker.app/Contents/Resources/bin/kubectl"
+          },
+          "sudo": "if_needed",
+          "target": {
+           "path": "/usr/local/bin/kubectl"
+          },
+          "type": "symlink",
+          "uninstall": true
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "zap": [
+       {
+        "rmdir": [
+         "~/Library/Caches/com.plausiblelabs.crashreporter.data",
+         "~/Library/Caches/KSCrashReports"
+        ],
+        "trash": [
+         "/usr/local/bin/docker-compose.backup",
+         "/usr/local/bin/docker.backup",
+         "~/.docker",
+         "~/Library/Application Scripts/com.docker.helper",
+         "~/Library/Application Scripts/group.com.docker",
+         "~/Library/Application Support/com.apple.sharedfilelist/com.apple.LSSharedFileList.ApplicationRecentDocuments/com.docker.helper.sfl*",
+         "~/Library/Application Support/com.apple.sharedfilelist/com.apple.LSSharedFileList.ApplicationRecentDocuments/com.electron.dockerdesktop.sfl*",
+         "~/Library/Application Support/com.bugsnag.Bugsnag/com.docker.docker",
+         "~/Library/Application Support/Docker Desktop",
+         "~/Library/Application Support/docker-secrets-engine",
+         "~/Library/Caches/com.docker.docker",
+         "~/Library/Caches/com.plausiblelabs.crashreporter.data/com.docker.docker",
+         "~/Library/Caches/Docker Desktop",
+         "~/Library/Caches/docker-secrets-engine",
+         "~/Library/Caches/KSCrashReports/Docker",
+         "~/Library/Containers/com.docker.docker",
+         "~/Library/Containers/com.docker.helper",
+         "~/Library/Group Containers/group.com.docker",
+         "~/Library/HTTPStorages/com.docker.docker",
+         "~/Library/HTTPStorages/com.docker.docker.binarycookies",
+         "~/Library/Logs/Docker Desktop",
+         "~/Library/Preferences/com.docker.docker.plist",
+         "~/Library/Preferences/com.electron.docker-frontend.plist",
+         "~/Library/Preferences/com.electron.dockerdesktop.plist",
+         "~/Library/Saved Application State/com.electron.docker-frontend.savedState",
+         "~/Library/Saved Application State/com.electron.dockerdesktop.savedState"
+        ]
+       }
+      ]
+     }
+    ],
+    "sha256": null,
+    "url": "https://desktop.docker.com/mac/main/amd64/245822/Docker.dmg"
+   }
+  },
+  "version": "4.99.0,245822"
+ },
+ {
+  "artifacts": [
+   {
+    "app": [
+     "4Peaks.app"
+    ],
+    "target": "/Applications/4Peaks.app"
+   },
+   {
+    "zap": [
+     {
+      "trash": [
+       "~/Library/Application Support/4Peaks",
+       "~/Library/Application Support/com.apple.sharedfilelist/com.apple.LSSharedFileList.ApplicationRecentDocuments/com.mekentosj.4peaks.*",
+       "~/Library/Caches/com.apple.helpd/Generated/4Peaks Help*",
+       "~/Library/HTTPStorages/com.mekentosj.4peaks",
+       "~/Library/Preferences/com.mekentosj.4peaks.plist",
+       "~/Library/Saved Application State/com.mekentosj.4peaks.savedState"
+      ]
+     }
+    ]
+   }
+  ],
+  "auto_updates": null,
+  "autobump": true,
+  "bundle_short_version": null,
+  "bundle_version": null,
+  "caveats": null,
+  "caveats_rosetta": true,
+  "conflicts_with": null,
+  "container": null,
+  "depends_on": {
+   "macos": {}
+  },
+  "deprecate_args": null,
+  "deprecated": false,
+  "deprecation_date": null,
+  "deprecation_reason": null,
+  "deprecation_replacement_cask": null,
+  "deprecation_replacement_formula": null,
+  "desc": "Visualise and edit DNA sequence trace files",
+  "disable_args": null,
+  "disable_date": null,
+  "disable_reason": null,
+  "disable_replacement_cask": null,
+  "disable_replacement_formula": null,
+  "disabled": false,
+  "full_token": "4peaks",
+  "homepage": "https://nucleobytes.com/4peaks/index.html",
+  "installed": null,
+  "installed_time": null,
+  "languages": [],
+  "name": [
+   "4Peaks"
+  ],
+  "no_autobump_message": null,
+  "old_tokens": [],
+  "outdated": false,
+  "pinned": false,
+  "pinned_version": null,
+  "rename": [],
+  "ruby_source_checksum": {
+   "sha256": "f7553f2a4db2ee89fd987a76903a1905f4e3f9129cd550233f3678e884afb59c"
+  },
+  "ruby_source_path": "Casks/4/4peaks.rb",
+  "sha256": "no_check",
+  "skip_livecheck": false,
+  "supported_platforms": [
+   "golden_gate",
+   "arm64_golden_gate",
+   "tahoe",
+   "arm64_tahoe",
+   "sequoia",
+   "arm64_sequoia",
+   "sonoma",
+   "arm64_sonoma",
+   "ventura",
+   "arm64_ventura",
+   "monterey",
+   "arm64_monterey",
+   "big_sur",
+   "arm64_big_sur"
+  ],
+  "tap": "homebrew/cask",
+  "tap_git_head": "bc429d228452ef0ac57ac508a10e6a39f8e3e32a",
+  "token": "4peaks",
+  "url": "https://downloads.nucleobytes.com/4peaks.dmg",
+  "url_specs": {},
+  "variations": {},
+  "version": "1.8"
+ },
+ {
+  "artifacts": [
+   {
+    "app": [
+     "1Password.app"
+    ],
+    "target": "/Applications/1Password.app"
+   },
+   {
+    "zap": [
+     {
+      "trash": [
+       "~/Library/Application Scripts/2BUA8C4S2C.com.1password",
+       "~/Library/Application Scripts/2BUA8C4S2C.com.1password.browser-helper",
+       "~/Library/Application Scripts/com.1password.1password-launcher",
+       "~/Library/Application Scripts/com.1password.browser-support",
+       "~/Library/Application Support/1Password",
+       "~/Library/Application Support/CrashReporter/1Password*.plist",
+       "~/Library/Containers/2BUA8C4S2C.com.1password.browser-helper",
+       "~/Library/Containers/com.1password.1password-launcher",
+       "~/Library/Containers/com.1password.browser-support",
+       "~/Library/Group Containers/*.com.1password",
+       "~/Library/Group Containers/*.com.agilebits",
+       "~/Library/Logs/DiagnosticReports/1Password*",
+       "~/Library/Preferences/*1password.plist",
+       "~/Library/Saved Application State/com.1password.1password.savedState"
+      ]
+     }
+    ]
+   }
+  ],
+  "auto_updates": null,
+  "autobump": false,
+  "bundle_short_version": null,
+  "bundle_version": null,
+  "caveats": null,
+  "caveats_rosetta": null,
+  "conflicts_with": {
+   "cask": [
+    "1password",
+    "1password@beta"
+   ]
+  },
+  "container": null,
+  "depends_on": {
+   "macos": {
+    ">=": [
+     "12"
+    ]
+   }
+  },
+  "deprecate_args": null,
+  "deprecated": false,
+  "deprecation_date": null,
+  "deprecation_reason": null,
+  "deprecation_replacement_cask": null,
+  "deprecation_replacement_formula": null,
+  "desc": "Password manager",
+  "disable_args": null,
+  "disable_date": null,
+  "disable_reason": null,
+  "disable_replacement_cask": null,
+  "disable_replacement_formula": null,
+  "disabled": false,
+  "full_token": "1password@nightly",
+  "homepage": "https://1password.com/",
+  "installed": null,
+  "installed_time": null,
+  "languages": [],
+  "name": [
+   "1Password Nightly"
+  ],
+  "no_autobump_message": "latest_version",
+  "old_tokens": [],
+  "outdated": false,
+  "pinned": false,
+  "pinned_version": null,
+  "rename": [],
+  "ruby_source_checksum": {
+   "sha256": "10c5cd5b8ab1b72eb0dfa638e15fcd492bf715fb14b050132dd8c32e26de25f5"
+  },
+  "ruby_source_path": "Casks/1/1password@nightly.rb",
+  "sha256": "no_check",
+  "skip_livecheck": false,
+  "supported_platforms": [
+   "golden_gate",
+   "arm64_golden_gate",
+   "tahoe",
+   "arm64_tahoe",
+   "sequoia",
+   "arm64_sequoia",
+   "sonoma",
+   "arm64_sonoma",
+   "ventura",
+   "arm64_ventura",
+   "monterey",
+   "arm64_monterey"
+  ],
+  "tap": "homebrew/cask",
+  "tap_git_head": "bc429d228452ef0ac57ac508a10e6a39f8e3e32a",
+  "token": "1password@nightly",
+  "url": "https://c.1password.com/dist/1P/mac8/1Password-latest.NIGHTLY-aarch64.zip",
+  "url_specs": {},
+  "variations": {
+   "golden_gate": {
+    "url": "https://c.1password.com/dist/1P/mac8/1Password-latest.NIGHTLY-x86_64.zip"
+   },
+   "monterey": {
+    "url": "https://c.1password.com/dist/1P/mac8/1Password-latest.NIGHTLY-x86_64.zip"
+   },
+   "sequoia": {
+    "url": "https://c.1password.com/dist/1P/mac8/1Password-latest.NIGHTLY-x86_64.zip"
+   },
+   "sonoma": {
+    "url": "https://c.1password.com/dist/1P/mac8/1Password-latest.NIGHTLY-x86_64.zip"
+   },
+   "tahoe": {
+    "url": "https://c.1password.com/dist/1P/mac8/1Password-latest.NIGHTLY-x86_64.zip"
+   },
+   "ventura": {
+    "url": "https://c.1password.com/dist/1P/mac8/1Password-latest.NIGHTLY-x86_64.zip"
+   },
+   "x86_64_linux": {
+    "url": "https://c.1password.com/dist/1P/mac8/1Password-latest.NIGHTLY-x86_64.zip"
+   }
+  },
+  "version": "latest"
+ },
+ {
+  "artifacts": [
+   {
+    "uninstall": [
+     {
+      "pkgutil": "com.1password.op"
+     }
+    ]
+   },
+   {
+    "pkg": [
+     "op_apple_universal_v1.12.9.pkg"
+    ]
+   },
+   {
+    "zap": [
+     {
+      "trash": "~/.op"
+     }
+    ]
+   }
+  ],
+  "auto_updates": null,
+  "autobump": true,
+  "bundle_short_version": null,
+  "bundle_version": null,
+  "caveats": null,
+  "caveats_rosetta": null,
+  "conflicts_with": {
+   "cask": [
+    "1password-cli",
+    "1password-cli@beta"
+   ]
+  },
+  "container": null,
+  "depends_on": {
+   "macos": {}
+  },
+  "deprecate_args": {
+   "because": "unmaintained",
+   "date": "2025-06-11",
+   "replacement_cask": null,
+   "replacement_formula": null
+  },
+  "deprecated": true,
+  "deprecation_date": "2025-06-11",
+  "deprecation_reason": "unmaintained",
+  "deprecation_replacement_cask": null,
+  "deprecation_replacement_formula": null,
+  "desc": "Command-line helper for the 1Password password manager",
+  "disable_args": {
+   "because": "unmaintained",
+   "date": "2026-06-11",
+   "replacement_cask": null,
+   "replacement_formula": null
+  },
+  "disable_date": "2026-06-11",
+  "disable_reason": "unmaintained",
+  "disable_replacement_cask": null,
+  "disable_replacement_formula": null,
+  "disabled": true,
+  "full_token": "1password-cli@1",
+  "homepage": "https://developer.1password.com/docs/cli/v1/usage/",
+  "installed": null,
+  "installed_time": null,
+  "languages": [],
+  "name": [
+   "1Password CLI"
+  ],
+  "no_autobump_message": null,
+  "old_tokens": [],
+  "outdated": false,
+  "pinned": false,
+  "pinned_version": null,
+  "rename": [],
+  "ruby_source_checksum": {
+   "sha256": "f0790eb664da26e15eece0f0ccdb02b9798136882c0602e173b828f2ae5be387"
+  },
+  "ruby_source_path": "Casks/1/1password-cli@1.rb",
+  "sha256": "ff9af6a6aef58111f2279b30cebf158a2e14651176b40a649b30a12b772724a3",
+  "skip_livecheck": false,
+  "supported_platforms": [
+   "golden_gate",
+   "arm64_golden_gate",
+   "tahoe",
+   "arm64_tahoe",
+   "sequoia",
+   "arm64_sequoia",
+   "sonoma",
+   "arm64_sonoma",
+   "ventura",
+   "arm64_ventura",
+   "monterey",
+   "arm64_monterey",
+   "big_sur",
+   "arm64_big_sur"
+  ],
+  "tap": "homebrew/cask",
+  "tap_git_head": "bc429d228452ef0ac57ac508a10e6a39f8e3e32a",
+  "token": "1password-cli@1",
+  "url": "https://cache.agilebits.com/dist/1P/op/pkg/v1.12.9/op_apple_universal_v1.12.9.pkg",
+  "url_specs": {},
+  "variations": {},
+  "version": "1.12.9"
+ },
+ {
+  "artifacts": [
+   {
+    "font": [
+     "fonts/0xProto-Bold.otf"
+    ],
+    "target": "/$HOME/Library/Fonts/0xProto-Bold.otf"
+   },
+   {
+    "font": [
+     "fonts/0xProto-Italic.otf"
+    ],
+    "target": "/$HOME/Library/Fonts/0xProto-Italic.otf"
+   },
+   {
+    "font": [
+     "fonts/0xProto-Regular.otf"
+    ],
+    "target": "/$HOME/Library/Fonts/0xProto-Regular.otf"
+   },
+   {
+    "font": [
+     "fonts/No-Ligatures/0xProto-Bold-NL.otf"
+    ],
+    "target": "/$HOME/Library/Fonts/0xProto-Bold-NL.otf"
+   },
+   {
+    "font": [
+     "fonts/No-Ligatures/0xProto-Italic-NL.otf"
+    ],
+    "target": "/$HOME/Library/Fonts/0xProto-Italic-NL.otf"
+   },
+   {
+    "font": [
+     "fonts/No-Ligatures/0xProto-Regular-NL.otf"
+    ],
+    "target": "/$HOME/Library/Fonts/0xProto-Regular-NL.otf"
+   },
+   {
+    "font": [
+     "fonts/ZxProto/ZxProto-Bold.otf"
+    ],
+    "target": "/$HOME/Library/Fonts/ZxProto-Bold.otf"
+   },
+   {
+    "font": [
+     "fonts/ZxProto/ZxProto-Italic.otf"
+    ],
+    "target": "/$HOME/Library/Fonts/ZxProto-Italic.otf"
+   },
+   {
+    "font": [
+     "fonts/ZxProto/ZxProto-Regular.otf"
+    ],
+    "target": "/$HOME/Library/Fonts/ZxProto-Regular.otf"
+   },
+   {
+    "zap": []
+   }
+  ],
+  "auto_updates": null,
+  "autobump": true,
+  "bundle_short_version": null,
+  "bundle_version": null,
+  "caveats": null,
+  "caveats_rosetta": null,
+  "conflicts_with": null,
+  "container": null,
+  "depends_on": {},
+  "deprecate_args": null,
+  "deprecated": false,
+  "deprecation_date": null,
+  "deprecation_reason": null,
+  "deprecation_replacement_cask": null,
+  "deprecation_replacement_formula": null,
+  "desc": null,
+  "disable_args": null,
+  "disable_date": null,
+  "disable_reason": null,
+  "disable_replacement_cask": null,
+  "disable_replacement_formula": null,
+  "disabled": false,
+  "full_token": "font-0xproto",
+  "homepage": "https://github.com/0xType/0xProto",
+  "installed": null,
+  "installed_time": null,
+  "languages": [],
+  "name": [
+   "0xProto"
+  ],
+  "no_autobump_message": null,
+  "old_tokens": [],
+  "outdated": false,
+  "pinned": false,
+  "pinned_version": null,
+  "rename": [],
+  "ruby_source_checksum": {
+   "sha256": "6274369f799d463da82f320f01bbabc09b9d942a0b5e3ca0c8c1951846b76389"
+  },
+  "ruby_source_path": "Casks/font/font-0/font-0xproto.rb",
+  "sha256": "402d046b6056111ae5b974892fe2d6d921c66a64681980ec81db051de05851e7",
+  "skip_livecheck": false,
+  "supported_platforms": [
+   "golden_gate",
+   "arm64_golden_gate",
+   "tahoe",
+   "arm64_tahoe",
+   "sequoia",
+   "arm64_sequoia",
+   "sonoma",
+   "arm64_sonoma",
+   "ventura",
+   "arm64_ventura",
+   "monterey",
+   "arm64_monterey",
+   "big_sur",
+   "arm64_big_sur",
+   "x86_64_linux",
+   "arm64_linux"
+  ],
+  "tap": "homebrew/cask",
+  "tap_git_head": "bc429d228452ef0ac57ac508a10e6a39f8e3e32a",
+  "token": "font-0xproto",
+  "url": "https://github.com/0xType/0xProto/releases/download/2.502/0xProto_2_502.zip",
+  "url_specs": {},
+  "variations": {},
+  "version": "2.502"
+ },
+ {
+  "artifacts": [
+   {
+    "app": [
+     "Razer macOS.app"
+    ],
+    "target": "/Applications/Razer macOS.app"
+   },
+   {
+    "zap": [
+     {
+      "trash": [
+       "~/Library/Preferences/com.electron.razer-macos.helper.Renderer.plist",
+       "~/Library/Preferences/com.electron.razer-macos.plist",
+       "~/Library/Saved Application State/com.electron.razer-macos.savedState"
+      ]
+     }
+    ]
+   }
+  ],
+  "auto_updates": null,
+  "autobump": true,
+  "bundle_short_version": null,
+  "bundle_version": null,
+  "caveats": null,
+  "caveats_rosetta": null,
+  "conflicts_with": null,
+  "container": null,
+  "depends_on": {
+   "macos": {}
+  },
+  "deprecate_args": null,
+  "deprecated": false,
+  "deprecation_date": null,
+  "deprecation_reason": null,
+  "deprecation_replacement_cask": null,
+  "deprecation_replacement_formula": null,
+  "desc": "Open source colour effects manager for Razer devices",
+  "disable_args": {
+   "because": "fails_gatekeeper_check",
+   "date": "2026-09-01",
+   "replacement_cask": null,
+   "replacement_formula": null
+  },
+  "disable_date": "2026-09-01",
+  "disable_reason": "fails_gatekeeper_check",
+  "disable_replacement_cask": null,
+  "disable_replacement_formula": null,
+  "disabled": true,
+  "full_token": "1kc-razer",
+  "homepage": "https://github.com/1kc/razer-macos",
+  "installed": null,
+  "installed_time": null,
+  "languages": [],
+  "name": [
+   "Razer macOS"
+  ],
+  "no_autobump_message": null,
+  "old_tokens": [],
+  "outdated": false,
+  "pinned": false,
+  "pinned_version": null,
+  "rename": [],
+  "ruby_source_checksum": {
+   "sha256": "3e97e6f0e040e89f43d717ee3b23ef2587461f809b2e2873463eb10f24d1c3c2"
+  },
+  "ruby_source_path": "Casks/1/1kc-razer.rb",
+  "sha256": "9f57f928adb31ca843dbf2047a7d6ea308eceaccb50620792535d1fcd7ec73ca",
+  "skip_livecheck": false,
+  "supported_platforms": [
+   "golden_gate",
+   "arm64_golden_gate",
+   "tahoe",
+   "arm64_tahoe",
+   "sequoia",
+   "arm64_sequoia",
+   "sonoma",
+   "arm64_sonoma",
+   "ventura",
+   "arm64_ventura",
+   "monterey",
+   "arm64_monterey",
+   "big_sur",
+   "arm64_big_sur"
+  ],
+  "tap": "homebrew/cask",
+  "tap_git_head": "bc429d228452ef0ac57ac508a10e6a39f8e3e32a",
+  "token": "1kc-razer",
+  "url": "https://github.com/1kc/razer-macos/releases/download/v0.4.10/Razer.macOS-0.4.10-universal.dmg",
+  "url_specs": {},
+  "variations": {},
+  "version": "0.4.10"
+ },
+ {
+  "artifacts": [
+   {
+    "uninstall": [
+     {
+      "quit": "com.fmr.activetrader"
+     }
+    ]
+   },
+   {
+    "app": [
+     "Active Trader Pro.app"
+    ],
+    "target": "/Applications/Active Trader Pro.app"
+   },
+   {
+    "zap": [
+     {
+      "trash": [
+       "~/Documents/ATP-*.log",
+       "~/Library/Application Support/Active Trader Pro",
+       "~/Library/HTTPStorages/com.fmr.activetrader",
+       "~/Library/HTTPStorages/com.fmr.activetrader.binarycookies",
+       "~/Library/Preferences/com.fmr.activetrader.plist",
+       "~/Library/Saved Application State/com.fmr.activetrader.savedState"
+      ]
+     }
+    ]
+   }
+  ],
+  "auto_updates": true,
+  "autobump": true,
+  "bundle_short_version": null,
+  "bundle_version": null,
+  "caveats": null,
+  "caveats_rosetta": true,
+  "conflicts_with": null,
+  "container": null,
+  "depends_on": {
+   "macos": {}
+  },
+  "deprecate_args": {
+   "because": "discontinued",
+   "date": "2025-12-17",
+   "replacement_cask": null,
+   "replacement_formula": null
+  },
+  "deprecated": true,
+  "deprecation_date": "2025-12-17",
+  "deprecation_reason": "discontinued",
+  "deprecation_replacement_cask": null,
+  "deprecation_replacement_formula": null,
+  "desc": "Trading platform",
+  "disable_args": {
+   "because": "discontinued",
+   "date": "2026-12-17",
+   "replacement_cask": null,
+   "replacement_formula": null
+  },
+  "disable_date": "2026-12-17",
+  "disable_reason": null,
+  "disable_replacement_cask": null,
+  "disable_replacement_formula": null,
+  "disabled": false,
+  "full_token": "active-trader-pro",
+  "homepage": "https://www.fidelity.com/trading/advanced-trading-tools/active-trader-pro/overview",
+  "installed": null,
+  "installed_time": null,
+  "languages": [],
+  "name": [
+   "Active Trader Pro"
+  ],
+  "no_autobump_message": null,
+  "old_tokens": [],
+  "outdated": false,
+  "pinned": false,
+  "pinned_version": null,
+  "rename": [],
+  "ruby_source_checksum": {
+   "sha256": "60ef9acfde3cba2fbe3abb0041446df962c3675df341dd5040861707274d7291"
+  },
+  "ruby_source_path": "Casks/a/active-trader-pro.rb",
+  "sha256": "394689bce9630cd949a40ae9914533acaf028f8d08019833dbb7a49f3416866e",
+  "skip_livecheck": false,
+  "supported_platforms": [
+   "golden_gate",
+   "arm64_golden_gate",
+   "tahoe",
+   "arm64_tahoe",
+   "sequoia",
+   "arm64_sequoia",
+   "sonoma",
+   "arm64_sonoma",
+   "ventura",
+   "arm64_ventura",
+   "monterey",
+   "arm64_monterey",
+   "big_sur",
+   "arm64_big_sur"
+  ],
+  "tap": "homebrew/cask",
+  "tap_git_head": "bc429d228452ef0ac57ac508a10e6a39f8e3e32a",
+  "token": "active-trader-pro",
+  "url": "https://www.fidelity.com/webcontent/Codeweaver/activetrader-1.0.55.zip",
+  "url_specs": {},
+  "variations": {},
+  "version": "1.0.55"
+ }
+]

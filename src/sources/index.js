@@ -167,11 +167,22 @@ function setCacheDir(dir) { _cacheDir = dir; }
 function setFetch(fn) { github.setFetch(fn); }
 function setRedirectResolver(fn) { github.setRedirectResolver(fn); }
 
+// The macOS version, from the Darwin kernel release. Darwin 20..24 are macOS 11..15;
+// from Darwin 25 Apple's numbering jumped, and Darwin N is macOS N+1 (25 -> 26).
+function macosVersion() {
+  if (process.platform !== 'darwin') return undefined;
+  const m = /^(\d+)\.(\d+)/.exec(require('os').release());
+  if (!m) return undefined;
+  const d = Number(m[1]);
+  return `${d >= 25 ? d + 1 : d - 9}.${m[2]}`;
+}
+
 function makeCtx(over = {}) {
   return {
     net,
     platform: process.platform,
     arch: process.arch,
+    osVersion: macosVersion(),
     cacheDir: _cacheDir,
     now: () => Date.now(),
     ...over,
@@ -493,7 +504,15 @@ async function resolve(text, ctx, lookups = {}) {
   // A name. Curated places only: the built-in list first, then providers that keep an
   // index for this platform. There is deliberately no free-text search of GitHub.
   const candidates = [];
-  if (typeof lookups.catalog === 'function') candidates.push(...(await lookups.catalog(input, c.platform)));
+  if (typeof lookups.catalog === 'function') {
+    for (const hit of (await lookups.catalog(input, c.platform)) || []) {
+      // A curated hit names a source; say who lists it exactly as any other candidate does.
+      const p = PROVIDERS.get(hit.source && hit.source.type);
+      if (!p) continue; // pinned to a provider this build does not have
+      if (p.platforms && !p.platforms.includes(c.platform)) continue;
+      candidates.push({ ...candidateOf(p, hit.source, { name: hit.name }), ...hit, curated: true });
+    }
+  }
   for (const p of PROVIDERS.values()) {
     if (typeof p.search !== 'function') continue;
     if (p.platforms && !p.platforms.includes(c.platform)) continue;
@@ -525,8 +544,11 @@ function dedupe(list) {
 }
 
 // Which candidate, if any, may be added without asking? Only when the user set a
-// preference AND the first preferred provider that has the app offers exactly one
-// candidate whose identity is established (a curated shortcut or an exact provider id).
+// preference, and only an ESTABLISHED identity: a curated shortcut, or the one candidate
+// whose provider id is exactly what was typed. Looser matches from the same provider
+// (related packages, other editions) are just neighbours in the list — they neither
+// qualify nor disqualify. Two established identities at the same provider (stable and
+// ESR both curated, say) is a real choice, so the user is asked.
 function autoPick(candidates, preference) {
   const order = Array.isArray(preference) ? preference : [];
   if (!order.length) return null;
@@ -534,8 +556,10 @@ function autoPick(candidates, preference) {
   for (const type of order) {
     const hits = ok.filter((c) => c.source.type === type);
     if (!hits.length) continue;
+    // The first preferred provider that HAS the app decides; it never falls through to a
+    // later provider just because this one was ambiguous.
     const sure = hits.filter((c) => c.curated || c.exact);
-    return sure.length === 1 && hits.length === 1 ? sure[0] : sure.length === 1 && hits.every((c) => c === sure[0] || !c.exact) && sure[0].curated ? sure[0] : null;
+    return sure.length === 1 ? sure[0] : null;
   }
   return null;
 }
@@ -572,7 +596,9 @@ async function inspect(candidateOrEntry, ctx, host = {}) {
         emulated: !!asset.emulated,
       };
     } catch (e) {
-      out.types[type] = { ok: false, reason: e.message };
+      // The picker's message lists every file in the release; the options list wants
+      // the reason, not the inventory.
+      out.types[type] = { ok: false, reason: String(e.message).split('. Assets:')[0] };
     }
   }
   return out;
