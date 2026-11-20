@@ -33,6 +33,10 @@ function doFetch(url, init) { return (_fetchImpl || globalThis.fetch)(url, init)
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+function hostOf(url) {
+  try { return new URL(url).host; } catch { return String(url); }
+}
+
 // TLS trust failures never recover on retry, and almost always mean a corporate VPN/proxy is
 // doing SSL inspection with a root CA the app doesn't trust.
 const TLS_CERT_CODES = new Set([
@@ -174,13 +178,30 @@ async function listAssets(owner, repo, opts = {}) {
 
 // fetch follows redirects by default; enforce the size cap while streaming.
 // onProgress(pct 0-100) is called as bytes arrive (throttled) when a size is known.
-async function downloadAsset(url, destPath, onProgress) {
+//
+// opts (all optional, used by non-GitHub sources — see src/sources/index.js):
+//   httpsOnly   refuse the download unless the URL, and the URL it finally resolved to after
+//               any redirects, are both https
+//   noRedirect  refuse the download if the server redirected at all (a listing we read
+//               directly must serve the file it names)
+//   onFinalUrl  called with the URL the bytes actually came from, so the caller can show
+//               and log the real origin rather than only the declared one
+async function downloadAsset(url, destPath, onProgress, opts = {}) {
+  if (opts.httpsOnly && !/^https:\/\//i.test(String(url))) throw new Error(`refusing a non-HTTPS download: ${url}`);
   // Retry the whole download: a reset can hit either the initial connection (fetch rejects)
   // or the body stream (pipeline rejects). Each attempt re-fetches and overwrites destPath,
   // so a partial file from a failed try is never left behind.
   return withNetRetry(async () => {
     const res = await doFetch(url, { headers: { 'User-Agent': UA } });
     if (!res.ok) throw new Error(`download ${res.status} for ${url}`);
+    const finalUrl = res.url || url;
+    if (opts.noRedirect && (res.redirected || (res.url && res.url !== url))) {
+      throw new Error(`the download was redirected to ${hostOf(finalUrl)}, which this source does not allow`);
+    }
+    if (opts.httpsOnly && !/^https:\/\//i.test(String(finalUrl))) {
+      throw new Error(`the download was redirected to a non-HTTPS address (${hostOf(finalUrl)})`);
+    }
+    if (typeof opts.onFinalUrl === 'function') opts.onFinalUrl(finalUrl);
     const declared = Number(res.headers.get('content-length') || 0);
     if (declared && declared > MAX_BYTES) throw new Error(`asset too large: ${declared} bytes (cap ${MAX_BYTES})`);
     let seen = 0;
@@ -256,4 +277,4 @@ function verifyDigest(filePath, digest) {
   return { verified: true };
 }
 
-module.exports = { getLatestRelease, listAssets, downloadAsset, verifyDigest, fetchChecksumFromRelease, setFetch };
+module.exports = { getLatestRelease, listAssets, downloadAsset, verifyDigest, fetchChecksumFromRelease, setFetch, doFetch, withNetRetry, UA, SUMS_FILE, MAX_BYTES };

@@ -12,13 +12,15 @@ const github = require('./github');
 const install = require('./install');
 const state = require('./state');
 const detect = require('./detect');
+const sources = require('./sources');
 const { log } = require('./log');
 
 // Display id ("owner/repo") vs storage/identity key (adds the type, so the same repo
 // tracked as both portable AND installed keeps separate state instead of colliding).
 const isWin = process.platform === 'win32';
 
-const displayId = (repo) => `${repo.owner}/${repo.repo}`;
+// A non-GitHub entry has an opaque key, so it is displayed by its name instead.
+const displayId = (repo) => core.displayId(repo);
 const appKey = (repo) => `${repo.owner}/${repo.repo}#${repo.type}`;
 
 // A tracked entry can name a package type the project does not publish, and then every
@@ -64,7 +66,7 @@ function retypeIfUnavailable(repo, rel, portableRoot, platform) {
   const from = repo.type;
   if (to === 'portable') {
     const dir =
-      (repo.install && repo.install.dir) || (portableRoot && core.resolvePortableDir(portableRoot, repo.repo));
+      (repo.install && repo.install.dir) || (portableRoot && core.resolvePortableDir(portableRoot, core.folderName(repo)));
     if (!dir) return null; // no portable folder set — the existing clear error stands
     repo.type = 'portable';
     repo.install = { ...(repo.install || {}), dir };
@@ -92,21 +94,59 @@ async function run(config, opts = {}) {
   const only = opts.only ? opts.only.toLowerCase() : null;
   const results = [];
   for (const repo of config.repos) {
+    // Derive a non-GitHub entry's key from its source before anything reads it, so a
+    // hand-edited config cannot claim one identity while pointing at another. An entry
+    // naming a source this build does not know fails on its own row, not the whole run.
+    let bad = null;
+    try {
+      sources.normalizeEntry(repo);
+    } catch (e) {
+      bad = e;
+    }
     const id = displayId(repo);
-    if (only && id.toLowerCase() !== only && appKey(repo).toLowerCase() !== only) continue;
+    // GitHub ids keep their case-folded match; a non-GitHub key is matched exactly.
+    const key = appKey(repo);
+    if (only && id.toLowerCase() !== only && key.toLowerCase() !== only && key !== opts.only) continue;
     let closed = false;
     const markClosed = () => { closed = true; };
     try {
-      const result = await handleRepo(repo, id, st, { ...opts, portableRoot: config.portableRoot, markClosed });
+      if (bad) throw bad;
+      const result = await handleRepo(repo, id, st, {
+        ...opts,
+        portableRoot: config.portableRoot,
+        requireChecksum: !!config.requireChecksum,
+        markClosed,
+      });
       results.push(closed ? { ...result, closed: true } : result);
     } catch (e) {
-      results.push({ repo: id, id: appKey(repo), status: 'failed', reason: e.message, ...(closed ? { closed: true } : {}) });
+      results.push({ repo: id, id: appKey(repo), status: 'failed', reason: e.message, ...where(repo), ...(closed ? { closed: true } : {}) });
       log(`FAIL ${appKey(repo)}: ${e.message}`);
       if (e.rateLimited) break; // no point hammering a rate-limited API
     }
   }
   return { results, summary: core.buildSummary(results) };
 }
+
+// Where an app comes from, attached to every result so the UI and the CLI can always
+// show it. No network: this is read off the config entry alone.
+function where(repo) {
+  try {
+    const d = sources.describe(repo);
+    return { source: { type: d.type, label: d.label, host: d.listingHost, pageUrl: d.pageUrl } };
+  } catch {
+    return {};
+  }
+}
+
+// The file this machine would get, chosen the same way for Check, Preview, dry-run and
+// Update. Installers match the flavor ALREADY installed (msi vs exe on Windows, deb vs rpm
+// on Linux) so an update upgrades in place instead of installing a duplicate side by side.
+async function pickFor(repo, rel) {
+  const flavor = repo.type === 'installer' ? await detect.installedFlavor(core.detectName(repo)) : null;
+  return sources.selectAsset(repo, rel, { flavor, osRelease: detect.osRelease() });
+}
+
+const NO_SUM_REASON = 'no checksum is published for this file, and "Only install files that have a checksum" is on';
 
 function dirHasFiles(dir) {
   try {
@@ -120,12 +160,17 @@ async function handleRepo(repo, id, st, opts) {
   const key = appKey(repo);
   const emit = (phase, pct) => opts.onProgress && opts.onProgress(key, phase, pct);
   emit('checking');
-  const rel = await github.getLatestRelease(repo.owner, repo.repo, { prerelease: repo.prerelease, tagPrefix: repo.tagPrefix });
+  const gh = sources.isGithub(repo);
+  const ctx = sources.makeCtx();
+  const rel = await sources.getLatestRelease(repo, ctx);
+  const src = where(repo);
   // Correct the type before anything reads it. Check-time only: an update run installs,
   // and changing what gets installed mid-run is worse than the clear error it replaces.
   // It has to happen ahead of the comparison below, or an entry whose installed version
   // already matches the latest tag returns "current" and is never corrected at all.
-  const retyped = opts.mode === 'check' ? retypeIfUnavailable(repo, rel, opts.portableRoot) : null;
+  // GitHub entries only. Any other source states what it offers, and the options list
+  // showed the user the type before they added it, so nothing is switched behind them.
+  const retyped = opts.mode === 'check' && gh ? retypeIfUnavailable(repo, rel, opts.portableRoot) : null;
 
   const latest = rel.tag_name;
   const prev = st[key] || {};
@@ -136,7 +181,7 @@ async function handleRepo(repo, id, st, opts) {
   let externallyInstalled = false; // portable app found in the OS inventory, not one we manage
   if (repo.type === 'installer') {
     try {
-      installed = await detect.installedVersion(repo.detect || repo.repo);
+      installed = await detect.installedVersion(core.detectName(repo));
     } catch {}
     // Scheme mismatch (e.g. Brave: registry 152.1.94.117 vs tag 1.94.117): the install
     // looks "newer" than any release, so updates would never be detected. Align the
@@ -155,7 +200,7 @@ async function handleRepo(repo, id, st, opts) {
     if (!installed) {
       let detected = null;
       try {
-        detected = await detect.installedVersion(repo.detect || repo.repo);
+        detected = await detect.installedVersion(core.detectName(repo));
       } catch {}
       if (detected) {
         installed = detected;
@@ -187,21 +232,38 @@ async function handleRepo(repo, id, st, opts) {
 
   const fromV = installed ? core.normTag(installed) : prev.tag && core.normTag(prev.tag);
   if (!isNew && !opts.force) {
-    return { repo: id, id: key, status: 'current', from: fromV, to: core.normTag(latest), ...(retyped ? { retyped, note: retyped.note } : {}) };
+    return { repo: id, id: key, status: 'current', from: fromV, to: core.normTag(latest), ...src, ...(retyped ? { retyped, note: retyped.note } : {}) };
   }
 
-  const base = { repo: id, id: key, from: fromV, to: core.normTag(latest) };
+  const base = { repo: id, id: key, from: fromV, to: core.normTag(latest), ...src };
 
-  if (opts.mode === 'check') return { ...base, status: 'updated', ...(retyped ? { retyped, note: retyped.note } : {}) };
+  if (opts.mode === 'check') {
+    if (gh) return { ...base, status: 'updated', ...(retyped ? { retyped, note: retyped.note } : {}) };
+    // For every other source, a check runs the SAME selection an update would, so it can
+    // never report an update that the install would then refuse (no build for this
+    // machine, an unsupported installer kind). The file and its origin ride along.
+    const chosen = await pickFor(repo, rel);
+    const sum = await sources.resolveChecksum(repo, rel, chosen, ctx);
+    if (!sum.digest && opts.requireChecksum) return { ...base, status: 'failed', reason: NO_SUM_REASON };
+    return { ...base, status: 'updated', ...fileInfo(chosen, sum) };
+  }
 
-  // Manual `asset` pattern overrides; otherwise auto-pick this platform's asset from
-  // the type. For installers, match the flavor of the EXISTING install (msi vs exe on
-  // Windows, deb vs rpm on Linux) so the update upgrades in place instead of installing
-  // a duplicate side-by-side.
-  const flavor = repo.type === 'installer' ? await detect.installedFlavor(repo.detect || repo.repo) : null;
-  const asset = repo.asset
-    ? core.matchAsset(rel.assets, repo.asset)
-    : core.pickAsset(rel.assets, repo.type, null, flavor, null, detect.osRelease());
+  // A hand-pinned `asset` pattern overrides; otherwise the registry picks this machine's
+  // file from the entry's type.
+  const asset = await pickFor(repo, rel);
+
+  // An upgrade the listing says cannot be done in place is refused up front. A fresh
+  // install of the same package is unaffected.
+  if (tracked && (asset.upgradeBehavior === 'uninstallPrevious' || asset.upgradeBehavior === 'deny')) {
+    return {
+      ...base,
+      status: 'failed',
+      reason:
+        asset.upgradeBehavior === 'deny'
+          ? `${src.source ? src.source.label : 'the listing'} says this app cannot be upgraded in place — update it from the app itself`
+          : `${src.source ? src.source.label : 'the listing'} says the old version must be uninstalled first — uninstall it, then Install`,
+    };
+  }
 
   if (opts.dryRun) {
     const verb = /\.(zip|7z|tar\.gz|tgz|tar\.xz|tar\.bz2|tar|dmg)$/i.test(asset.name) ? 'extract' : 'place';
@@ -209,25 +271,38 @@ async function handleRepo(repo, id, st, opts) {
       repo.type === 'installer'
         ? `install ${asset.name} silently`
         : `${verb} ${asset.name} -> ${repo.install.dir}`;
-    return { ...base, status: 'updated', note: plan };
+    return { ...base, status: 'updated', note: plan, ...fileInfo(asset, null) };
+  }
+
+  // Know the checksum BEFORE downloading whenever it decides anything: for every
+  // non-GitHub source (the download policy depends on it), and for any source once the
+  // user has asked that only files with a checksum be installed. Plain GitHub entries
+  // keep their original order — download first, then look for a sums file.
+  let sum = null;
+  if (!gh || opts.requireChecksum) {
+    sum = await sources.resolveChecksum(repo, rel, asset, ctx);
+    if (!sum.digest && opts.requireChecksum) {
+      log(`SKIP ${key}: ${NO_SUM_REASON}`);
+      return { ...base, status: 'failed', reason: NO_SUM_REASON, ...fileInfo(asset, sum) };
+    }
   }
 
   // Proactive check: a running app blocks both installers (in-use files) and portable
   // swaps (locked files). Tell the user up front instead of failing mid-download.
-  if (await detect.isRunning(repo.process || repo.repo)) {
+  if (await detect.isRunning(core.processName(repo))) {
     if (opts.autoClose) {
-      const result = await detect.closeApp(repo.process || repo.repo);
+      const result = await detect.closeApp(core.processName(repo));
       if (result.stillRunning) {
-        log(`SKIP ${key}: auto-close could not stop ${repo.repo}`);
-        return { ...base, status: 'failed', reason: `${repo.repo} did not close gracefully — close it manually, then Retry` };
+        log(`SKIP ${key}: auto-close could not stop ${core.appName(repo)}`);
+        return { ...base, status: 'failed', reason: `${core.appName(repo)} did not close gracefully — close it manually, then Retry` };
       }
       if (result.closed > 0) {
         opts.markClosed();
         log(`AUTO-CLOSE ${key}: closed ${result.closed} process(es) before update`);
       }
     } else {
-      log(`SKIP ${key}: ${repo.repo} is running`);
-      return { ...base, status: 'failed', reason: `${repo.repo} is running — close it, then Retry` };
+      log(`SKIP ${key}: ${core.appName(repo)} is running`);
+      return { ...base, status: 'failed', reason: `${core.appName(repo)} is running — close it, then Retry` };
     }
   }
 
@@ -252,21 +327,40 @@ async function handleRepo(repo, id, st, opts) {
   try {
     const file = path.join(tmp, asset.name);
     emit('downloading', 0);
-    await github.downloadAsset(asset.browser_download_url, file, (pct) => emit('downloading', pct));
+    // Where the bytes really came from. A source that names a file must serve that file,
+    // so most non-GitHub downloads may not be redirected at all; the exceptions (a forge's
+    // object storage, a vendor mirror behind a manifest-pinned hash) stay HTTPS on the
+    // final hop. Recorded and logged either way — the declared URL is not the whole story.
+    let finalUrl = asset.browser_download_url;
+    const policy = sources.downloadPolicy(repo, asset, sum);
+    await github.downloadAsset(asset.browser_download_url, file, (pct) => emit('downloading', pct), {
+      ...policy,
+      onFinalUrl: (u) => { finalUrl = u; },
+    });
+    if (!gh) log(`  ${key}: ${src.source ? src.source.label : 'source'} -> ${sources.redact(finalUrl)}`);
     emit('verifying');
-    // Prefer GitHub's own digest; fall back to a checksums file shipped in the release
-    // (SHA256SUMS, <asset>.sha256, ...). Only truly digest-less releases skip.
-    let digest = asset.digest;
-    let digestNote = null;
-    if (!digest) {
-      const found = await github.fetchChecksumFromRelease(rel, asset.name);
-      if (found) {
-        digest = `${found.algo}:${found.expected}`;
-        digestNote = 'verified via release checksums file';
+    let v;
+    if (sum) {
+      // Resolved up front (see above). A hash that exists is always enforced.
+      v = github.verifyDigest(file, sum.digest);
+      if (v && v.verified && sum.note) v.note = sum.note;
+      if (v && v.skipped) v.note = 'no checksum published';
+    } else {
+      // Prefer GitHub's own digest; fall back to a checksums file shipped in the release
+      // (SHA256SUMS, <asset>.sha256, ...). Only truly digest-less releases skip.
+      let digest = asset.digest;
+      let digestNote = null;
+      if (!digest) {
+        const found = await github.fetchChecksumFromRelease(rel, asset.name);
+        if (found) {
+          digest = `${found.algo}:${found.expected}`;
+          digestNote = 'verified via release checksums file';
+        }
       }
+      v = github.verifyDigest(file, digest);
+      if (v && v.verified && digestNote) v.note = digestNote;
+      sum = { digest: digest || null, state: digest ? 'published' : 'none' };
     }
-    const v = github.verifyDigest(file, digest);
-    if (v && v.verified && digestNote) v.note = digestNote;
     if (v && v.skipped) log(`  WARN ${key}: ${v.note}`);
 
     emit('installing');
@@ -297,7 +391,9 @@ async function handleRepo(repo, id, st, opts) {
           : 'installer window opened — authorize and finish it, then Check',
       };
 
-      const kind = (repo.install && repo.install.kind) || install.detectInstallerKind(file);
+      // A manifest that states the installer technology beats sniffing the file's bytes.
+      const stated = asset.kind && core.INSTALLER_SWITCHES[asset.kind] ? asset.kind : null;
+      const kind = (repo.install && repo.install.kind) || stated || install.detectInstallerKind(file);
       if (!kind) {
         // Unidentifiable installer: never guess silent switches — run its window instead.
         if (interactive(asset.name)) return interactiveResult;
@@ -306,7 +402,10 @@ async function handleRepo(repo, id, st, opts) {
         );
       }
       try {
-        install.installInstaller(file, { ...repo.install, kind });
+        // Silent switches the listing declares are an argv array, used only when the user
+        // has not pinned their own. Never a shell string.
+        const args = (repo.install && repo.install.args) || (Array.isArray(asset.installArgs) && asset.installArgs.length ? asset.installArgs : undefined);
+        install.installInstaller(file, { ...repo.install, kind, ...(args ? { args } : {}) });
       } catch (e) {
         // Silent installs can't show a UAC prompt, so unelevated they fail — MSI with
         // exit 1603, EXE installers with an elevation spawn error. Fall back to the
@@ -330,20 +429,20 @@ async function handleRepo(repo, id, st, opts) {
       // So this is not "it crashes". It is old code, new files, one path, and nobody
       // has managed to provoke a failure from that mismatch. Unprovoked is not safe:
       // whatever the app loads next comes from a version it did not start with.
-      if (await detect.isRunning(repo.process || repo.repo)) {
+      if (await detect.isRunning(core.processName(repo))) {
         if (opts.autoClose) {
-          const result = await detect.closeApp(repo.process || repo.repo);
+          const result = await detect.closeApp(core.processName(repo));
           if (result.stillRunning) {
-            log(`SKIP ${key}: auto-close could not stop ${repo.repo} before swap`);
-            return { ...base, status: 'failed', reason: `${repo.repo} did not close gracefully — close it manually, then Retry` };
+            log(`SKIP ${key}: auto-close could not stop ${core.appName(repo)} before swap`);
+            return { ...base, status: 'failed', reason: `${core.appName(repo)} did not close gracefully — close it manually, then Retry` };
           }
           if (result.closed > 0) {
             opts.markClosed();
             log(`AUTO-CLOSE ${key}: closed ${result.closed} process(es) before swap`);
           }
         } else {
-          log(`SKIP ${key}: ${repo.repo} started during the download`);
-          return { ...base, status: 'failed', reason: `${repo.repo} is running — close it, then Retry` };
+          log(`SKIP ${key}: ${core.appName(repo)} started during the download`);
+          return { ...base, status: 'failed', reason: `${core.appName(repo)} is running — close it, then Retry` };
         }
       }
       // Transactional dir swap: stale files vanish with the old dir, user files carry over.
@@ -381,11 +480,17 @@ async function handleRepo(repo, id, st, opts) {
       assetName: asset.name,
       installedAt,
       lastAction,
+      // Provenance of what is on disk: who listed it, where it was fetched from, and
+      // whether its checksum was verified. Query strings are never stored.
+      ...(src.source ? { source: src.source.type } : {}),
+      url: sources.redact(asset.browser_download_url),
+      fileHost: hostOf(finalUrl),
+      checksum: v && v.verified ? (sum && sum.state) || 'published' : 'none',
       ...(files ? { files } : {}),
     };
     state.save(st, opts.statePath);
     log(`OK ${key}: installed ${core.normTag(latest)}`);
-    return { ...base, status: 'updated', installedAt, lastAction, note: v && v.note };
+    return { ...base, status: 'updated', installedAt, lastAction, note: v && v.note, ...fileInfo(asset, { state: v && v.verified ? (sum && sum.state) || 'published' : 'none' }, finalUrl) };
   } finally {
     try {
       await fs.promises.rm(tmp, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
@@ -393,6 +498,25 @@ async function handleRepo(repo, id, st, opts) {
       log(`WARN ${key}: could not remove staging folder ${tmp} (${e.code || e.message})`);
     }
   }
+}
+
+function hostOf(url) {
+  try {
+    return new URL(url).host;
+  } catch {
+    return '';
+  }
+}
+
+// The chosen file and its origin, for results. `finalUrl` is known only after a download.
+function fileInfo(asset, sum, finalUrl) {
+  const declared = hostOf(asset.browser_download_url);
+  const out = { file: asset.name, fileHost: declared, fileUrl: sources.redact(asset.browser_download_url) };
+  const fin = finalUrl ? hostOf(finalUrl) : '';
+  if (fin && fin !== declared) out.servedFrom = fin;
+  if (sum && sum.state) out.checksum = sum.state;
+  if (Array.isArray(asset.requires) && asset.requires.length) out.requires = asset.requires;
+  return out;
 }
 
 // retypeIfNoInstaller: former name, kept so the vendored drop-in keeps working.
