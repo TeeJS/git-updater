@@ -49,6 +49,10 @@ test('shortcuts: sources are offered per platform, first-party first', () => {
   assert.equal(catalog.preferredSource(hb, 'linux', ['winget', 'brew']).type, 'github');
   // A Windows-only GitHub project is not offered from GitHub elsewhere.
   assert.deepEqual(catalog.sourcesFor(catalog.appById('notepad'), 'darwin'), []);
+  // A macOS-only project is not offered from GitHub on Windows or Linux.
+  assert.deepEqual(catalog.sourcesFor(catalog.appById('rectangle'), 'darwin').map((s) => s.type), ['github', 'brew']);
+  assert.ok(!catalog.popular('win32').some((a) => a.id === 'rectangle'));
+  assert.ok(!catalog.popular('linux').some((a) => a.id === 'rectangle'));
   // No source on this OS -> not in the picker at all.
   assert.ok(!catalog.popular('linux').some((a) => a.id === 'googlechrome'));
   assert.ok(catalog.popular('win32').some((a) => a.id === 'googlechrome'));

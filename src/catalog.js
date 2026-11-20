@@ -229,7 +229,7 @@ function matchInstalled(installed, trackedRepos, platform) {
 // "Adobe.Acrobat.Reader.64-bit", Homebrew calls HandBrake "handbrake-app". src/shortcuts.json
 // maps the names people use to the place the app really comes from:
 //
-//   { name, category, aliases?, winget?, brew?, repo? }
+//   { name, category, aliases?, winget?, brew?, repo?, platforms? }
 //
 //   winget  a WinGet package id   (offered on Windows)
 //   brew    a Homebrew cask token (offered on macOS)
@@ -265,7 +265,9 @@ function apps() {
     const id = squash(s.name);
     if (!id || seenId.has(id)) continue;
     seenId.add(id);
-    out.push({ id, name: s.name, category: s.category, aliases: s.aliases || [], winget: s.winget, brew: s.brew, repo: s.repo, repoPlatforms: row ? row.platforms : undefined });
+    // Where the GitHub project ships builds: the catalog row's limit, else the shortcut's own
+    // `platforms` (Rectangle is a macOS app; its repo must not be offered on Windows).
+    out.push({ id, name: s.name, category: s.category, aliases: s.aliases || [], winget: s.winget, brew: s.brew, repo: s.repo, repoPlatforms: (row && row.platforms) || s.platforms });
   }
   for (const c of CATALOG) {
     if (seenRepo.has(c.repo.toLowerCase())) continue;

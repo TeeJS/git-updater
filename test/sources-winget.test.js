@@ -51,6 +51,10 @@ function searchIndex() {
     for (const row of packages) add.run(row.id, row.name, row.moniker, row.version);
     add.run('BlenderFoundation.Blender.LTS.4.5', 'Blender LTS', 'blender', '4.5.16');
     add.run('Missing.Package', 'Missing Package', 'missing-package', '3.0');
+    // Mozilla publishes one package per language beside the main one, and real editions too.
+    for (const locale of ['af', 'an', 'ar', 'en-GB', 'pt-BR', 'zh-CN', 'ast']) add.run(`Mozilla.Firefox.${locale}`, `Mozilla Firefox (${locale})`, null, '160.0.1');
+    add.run('Mozilla.Firefox.ESR', 'Mozilla Firefox ESR', 'firefox-esr', '153.7.0');
+    add.run('Mozilla.Firefox.DeveloperEdition', 'Firefox Developer Edition', null, '161.0');
   });
 }
 
@@ -123,6 +127,20 @@ test('WinGet search uses the small index and never treats ambiguous monikers as 
   assert.equal((await winget.search('vlc', ctx))[0].exact, true);
   assert.deepEqual(await winget.search('%_', ctx), []);
   assert.deepEqual(requests, [MICROSOFT_SEARCH]);
+});
+
+test('WinGet search leaves out per-language packages, keeps real editions, and an exact id means only that package', { skip: !available.ok }, async () => {
+  const { ctx } = context();
+  const ids = (await winget.search('firefox', ctx)).map((c) => c.source.packageId);
+  assert.ok(ids.includes('Mozilla.Firefox'));
+  assert.ok(ids.includes('Mozilla.Firefox.ESR'), 'an edition is not a language');
+  assert.ok(ids.includes('Mozilla.Firefox.DeveloperEdition'));
+  assert.ok(!ids.some((id) => /\.(af|an|ar|en-GB|pt-BR|zh-CN|ast)$/.test(id)), `no locale packages: ${ids.join(', ')}`);
+  // A full id typed exactly: that package, marked exact, and none of its neighbours.
+  const exact = await winget.search('mozilla.firefox', ctx);
+  assert.deepEqual(exact.map((c) => [c.source.packageId, c.exact]), [['Mozilla.Firefox', true]]);
+  // A language package is still reachable by its own exact id.
+  assert.deepEqual((await winget.search('Mozilla.Firefox.pt-BR', ctx)).map((c) => c.source.packageId), ['Mozilla.Firefox.pt-BR']);
 });
 
 test('WinGet joins the announced version to its hash-pinned manifest and maps installer rows', { skip: !available.ok }, async () => {

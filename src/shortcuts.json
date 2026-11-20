@@ -60,7 +60,7 @@
   {"name": "RustDesk", "category": "Utilities", "brew": "rustdesk", "repo": "rustdesk/rustdesk"},
   {"name": "Rufus", "category": "Utilities", "winget": "Rufus.Rufus"},
   {"name": "Raycast", "category": "Utilities", "brew": "raycast"},
-  {"name": "Rectangle", "category": "Utilities", "brew": "rectangle", "repo": "rxhanson/Rectangle"},
+  {"name": "Rectangle", "category": "Utilities", "brew": "rectangle", "repo": "rxhanson/Rectangle", "platforms": ["darwin"]},
   {"name": "The Unarchiver", "category": "Utilities", "aliases": ["unarchiver"], "brew": "the-unarchiver"},
   {"name": "AppCleaner", "category": "Utilities", "brew": "appcleaner"},
   {"name": "KeePassXC", "category": "Security and passwords", "aliases": ["keepass xc"], "winget": "KeePassXCTeam.KeePassXC", "brew": "keepassxc", "repo": "keepassxreboot/keepassxc"},

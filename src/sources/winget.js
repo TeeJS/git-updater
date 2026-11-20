@@ -166,15 +166,34 @@ async function search(name, ctx) {
     ORDER BY CASE
       WHEN lower(id) = ? THEN 0 WHEN lower(moniker) = ? THEN 1 WHEN lower(name) = ? THEN 2 ELSE 3
     END, length(name), id
-    LIMIT 25
+    LIMIT 400
   `).all(term, contains, contains, contains, term, term, term));
-  return rows.filter((row) => validPackageId(row.id)).map((row) => {
+  return narrow(rows.filter((row) => validPackageId(row.id)), term).map((row) => {
     const source = { type: 'winget', packageId: row.id };
     return {
       source, name: row.name, version: row.latest_version, listingUrl: pageUrl(source),
       exact: row.id.toLowerCase() === term || (row.moniker_matches === 1 && row.moniker?.toLowerCase() === term), ...(note && { note }),
     };
   });
+}
+
+// What a person searching by name wants to see, from up to 400 raw matches down to 25.
+// Found by running the packaged app on Windows: "firefox" filled every slot with
+// per-language packages (Mozilla.Firefox.af, .an, .ar…) and pushed the real editions off
+// the list, and typing the exact id "Mozilla.Firefox" still listed 25 neighbours.
+//   - A full package id typed exactly means that package and nothing else.
+//   - "<Id>.<locale>" is a translation of <Id>, not another app: when <Id> itself is in
+//     the results, its language variants are left out. The locale test is deliberately
+//     strict about case (af, pt-BR) so an edition like ".ESR" is never mistaken for one.
+const LOCALE_SEGMENT = /^[a-z]{2,3}(-[A-Z][A-Za-z]{1,3})?$/;
+function narrow(rows, term) {
+  const exact = rows.find((row) => row.id.toLowerCase() === term);
+  if (exact) return [exact];
+  const ids = new Set(rows.map((row) => row.id.toLowerCase()));
+  return rows.filter((row) => {
+    const dot = row.id.lastIndexOf('.');
+    return !(LOCALE_SEGMENT.test(row.id.slice(dot + 1)) && ids.has(row.id.slice(0, dot).toLowerCase()));
+  }).slice(0, 25);
 }
 
 function manifestReference(db, id, version) {
