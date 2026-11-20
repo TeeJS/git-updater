@@ -99,7 +99,9 @@ function normalizeEntry(entry) {
 }
 
 function defaultName(source, p) {
-  const ref = String((p || provider(source.type)).canonicalRef(source));
+  const prov = p || provider(source.type);
+  if (typeof prov.displayName === 'function') return prov.displayName(source);
+  const ref = String(prov.canonicalRef(source));
   const last = ref.split('/').filter(Boolean).pop() || ref;
   return last.split('.').pop() || last;
 }
@@ -380,19 +382,28 @@ const validDigest = (d) => typeof d === 'string' && DIGEST.test(d);
 // -> { algo, expected } | null. Throws when the publisher DOES ship a checksum file but it
 // could not be read: that is not the same thing as there being none, and treating it as
 // "none" would let a network hiccup switch verification off.
-async function findPublishedChecksum(rel, asset, ctx) {
+async function findPublishedChecksum(rel, asset, ctx, prov) {
   const name = String(asset.name).toLowerCase();
   const candidates = (rel.assets || []).filter((a) => a !== asset && github.SUMS_FILE.test(a.name) &&
     (a.size == null || a.size <= MAX_SUMS_BYTES) &&
     // "<name>.sha256" must belong to OUR file; a shared sums file is matched by its lines.
     (!/\.(sha256|sha512)$/i.test(a.name) || a.name.toLowerCase().startsWith(name) || !/\.(zip|7z|exe|msi|dmg|pkg|deb|rpm|appimage|xz|gz|bz2|tgz)\.(sha256|sha512)$/i.test(a.name)));
+  // Addresses the provider knows by convention rather than from the listing. A miss
+  // there is ordinary (most servers have no such file), so only LISTED files can make
+  // the lookup "unreadable".
+  const byConvention = prov && typeof prov.checksumUrls === 'function'
+    ? prov.checksumUrls(asset).map((url) => ({ name: `${asset.name}.sha256`, browser_download_url: url, guessed: true }))
+    : [];
   let unreadable = null;
-  for (const c of candidates) {
+  for (const c of [...candidates, ...byConvention]) {
     let text;
     try {
       ({ text } = await ctx.net.getText(c.browser_download_url, { maxBytes: MAX_SUMS_BYTES }));
     } catch (e) {
-      if (!(e && e.unavailable)) unreadable = unreadable || c.name;
+      // Redirected to a mirror: a hash fetched from the same mirror as the file proves
+      // nothing the file's own HTTPS download does not, so it is simply not used.
+      if (e && (e.unavailable || e.redirectRefused || c.guessed)) continue;
+      unreadable = unreadable || c.name;
       continue;
     }
     const hit = parseSums(text, asset.name, c.name);
@@ -418,7 +429,7 @@ async function resolveChecksum(entry, rel, asset, ctx) {
   }
   const found = isGithub(entry)
     ? await github.fetchChecksumFromRelease(rel, asset.name)
-    : await findPublishedChecksum(rel, asset, ctx || makeCtx());
+    : await findPublishedChecksum(rel, asset, ctx || makeCtx(), p);
   if (found) return { digest: `${found.algo}:${found.expected}`, state: 'published', note: 'verified via release checksums file' };
   return { digest: null, state: 'none', note: 'no checksum published' };
 }
@@ -438,11 +449,17 @@ function safeFileName(name) {
 }
 
 // How the bytes may be fetched for this entry's source.
-function downloadPolicy(entry, asset, checksum) {
-  if (isGithub(entry)) return {}; // unchanged: GitHub's own redirect to its CDN is how it serves assets
-  const pinned = checksum && checksum.digest && asset.redirects === 'https-pinned';
-  const forge = ['gitlab', 'gitea'].includes(sourceOf(entry).type); // forges redirect to their object storage
-  return { httpsOnly: true, noRedirect: !(pinned || forge) };
+//   GitHub        unchanged — its own redirect to its CDN is how it serves assets.
+//   every other   HTTPS only, on every hop. Redirects are allowed, because vendors front
+//                 their downloads with mirror networks (VLC, GIMP, KDE, LibreOffice all
+//                 do), but each hop is validated as https BEFORE it is followed, and the
+//                 host that finally serves the file is recorded and shown beside the one
+//                 the listing declared. HTTPS is the hard limit (T.J., room #85); a
+//                 checksum, when one exists, is verified on top of it.
+// Listings and API calls (ctx.net) are stricter: they may not be redirected at all.
+function downloadPolicy(entry) {
+  if (isGithub(entry)) return {};
+  return { httpsOnly: true, noRedirect: false };
 }
 
 // ---------------------------------------------------------------------------

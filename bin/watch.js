@@ -10,6 +10,11 @@ const core = require('../src/core');
 const github = require('../src/github');
 const runner = require('../src/runner');
 const state = require('../src/state');
+const sources = require('../src/sources');
+const paths = require('../src/paths');
+
+// Source providers that keep a package index (WinGet, Homebrew) cache it here.
+sources.setCacheDir(path.join(paths.dataDir(), 'cache'));
 
 // Are we running as the packaged single-exe (SEA)? Then process.execPath IS the
 // app exe and there is no script file to pass as an argument.

@@ -254,9 +254,9 @@ test('resolveChecksum: GitHub entries use the existing sums lookup', async () =>
   }
 });
 
-test('downloadPolicy: GitHub untouched; forges HTTPS; pinned mirrors HTTPS; the rest no redirects', () => {
-  assert.deepEqual(sources.downloadPolicy({ owner: 'a', repo: 'b', type: 'portable' }, {}, null), {});
-  assert.deepEqual(sources.downloadPolicy(folderEntry('portable'), {}, { digest: null }), { httpsOnly: true, noRedirect: false });
+test('downloadPolicy: GitHub untouched; every other source HTTPS-only with validated redirects', () => {
+  assert.deepEqual(sources.downloadPolicy({ owner: 'a', repo: 'b', type: 'portable' }), {});
+  assert.deepEqual(sources.downloadPolicy(folderEntry('portable')), { httpsOnly: true, noRedirect: false });
 });
 
 test('resolveChecksum: a declared but malformed digest is an error, never "none"', async () => {
