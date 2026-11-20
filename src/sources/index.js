@@ -165,6 +165,7 @@ function pageUrl(entry) {
 let _cacheDir;
 function setCacheDir(dir) { _cacheDir = dir; }
 function setFetch(fn) { github.setFetch(fn); }
+function setRedirectResolver(fn) { github.setRedirectResolver(fn); }
 
 function makeCtx(over = {}) {
   return {
@@ -599,6 +600,7 @@ module.exports = {
   describe,
   pageUrl,
   setFetch,
+  setRedirectResolver,
   setCacheDir,
   makeCtx,
   getLatestRelease,

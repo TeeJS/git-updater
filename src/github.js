@@ -87,6 +87,23 @@ async function fetchWithPolicy(url, init, policy = {}) {
     if (isRedirect(res) || res.redirected || (res.url && stripSlash(res.url) !== stripSlash(url))) throw redirectRefused(url, res.url);
     return { res, finalUrl: url };
   }
+  // Electron's net.fetch cannot do the manual loop below: with `redirect: 'manual'` it
+  // cancels the request and exposes no Location. There the GUI injects a resolver built
+  // on net.request, which raises an event per hop BEFORE following it. Each hop is
+  // validated by checkHop; the address that finally answers is then fetched with
+  // redirects refused, so it is requested directly and cannot move again.
+  if (_redirectResolver) {
+    const finalUrl = await _redirectResolver(String(url), { checkHop, maxHops: MAX_REDIRECTS });
+    assertHttpsUrl(finalUrl);
+    let res;
+    try {
+      res = await doFetch(finalUrl, { ...init, redirect: 'error' });
+    } catch (e) {
+      if (isRedirectError(e)) throw redirectRefused(finalUrl);
+      throw e;
+    }
+    return { res, finalUrl };
+  }
   let current = String(url);
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
     const res = await doFetch(current, { ...init, redirect: 'manual' });
@@ -97,20 +114,31 @@ async function fetchWithPolicy(url, init, policy = {}) {
     }
     if (!isRedirect(res)) return { res, finalUrl: current };
     const loc = res.headers && res.headers.get && res.headers.get('location');
-    if (!loc) throw new Error(`${hostOf(current)} sent a redirect with no destination`);
-    let next;
-    try {
-      next = new URL(loc, current);
-    } catch {
-      throw new Error(`${hostOf(current)} sent a redirect to an invalid address`);
-    }
-    if (next.protocol !== 'https:') throw Object.assign(new Error(`${hostOf(current)} redirected to a non-HTTPS address (${next.host})`), { redirectRefused: true });
-    if (next.username || next.password) throw Object.assign(new Error(`${hostOf(current)} redirected to an address that carries credentials`), { redirectRefused: true });
+    const next = checkHop(current, loc);
     try { if (res.body && res.body.cancel) await res.body.cancel(); } catch {}
-    current = next.toString();
+    current = next;
   }
   throw Object.assign(new Error(`too many redirects starting at ${hostOf(url)}`), { redirectRefused: true });
 }
+
+// The rule for one redirect hop, shared by both transports: the destination must exist,
+// parse, be https, and carry no credentials. Returns the absolute next URL or throws.
+function checkHop(current, location) {
+  if (!location) throw Object.assign(new Error(`${hostOf(current)} sent a redirect with no destination`), { redirectRefused: true });
+  let next;
+  try {
+    next = new URL(location, current);
+  } catch {
+    throw Object.assign(new Error(`${hostOf(current)} sent a redirect to an invalid address`), { redirectRefused: true });
+  }
+  if (next.protocol !== 'https:') throw Object.assign(new Error(`${hostOf(current)} redirected to a non-HTTPS address (${next.host})`), { redirectRefused: true });
+  if (next.username || next.password) throw Object.assign(new Error(`${hostOf(current)} redirected to an address that carries credentials`), { redirectRefused: true });
+  return next.toString();
+}
+
+// See fetchWithPolicy. fn(url, { checkHop, maxHops }) -> Promise<final https URL>.
+let _redirectResolver = null;
+function setRedirectResolver(fn) { _redirectResolver = typeof fn === 'function' ? fn : null; }
 
 const stripSlash = (u) => String(u).replace(/\/+$/, '');
 function isRedirectError(e) {
@@ -361,4 +389,4 @@ function verifyDigest(filePath, digest) {
   return { verified: true };
 }
 
-module.exports = { getLatestRelease, listAssets, downloadAsset, verifyDigest, fetchChecksumFromRelease, setFetch, doFetch, withNetRetry, fetchWithPolicy, assertHttpsUrl, safeUrl, UA, SUMS_FILE, MAX_BYTES };
+module.exports = { getLatestRelease, listAssets, downloadAsset, verifyDigest, fetchChecksumFromRelease, setFetch, doFetch, withNetRetry, fetchWithPolicy, checkHop, setRedirectResolver, assertHttpsUrl, safeUrl, UA, SUMS_FILE, MAX_BYTES };

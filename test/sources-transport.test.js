@@ -155,3 +155,30 @@ test('core: the exe installer kind never runs without explicit switches', () => 
   assert.deepEqual(core.installerCmd('exe', 'S.exe', ['/S']), { exe: 'S.exe', args: ['/S'] });
   assert.deepEqual(core.installerCmd('exe', 'B.exe', ['-quiet', '-norestart']), { exe: 'B.exe', args: ['-quiet', '-norestart'] });
 });
+
+test('https-redirects with an injected resolver (the Electron path): hops validated, final address fetched directly', async () => {
+  const seenHops = [];
+  github.setRedirectResolver(async (url, { checkHop, maxHops }) => {
+    assert.equal(maxHops, 5);
+    let cur = url;
+    for (const loc of ['https://mirror.example/a', '/b']) { cur = checkHop(cur, loc); seenHops.push(cur); }
+    return cur;
+  });
+  try {
+    await withFetch({ 'https://mirror.example/b': { status: 200, body: 'ok' } }, async (calls) => {
+      const { res, finalUrl } = await github.fetchWithPolicy('https://vendor.example/dl', {}, { redirects: 'https' });
+      assert.equal(res.status, 200);
+      assert.equal(finalUrl, 'https://mirror.example/b');
+      assert.deepEqual(seenHops, ['https://mirror.example/a', 'https://mirror.example/b']);
+      assert.deepEqual(calls, [{ url: 'https://mirror.example/b', redirect: 'error' }], 'the final address is requested directly and may not move again');
+    });
+    // The hop rule is the engine's: a resolver cannot wave a plain-http hop through.
+    github.setRedirectResolver(async (url, { checkHop }) => checkHop(url, 'http://plain.example/x'));
+    await assert.rejects(github.fetchWithPolicy('https://vendor.example/dl', {}, { redirects: 'https' }), /non-HTTPS address \(plain\.example\)/);
+    // Nor can it return a non-https final address.
+    github.setRedirectResolver(async () => 'http://plain.example/x');
+    await assert.rejects(github.fetchWithPolicy('https://vendor.example/dl', {}, { redirects: 'https' }), /non-HTTPS/);
+  } finally {
+    github.setRedirectResolver(null);
+  }
+});

@@ -633,6 +633,39 @@ ipcMain.handle('selfupdate:apply', async (e) => {
   }
 });
 
+// Walk a redirect chain WITHOUT following any hop that has not been approved first.
+// net.fetch cannot do this (a manual redirect there just cancels, with no Location), so
+// this uses net.request, which raises 'redirect' before the next request is made. The
+// rule for a hop is the engine's (checkHop); this only drives it. The request is aborted
+// as soon as some address answers — the caller then fetches that address directly.
+function resolveRedirects(url, { checkHop, maxHops }) {
+  return new Promise((resolve, reject) => {
+    let current = url;
+    let hops = 0;
+    let done = false;
+    const req = net.request({ url, method: 'GET', redirect: 'manual' });
+    const finish = (fn, value) => {
+      if (done) return;
+      done = true;
+      try { req.abort(); } catch {}
+      fn(value);
+    };
+    req.setHeader('User-Agent', 'release-watcher');
+    req.on('redirect', (_status, _method, redirectUrl) => {
+      try {
+        if (++hops > maxHops) throw Object.assign(new Error('too many redirects'), { redirectRefused: true });
+        current = checkHop(current, redirectUrl);
+        req.followRedirect();
+      } catch (e) {
+        finish(reject, e);
+      }
+    });
+    req.on('response', () => finish(resolve, current));
+    req.on('error', (e) => finish(reject, e));
+    req.end();
+  });
+}
+
 // --- lifecycle: launcher hand-off, single instance, on-demand -------------------
 (async () => {
   // Relaunch after a self-update: the updating process still holds the single-instance lock
@@ -666,6 +699,7 @@ ipcMain.handle('selfupdate:apply', async (e) => {
     // one the browser already trusts — is honored here too. Node's own fetch ignores that store
     // and fails with UNABLE_TO_GET_ISSUER_CERT_LOCALLY on such networks.
     sources.setFetch((url, init) => net.fetch(url, init)); // routes github.js and every source provider
+    sources.setRedirectResolver(resolveRedirects);
     sources.setCacheDir(path.join(paths.dataDir(), 'cache'));
     migrateConfig();
     if (app.isPackaged) selfupdate.cleanupLeftovers(ROOT, app.getVersion()).catch(() => {});
