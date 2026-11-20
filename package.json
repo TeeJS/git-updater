@@ -1,7 +1,7 @@
 {
   "name": "git-updater",
   "version": "0.3.0-beta.1",
-  "description": "On-demand desktop GUI that installs and updates apps from their own sources: GitHub, GitLab and Codeberg releases, WinGet and Homebrew listings, and vendor download folders (portable & installed). Windows, macOS and Linux. Electron front-end, no localhost server, no shell.",
+  "description": "Desktop GUI that installs and updates apps from their own sources: GitHub, GitLab and Codeberg releases, WinGet and Homebrew listings, and vendor download folders (portable & installed). Windows, macOS and Linux. Electron front-end, no localhost server, no shell. Quiet by default; optional start at login and tray.",
   "bin": {
     "git-updater": "bin/watch.js"
   },
@@ -38,6 +38,7 @@
       "src/**/*",
       "node_modules/**/*"
     ],
+    "beforePack": "./build/preflight-mac.js",
     "afterAllArtifactBuild": "./build/verify-mac-build.js",
     "win": {
       "signtoolOptions": {

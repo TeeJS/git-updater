@@ -119,7 +119,7 @@ test('downloadAsset: strict downloads go through the policy; GitHub downloads ar
     'https://gh.example/f.zip': { status: 404 },
   }, async (calls) => {
     await assert.rejects(
-      github.downloadAsset('https://a.example/f.zip?sig=SECRET', path.join(dir, 'f.zip'), null, { httpsOnly: true }),
+      github.downloadAsset('https://a.example/f.zip?sig=SECRET', path.join(dir, 'f.zip'), null, undefined, { httpsOnly: true }),
       (e) => /non-HTTPS/.test(e.message) && !e.message.includes('SECRET')
     );
     await assert.rejects(github.downloadAsset('https://gh.example/f.zip', path.join(dir, 'g.zip')), /download 404/);
@@ -127,7 +127,7 @@ test('downloadAsset: strict downloads go through the policy; GitHub downloads ar
   });
   await withFetch({ 'https://a.example/f.zip?sig=SECRET': { status: 500 } }, async () => {
     await assert.rejects(
-      github.downloadAsset('https://a.example/f.zip?sig=SECRET', path.join(dir, 'f.zip'), null, { httpsOnly: true, noRedirect: true }),
+      github.downloadAsset('https://a.example/f.zip?sig=SECRET', path.join(dir, 'f.zip'), null, undefined, { httpsOnly: true, noRedirect: true }),
       (e) => /download 500 for https:\/\/a\.example\/f\.zip\?…/.test(e.message) && !e.message.includes('SECRET')
     );
   });

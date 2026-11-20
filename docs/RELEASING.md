@@ -26,6 +26,45 @@ Each build's signing hook **degrades gracefully**: with no credentials it produc
 *unsigned* artifact rather than failing — except macOS, where the guard (below) fails the
 build on purpose, because an unnotarized mac app will not launch at all.
 
+## Release from GitHub Actions
+
+[`.github/workflows/release.yml`](../.github/workflows/release.yml) does everything below on
+GitHub's own runners: it builds and signs all three platforms (macOS Developer ID +
+notarization on `macos-latest`, Windows Azure Artifact Signing through OIDC on
+`windows-latest`, Linux unsigned on `ubuntu-latest`) and drafts the release with exactly the
+ten files. **It never publishes.** It is adapted from `TeeJS/faction-wars-editor`, where the
+same design is proven.
+
+**Status:** a dry run passed on 2026-11-12 ([run 43308151736](https://github.com/TeeJS/git-updater/actions/runs/43308151736)):
+both Windows exes `Valid` (CN=Thomas Schmitz), the Mac app and disk image notarized, all four
+Linux files built. A dry run skips the draft step, so that step is proven only by the first
+tag release, `v0.2.7-beta.3`. The per-host steps below remain the fallback.
+
+- **Dry run** (builds and signs, creates nothing): once the workflow is on `main`,
+  `gh workflow run release.yml -f dry_run=true`. Read the proof lines in the logs: the Windows
+  job lists each exe as `Valid`; the Mac job shows notarization verified for the app and the
+  disk image.
+- **Release:** bump the version on `main` (step 0), then push the tag, which must equal
+  `v` + the `package.json` version. A `-beta.N` version makes a pre-release draft.
+
+  ```bash
+  git tag vX.Y.Z && git push origin vX.Y.Z
+  ```
+
+  Check the draft, then publish it: `gh release edit vX.Y.Z --draft=false --latest`, or for a
+  beta `gh release edit vX.Y.Z-beta.N --draft=false --prerelease`. The tag already exists at
+  the built commit, so the "target moved" check in step 6 does not apply.
+- **One-time setup for this repo:**
+  - Five repository secrets for macOS: `MAC_CERT_P12_BASE64`, `MAC_CERT_PASSWORD`,
+    `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`.
+  - A `release` environment with three variables, `AZURE_CLIENT_ID`, `AZURE_TENANT_ID` and
+    `AZURE_SUBSCRIPTION_ID` (IDs, not secrets).
+  - An Azure federated credential on the `github-actions-code-signing` app whose subject is
+    `repo:TeeJS@4136437/git-updater@1349272327:environment:release` (GitHub presents the
+    ID-based form; a name-only subject fails with `AADSTS700213`).
+- **Linux arm64** is built on the x64 runner; the dry run built both arm64 files. CI does not
+  run them on arm64 hardware.
+
 ---
 
 ## 0. Bump the version (once, on any host)

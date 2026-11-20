@@ -1,0 +1,283 @@
+name: Release
+
+# Builds, signs and drafts a git-updater release entirely on GitHub's runners.
+# Adapted from TeeJS/faction-wars-editor's release.yml, which is proven; the git-updater
+# differences are the artifact names, no build script, and the exact-ten-files gate below.
+#
+# Two ways to run it:
+#   - Actions tab -> Release -> "Run workflow" (a DRY RUN by default): builds and signs
+#     macOS (notarized), Windows (Azure Artifact Signing) and Linux, and keeps them as
+#     workflow artifacts. No release is created. Use it to test signing before a tag.
+#   - Push a tag vX.Y.Z[-beta.N] (matching package.json "version"): the same builds, then a
+#     DRAFT release with all ten files attached. A tag with a "-" in it (a beta) makes a
+#     pre-release draft. Publish the draft by hand: this workflow never publishes.
+#   (docs/RELEASING.md still documents building on your own machines, as the fallback.)
+#
+# Windows signs through the 'release' environment (variables AZURE_CLIENT_ID, AZURE_TENANT_ID,
+# AZURE_SUBSCRIPTION_ID; OIDC, no secret). macOS repository secrets, see docs/RELEASING.md:
+#   MAC_CERT_P12_BASE64   Developer ID Application certificate + private key (.p12), base64
+#   MAC_CERT_PASSWORD     the .p12's export password
+#   APPLE_ID              the Apple ID that notarizes
+#   APPLE_APP_SPECIFIC_PASSWORD
+#   APPLE_TEAM_ID
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Build and sign only (no release)
+        type: boolean
+        default: true
+      tag:
+        description: Tag for the draft release when not a dry run (e.g. v0.2.7-beta.3)
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  mac:
+    runs-on: macos-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - name: Require the signing secrets
+        env:
+          P12: ${{ secrets.MAC_CERT_P12_BASE64 }}
+          P12_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          missing=""
+          for v in P12 P12_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
+            [ -n "${!v}" ] || missing="$missing $v"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Missing secrets:$missing (P12 = MAC_CERT_P12_BASE64, P12_PASSWORD = MAC_CERT_PASSWORD). See docs/RELEASING.md."
+            exit 1
+          fi
+      # Our own keychain, alive for the whole job (GitHub's documented pattern). Not
+      # electron-builder's CSC_LINK: that keychain is deleted before the post-build hook
+      # that signs and notarizes the .dmg runs, which would leave the .dmg unsigned.
+      - name: Import the Developer ID certificate
+        env:
+          P12: ${{ secrets.MAC_CERT_P12_BASE64 }}
+          P12_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
+        run: |
+          KEYCHAIN_PATH="$RUNNER_TEMP/signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -base64 24)"
+          CERT="$RUNNER_TEMP/developer-id.p12"
+          printf '%s' "$P12" | base64 --decode > "$CERT"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERT" -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH" > /dev/null
+          security list-keychain -d user -s "$KEYCHAIN_PATH"
+          rm -f "$CERT"
+          if ! security find-identity -v -p codesigning | grep -q 'Developer ID Application'; then
+            echo "::error::The .p12 holds no usable 'Developer ID Application' identity (export the certificate WITH its private key)."
+            security find-identity -v -p codesigning
+            exit 1
+          fi
+          security find-identity -v -p codesigning | grep 'Developer ID Application'
+      - run: npm ci
+      # electron-builder finds the identity in the keychain, signs and notarizes the .app;
+      # the afterAllArtifactBuild guard (build/verify-mac-build.js) then signs, notarizes and
+      # staples the .dmg and FAILS the build unless the app and the disk image truly pass.
+      - name: Package, sign and notarize
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: npx electron-builder --mac --publish never
+      - name: Show what Gatekeeper says
+        run: |
+          for app in dist/mac*/*.app; do
+            echo "== $app"; codesign --test-requirement="=notarized" --verify --strict "$app" && echo "notarized"
+          done
+          for dmg in dist/*.dmg; do
+            echo "== $dmg"; spctl -a -vv -t open --context context:primary-signature "$dmg"; xcrun stapler validate "$dmg"
+          done
+      # latest-mac.yml and the .zip.blockmap feed the macOS self-updater: they ship with the dmg and zip.
+      - uses: actions/upload-artifact@v7
+        with:
+          name: mac
+          path: |
+            dist/git-updater-*-mac-arm64.dmg
+            dist/git-updater-*-mac-arm64.zip
+            dist/git-updater-*-mac-arm64.zip.blockmap
+            dist/latest-mac.yml
+          if-no-files-found: error
+
+  # Linux builds x64 and arm64 on this one x64 runner. The arm64 half is the part not yet
+  # proven from CI; if a dry run shows it failing, move arm64 to an ubuntu-24.04-arm job.
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx electron-builder --linux --publish never
+      - uses: actions/upload-artifact@v7
+        with:
+          name: linux
+          path: |
+            dist/git-updater-*-linux-*.tar.gz
+            dist/git-updater-*-linux-*.AppImage
+          if-no-files-found: error
+
+  # Windows, signed here with Azure Artifact (Trusted) Signing: the same sign.js hook
+  # and the same signing library (Microsoft.Trusted.Signing.Client 1.0.95, byte-
+  # identical to the local .signing\dlib-x64) that sign locally. Only the login
+  # differs: GitHub's OIDC token, through the 'release' environment's federated
+  # credential on the github-actions-code-signing app - no Azure secret is stored.
+  windows:
+    runs-on: windows-latest
+    environment: release
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      SIGNING_ENDPOINT: https://eus.codesigning.azure.net/
+      SIGNING_ACCOUNT: openquakesigning
+      SIGNING_PROFILE: openquake-public
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      # The signing library runs on .NET 8.
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 8.0.x
+      - name: Azure login (OIDC, no stored secret)
+        uses: azure/login@v3
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: Signing library and metadata (pinned, verified)
+        shell: pwsh
+        run: |
+          $zip = "$env:RUNNER_TEMP\signing-client.zip"
+          Invoke-WebRequest 'https://api.nuget.org/v3-flatcontainer/microsoft.trusted.signing.client/1.0.95/microsoft.trusted.signing.client.1.0.95.nupkg' -OutFile $zip
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+          if ($hash -ne '3bfcf1e0a3cb42af1692f0a8ed45c15de070c2de86f28a59b2795d904d8a920f') { throw "signing client package hash mismatch: $hash" }
+          Expand-Archive $zip "$env:RUNNER_TEMP\signing-client"
+          New-Item -ItemType Directory -Force .signing\dlib-x64 | Out-Null
+          Copy-Item "$env:RUNNER_TEMP\signing-client\bin\x64\*" .signing\dlib-x64\ -Recurse
+          # Only the Azure CLI login that azure/login just made; every other credential
+          # type is excluded so nothing else is tried (Microsoft's documented OIDC setup).
+          $meta = [ordered]@{
+            Endpoint = $env:SIGNING_ENDPOINT
+            CodeSigningAccountName = $env:SIGNING_ACCOUNT
+            CertificateProfileName = $env:SIGNING_PROFILE
+            ExcludeCredentials = @('EnvironmentCredential', 'WorkloadIdentityCredential', 'ManagedIdentityCredential',
+              'SharedTokenCacheCredential', 'VisualStudioCredential', 'VisualStudioCodeCredential',
+              'AzurePowerShellCredential', 'AzureDeveloperCliCredential', 'InteractiveBrowserCredential')
+          }
+          [IO.File]::WriteAllText("$PWD\.signing\metadata.json", ($meta | ConvertTo-Json), [Text.UTF8Encoding]::new($false))
+      - run: npm ci
+      - name: Package and sign
+        run: npx electron-builder --win --publish never
+      # sign.js leaves a file unsigned (with a warning) when its setup is missing, so
+      # this is what proves the build is signed - checked on the files, not the log.
+      # The release ships zips of these two unpacked folders, so these are the exes that count.
+      - name: Verify every exe is signed
+        shell: pwsh
+        run: |
+          $files = @(Get-Item 'dist\win-unpacked\git-updater.exe', 'dist\win-arm64-unpacked\git-updater.exe')
+          foreach ($f in $files) {
+            $s = Get-AuthenticodeSignature $f.FullName
+            if ($s.Status -ne 'Valid') { throw "$($f.FullName) is not validly signed: $($s.Status) $($s.StatusMessage)" }
+            "signed  $($f.FullName)  ($($s.SignerCertificate.Subject))"
+          }
+      - uses: actions/upload-artifact@v7
+        with:
+          name: windows
+          path: |
+            dist/git-updater-*-x64.zip
+            dist/git-updater-*-arm64.zip
+          if-no-files-found: error
+
+  draft:
+    needs: [mac, linux, windows]
+    if: github.event_name == 'push' || inputs.dry_run == false
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Create the draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          if [ "$TAG" != "v$version" ]; then
+            echo "::error::Tag $TAG does not match package.json version v$version."
+            exit 1
+          fi
+
+          # The release is exactly these ten files: no more (a stray build output), no fewer
+          # (a platform that quietly built nothing). Names come from the version, not a glob.
+          printf '%s\n' \
+            "git-updater-$version-x64.zip" \
+            "git-updater-$version-arm64.zip" \
+            "git-updater-$version-mac-arm64.dmg" \
+            "git-updater-$version-mac-arm64.zip" \
+            "git-updater-$version-mac-arm64.zip.blockmap" \
+            "latest-mac.yml" \
+            "git-updater-$version-linux-x64.tar.gz" \
+            "git-updater-$version-linux-arm64.tar.gz" \
+            "git-updater-$version-linux-x86_64.AppImage" \
+            "git-updater-$version-linux-arm64.AppImage" | sort > expected.txt
+          ls -1 artifacts | sort > built.txt
+          if ! diff expected.txt built.txt; then
+            echo "::error::The built files are not exactly the ten expected release files (diff above: < expected, > built)."
+            exit 1
+          fi
+
+          # A version with a hyphen (0.2.7-beta.3) is a beta: pre-release, never Latest.
+          pre=""
+          case "$version" in *-*) pre="--prerelease" ;; esac
+
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --draft --verify-tag $pre --title "$TAG" \
+            --notes "Built and signed in GitHub Actions: Windows (Azure Artifact Signing), macOS (Developer ID, notarized), Linux (unsigned). Replace these notes before publishing."
+
+          # One file per call, retried, with --clobber: a transient failure on one large file
+          # must not cost the rest.
+          for f in artifacts/*; do
+            ok=""
+            for attempt in 1 2 3; do
+              if gh release upload "$TAG" "$f" --repo "$GITHUB_REPOSITORY" --clobber; then ok=1; break; fi
+              echo "::warning::upload of $f failed (attempt $attempt of 3)"
+              sleep 10
+            done
+            [ -n "$ok" ] || { echo "::error::could not upload $f"; exit 1; }
+          done
+
+          # GitHub's copy must match what was built: same names, same sizes, all "uploaded".
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[] | "\(.name) \(.size) \(.state)"' | sort > uploaded.txt
+          for f in artifacts/*; do echo "$(basename "$f") $(stat -c %s "$f") uploaded"; done | sort > local.txt
+          if ! diff local.txt uploaded.txt; then
+            echo "::error::The draft release does not match the build output (diff above: < built, > on GitHub)."
+            exit 1
+          fi
+          echo "Draft $TAG is ready: $(wc -l < uploaded.txt) files, names and sizes verified."

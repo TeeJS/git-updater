@@ -144,13 +144,14 @@ async function run(config, opts = {}) {
         ...opts,
         portableRoot: config.portableRoot,
         requireChecksum: !!config.requireChecksum,
+        maxBytes: core.downloadLimitBytes(config),
         markClosed,
       });
       results.push(closed ? { ...result, closed: true } : result);
     } catch (e) {
-      results.push({ repo: id, id: appKey(repo), status: 'failed', reason: e.message, ...where(repo), ...(closed ? { closed: true } : {}) });
+      results.push({ repo: id, id: appKey(repo), status: 'failed', reason: e.message, stopRun: !!e.rateLimited || !!e.badToken, ...where(repo), ...(closed ? { closed: true } : {}) });
       log(`FAIL ${appKey(repo)}: ${e.message}`);
-      if (e.rateLimited) break; // no point hammering a rate-limited API
+      if (e.rateLimited || e.badToken) break; // every later call would fail the same way and burn more quota
     }
   }
   return { results, summary: core.buildSummary(results) };
@@ -370,13 +371,13 @@ async function handleRepo(repo, id, st, opts) {
     let file = path.join(tmp, stagedName);
     if (!gh && path.dirname(path.resolve(file)) !== path.resolve(tmp)) throw new Error('the source listed a file whose name is not safe to save');
     emit('downloading', 0);
-    // Where the bytes really came from. A source that names a file must serve that file,
-    // so most non-GitHub downloads may not be redirected at all; the exceptions (a forge's
-    // object storage, a vendor mirror behind a manifest-pinned hash) stay HTTPS on the
-    // final hop. Recorded and logged either way — the declared URL is not the whole story.
+    // Where the bytes really came from. Every non-GitHub download is HTTPS on every hop,
+    // and a redirect (vendors front their files with mirrors) is followed only after the
+    // next address has been validated. The host that finally served the file is recorded
+    // and logged beside the declared one — the declared URL is not the whole story.
     let finalUrl = asset.browser_download_url;
     const policy = sources.downloadPolicy(repo, asset, sum);
-    await github.downloadAsset(asset.browser_download_url, file, (pct) => emit('downloading', pct), {
+    await github.downloadAsset(asset.browser_download_url, file, (pct) => emit('downloading', pct), opts.maxBytes, {
       ...policy,
       onFinalUrl: (u) => { finalUrl = u; },
     });
@@ -431,6 +432,9 @@ async function handleRepo(repo, id, st, opts) {
       //   macOS .pkg:  opts.openFile hands it to Installer.app, which prompts for admin.
       //   Linux .deb/.rpm: opts.openFile hands it to the desktop's package installer.
       const interactive = (keepName) => {
+        // An unattended (scheduled) run never opens an installer window or an authorization
+        // prompt: nobody is there to answer it. Such an installer is reported as "needs you".
+        if (opts.unattended) return false;
         const keep = path.join(stageBase, keepName); // outlives the tmp cleanup below
         fs.copyFileSync(file, keep);
         log(`  -> opening interactive installer: ${keep}`);
@@ -455,6 +459,7 @@ async function handleRepo(repo, id, st, opts) {
         // Unidentifiable installer, or one with no silent switches declared for it: never
         // guess — run its own window instead.
         if (interactive(stagedName)) return interactiveResult;
+        if (opts.unattended) throw new Error(`needs you: ${core.appName(repo)}'s installer cannot run silently, so it was not run unattended. Update it from the window.`);
         throw new Error(
           `could not identify the installer type for ${asset.name} — add "install":{"kind":"nsis|inno|msi"} for ${id} in config.json`
         );
@@ -467,6 +472,9 @@ async function handleRepo(repo, id, st, opts) {
         // Silent installs can't show a UAC prompt, so unelevated they fail — MSI with
         // exit 1603, EXE installers with an elevation spawn error. Fall back to the
         // installer's own window in both cases. (No PowerShell, no self-elevation.)
+        if ((e.status === 1603 || e.elevation) && opts.unattended) {
+          throw new Error(`needs you: ${core.appName(repo)}'s installer needs administrator permission, so it was not run unattended. Update it from the window.`);
+        }
         if ((e.status === 1603 || e.elevation) && interactive(stagedName)) return interactiveResult;
         throw e;
       }

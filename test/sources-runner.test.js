@@ -54,8 +54,9 @@ async function withWorld(opts, fn) {
     calls.text.push(url);
     return { status: 200, url, text: `${opts.sums === 'mismatch' ? 'f'.repeat(64) : sha}  payload.zip\n` };
   };
-  github.downloadAsset = async (url, file, _progress, policy) => {
-    calls.download.push({ url, policy: { httpsOnly: policy.httpsOnly, noRedirect: policy.noRedirect } });
+  // (url, destPath, onProgress, maxBytes, policy) — the size cap comes before the policy.
+  github.downloadAsset = async (url, file, _progress, maxBytes, policy = {}) => {
+    calls.download.push({ url, maxBytes, policy: { httpsOnly: policy.httpsOnly, noRedirect: policy.noRedirect } });
     fs.writeFileSync(file, bytes);
     if (policy.onFinalUrl) policy.onFinalUrl(opts.servedFrom || url);
   };
@@ -111,7 +112,7 @@ test('update: verifies a published checksum, installs, and records provenance', 
     assert.equal(fs.readFileSync(path.join(dir, 'app.txt'), 'utf8'), 'v2');
     // The checksum was resolved BEFORE the download, and the download was HTTPS-only.
     assert.deepEqual(calls.text, [SUMS_URL]);
-    assert.deepEqual(calls.download, [{ url: FILE_URL, policy: { httpsOnly: true, noRedirect: false } }]);
+    assert.deepEqual(calls.download, [{ url: FILE_URL, maxBytes: 500 * 1024 * 1024, policy: { httpsOnly: true, noRedirect: false } }]);
     assert.equal(r.checksum, 'published');
     assert.equal(r.fileHost, 'codeberg.org');
     assert.equal(r.servedFrom, 'objects.codeberg.example', 'a different final host is surfaced');

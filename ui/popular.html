@@ -207,7 +207,8 @@ async function addChosen() {
   $('go').disabled = true;
   try {
     const res = await window.api.addSources(items);
-    status(`Added ${res.added} app${res.added === 1 ? '' : 's'}${res.skipped ? `, ${res.skipped} already in your list` : ''}. Use Check all in the main window to see versions.`, 'ok');
+    const clash = (res.conflicts || []).map((c) => `${c.name} (same folder as ${c.with})`);
+    status(`Added ${res.added} app${res.added === 1 ? '' : 's'}${res.skipped ? `, ${res.skipped} already in your list` : ''}${clash.length ? `. Not added: ${clash.join(', ')}` : ''}. Use Check all in the main window to see versions.`, clash.length ? 'bad' : 'ok');
     picked.clear(); chosen.clear();
     apps = await window.api.popularList();
     plan = null; showView(planFrom === 'packs' ? 'viewPacks' : 'viewApps');

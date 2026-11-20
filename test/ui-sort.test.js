@@ -20,6 +20,70 @@ const repos = [
 ];
 const keyOf = (r) => `${r.owner}/${r.repo}#${r.type}`;
 
+// Settings -> "Sort the list at startup by": the helpers sit just above sortedRepos().
+const startupSource = html.slice(html.indexOf('const SORT_COLUMNS'), start);
+assert.ok(startupSource.includes('function applyStartupSort'), 'startup sort helpers found');
+
+test('startup sort: off leaves the remembered sort alone', () => {
+  const context = {};
+  vm.runInNewContext(startupSource, context);
+  const cfg = { sortColumn: 'status', sortDirection: 'desc', startupSortColumn: 'owner', startupSortDirection: 'asc' };
+  assert.equal(context.applyStartupSort(cfg), false);
+  assert.equal(cfg.sortColumn, 'status');
+  assert.equal(cfg.sortDirection, 'desc');
+});
+
+test('startup sort: on replaces the remembered sort with the chosen column and direction', () => {
+  const context = {};
+  vm.runInNewContext(startupSource, context);
+  for (const column of ['owner', 'app', 'type', 'current', 'available', 'status']) {
+    for (const direction of ['asc', 'desc']) {
+      const cfg = { sortColumn: 'type', sortDirection: 'asc', startupSortEnabled: true, startupSortColumn: column, startupSortDirection: direction };
+      assert.equal(context.applyStartupSort(cfg), true);
+      assert.deepEqual([cfg.sortColumn, cfg.sortDirection], [column, direction]);
+    }
+  }
+});
+
+test('startup sort: a hand-edited bad column or direction falls back instead of breaking the list', () => {
+  const context = {};
+  vm.runInNewContext(startupSource, context);
+  const bad = { sortColumn: 'status', sortDirection: 'desc', startupSortEnabled: true, startupSortColumn: 'bogus', startupSortDirection: 'sideways' };
+  context.applyStartupSort(bad);
+  assert.deepEqual([bad.sortColumn, bad.sortDirection], ['status', 'asc']); // bad column -> the remembered one; bad direction -> asc
+  const nothing = { startupSortEnabled: true };
+  context.applyStartupSort(nothing);
+  assert.deepEqual([nothing.sortColumn, nothing.sortDirection], ['app', 'asc']);
+  // Never set before: the controls start on the sort that is already in effect.
+  const first = { sortColumn: 'current', sortDirection: 'desc' };
+  assert.deepEqual({ ...context.startupSortChoice(first) }, { column: 'current', direction: 'desc' });
+});
+
+test('startup sort: the list really opens in the chosen order', () => {
+  const rows = [
+    { owner: 'aaa', repo: 'alpha', type: 'portable' },
+    { owner: 'zzz', repo: 'zed', type: 'portable' },
+  ];
+  const config = { repos: [...rows], sortColumn: 'app', sortDirection: 'asc', startupSortEnabled: true, startupSortColumn: 'owner', startupSortDirection: 'desc' };
+  const context = { config, st: {}, busy: false, displayOrder: null, keyOf, window: browser.window, statusView: () => ({ text: '' }) };
+  vm.runInNewContext(startupSource + source, context);
+  assert.equal(context.sortedRepos()[0].owner, 'aaa'); // the remembered sort (App, ascending) puts aaa/alpha first...
+  context.applyStartupSort(config);
+  assert.deepEqual(Array.from(context.sortedRepos(), (r) => r.owner), ['zzz', 'aaa']); // ...the startup sort (Owner, descending) puts zzz first
+  assert.deepEqual(config.repos.map((r) => r.owner), ['aaa', 'zzz'], 'the saved list order is untouched');
+});
+
+test('startup sort: the Settings dropdown offers exactly the columns the header can sort by', () => {
+  const context = {};
+  const columns = vm.runInNewContext(`${startupSource}; SORT_COLUMNS`, context);
+  const select = html.slice(html.indexOf('id="startupSortColumn"'), html.indexOf('</select>', html.indexOf('id="startupSortColumn"')));
+  const offered = [...select.matchAll(/value="(\w+)"/g)].map((m) => m[1]);
+  const header = html.slice(html.indexOf('class="table-header"'), html.indexOf('id="rows"'));
+  const sortable = [...header.matchAll(/data-sort="(\w+)"/g)].map((m) => m[1]);
+  assert.deepEqual(offered, Array.from(columns));
+  assert.deepEqual([...offered].sort(), [...sortable].sort());
+});
+
 test('version sort uses version precedence and leaves saved config order intact', () => {
   const config = { repos: [...repos], sortColumn: 'current', sortDirection: 'asc' };
   const st = { [keyOf(repos[0])]: { from: '1.10' }, [keyOf(repos[1])]: { from: '1.2' } };
@@ -42,6 +106,33 @@ test('rows keep their displayed order while busy', () => {
   assert.deepEqual(Array.from(context.sortedRepos(), (r) => r.repo), ['newer', 'older']);
   context.busy = false;
   assert.deepEqual(Array.from(context.sortedRepos(), (r) => r.repo), ['older', 'newer']);
+});
+
+test('Owner sorts by owner then name; App sorts by repo name alone', () => {
+  const list = [
+    { owner: 'TeeJS', repo: 'bedrock-panel', type: 'installer' },
+    { owner: 'anomalyco', repo: 'opencode', type: 'installer' },
+    { owner: 'can1357', repo: 'oh-my-pi', type: 'portable' },
+    { owner: 'anomalyco', repo: 'another', type: 'portable' },
+  ];
+  const config = { repos: [...list], sortColumn: 'app', sortDirection: 'asc' };
+  const context = { config, st: {}, busy: false, displayOrder: null, keyOf, window: browser.window, statusView: () => ({ text: '' }) };
+  vm.runInNewContext(source, context);
+  const names = () => Array.from(context.sortedRepos(), (r) => `${r.owner}/${r.repo}`);
+  assert.deepEqual(names(), ['anomalyco/another', 'TeeJS/bedrock-panel', 'can1357/oh-my-pi', 'anomalyco/opencode']);
+  config.sortDirection = 'desc';
+  assert.deepEqual(names(), ['anomalyco/opencode', 'can1357/oh-my-pi', 'TeeJS/bedrock-panel', 'anomalyco/another']);
+  config.sortColumn = 'owner';
+  config.sortDirection = 'asc';
+  assert.deepEqual(names(), ['anomalyco/another', 'anomalyco/opencode', 'can1357/oh-my-pi', 'TeeJS/bedrock-panel']);
+  config.sortDirection = 'desc';
+  assert.deepEqual(names(), ['TeeJS/bedrock-panel', 'can1357/oh-my-pi', 'anomalyco/opencode', 'anomalyco/another']);
+  assert.deepEqual(config.repos.map((r) => r.repo), list.map((r) => r.repo), 'saved order untouched');
+});
+
+test('header has separate Owner and App sort buttons in the name column', () => {
+  assert.match(html, /data-sort="owner"><button class="sort-button" type="button">Owner</);
+  assert.match(html, /data-sort="app"><button class="sort-button" type="button">App</);
 });
 
 test('status dates format both ways and old records remain Installed', () => {

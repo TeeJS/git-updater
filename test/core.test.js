@@ -86,6 +86,16 @@ test('validateConfig: accepts a good config', () => {
   assert.equal(core.validateConfig(cfg), cfg);
 });
 
+// Ported from EstusFlask/git-updater-background (flash201524), commit 4d89769.
+test('download limit defaults to 500 MiB, can be changed or disabled, and rejects invalid sizes', () => {
+  assert.equal(core.downloadLimitBytes({}), 500 * 1024 * 1024);
+  assert.equal(core.downloadLimitBytes({ downloadLimitEnabled: true, downloadLimitMiB: 2048 }), 2048 * 1024 * 1024);
+  assert.equal(core.downloadLimitBytes({ downloadLimitEnabled: false, downloadLimitMiB: 2048 }), null);
+  assert.throws(() => core.validateConfig({ repos: [], downloadLimitMiB: 0 }), /downloadLimitMiB/);
+  assert.throws(() => core.validateConfig({ repos: [], downloadLimitMiB: 1.5 }), /downloadLimitMiB/);
+  assert.throws(() => core.validateConfig({ repos: [], downloadLimitEnabled: 'no' }), /downloadLimitEnabled/);
+});
+
 test('validateConfig: rejects bad type / missing fields / bad kind', () => {
   assert.throws(() => core.validateConfig({}), /"repos" array is required/);
   assert.throws(
