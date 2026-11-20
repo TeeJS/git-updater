@@ -18,6 +18,7 @@ contextBridge.exposeInMainWorld('api', {
   pickFolder: () => ipcRenderer.invoke('pick-folder'),
   openRelease: (appKey) => ipcRenderer.invoke('release:open', appKey),
   describeSources: () => ipcRenderer.invoke('sources:describe'),
+  listProviders: () => ipcRenderer.invoke('sources:providers'),
   resolveSource: (text) => ipcRenderer.invoke('source:resolve', text),
   inspectSource: (source, prerelease) => ipcRenderer.invoke('source:inspect', { source, prerelease }),
   openSourcePage: (source) => ipcRenderer.invoke('source:open', source),

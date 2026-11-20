@@ -216,25 +216,29 @@ function archRank(assetArch, hostArch, platform) {
   return 0;
 }
 
-const KIND_FLAVOR = { msi: 'msi', nsis: 'exe', inno: 'exe', deb: 'deb', rpm: 'rpm' };
+const KIND_FLAVOR = { msi: 'msi', nsis: 'exe', inno: 'exe', exe: 'exe', deb: 'deb', rpm: 'rpm' };
 
 // Assets from a manifest provider say what they are. Choose on the stated facts.
-function selectExplicit(entry, rel, host) {
+// Returns the files this machine may be given for this entry, or throws saying why none.
+function eligibleExplicit(entry, rel, host) {
   const all = rel.assets || [];
   const here = all.filter((a) => !a.platform || a.platform === host.platform);
   const runnable = here.filter((a) => archRank(a.arch, host.arch, host.platform) > 0);
   const typed = runnable.filter((a) => !a.type || a.type === entry.type);
   const usable = typed.filter((a) => !a.unsupported);
-  if (!usable.length) {
-    const os = assetTable(host.platform).label;
-    if (typed.length) throw new Error(`not installable by git-updater: ${typed[0].unsupported}`);
-    if (runnable.length) {
-      const other = entry.type === 'installer' ? 'Portable' : 'Installer';
-      throw new Error(`this source only lists ${other.toLowerCase()} builds for ${os} — Edit the app and change its type to ${other}`);
-    }
-    if (here.length) throw new Error(`no build for this machine (${os} ${host.arch}) in ${core.normTag(rel.tag_name)}`);
-    throw new Error(`this source lists nothing for ${os}`);
+  if (usable.length) return usable;
+  const os = assetTable(host.platform).label;
+  if (typed.length) throw new Error(`not installable by git-updater: ${typed[0].unsupported}`);
+  if (runnable.length) {
+    const other = entry.type === 'installer' ? 'Portable' : 'Installer';
+    throw new Error(`this source only lists ${other.toLowerCase()} builds for ${os} — Edit the app and change its type to ${other}`);
   }
+  if (here.length) throw new Error(`no build for this machine (${os} ${host.arch}) in ${core.normTag(rel.tag_name)}`);
+  throw new Error(`this source lists nothing for ${os}`);
+}
+
+function selectExplicit(entry, rel, host) {
+  const usable = eligibleExplicit(entry, rel, host);
   const want = entry.install || {};
   const score = (a) => {
     let s = archRank(a.arch, host.arch, host.platform) * 1000;
@@ -263,7 +267,28 @@ function strictArchFilter(assets, host) {
   });
 }
 
+// The architecture a filename names, as far as the platform's vocabulary can tell.
+function namedArch(name, platform) {
+  const k = assetTable(platform).archTokens(name);
+  if (k.isUniversal) return 'universal';
+  if (k.isArm && !k.isX64) return 'arm64';
+  if (k.isX64) return 'x64';
+  if (k.isX86) return 'ia32';
+  return null;
+}
+
+// Is this pick a build for ANOTHER architecture that merely runs here under emulation
+// (x64 on arm64 Windows or macOS)? It is allowed, because many apps ship only x64 — but
+// it is never treated as equivalent to a native build: the caller is told, the options
+// list says so, and a preference never adds one without asking.
+function isEmulated(asset, host) {
+  const arch = asset.arch || namedArch(asset.name, host.platform);
+  return !!arch && arch !== 'universal' && arch !== 'any' && arch !== host.arch && archRank(arch, host.arch, host.platform) === 1;
+}
+
 // host: { platform, arch, flavor, osRelease }. Defaults to the running machine.
+// Returns the chosen asset. The returned object is the provider's asset, plus
+// `emulated: true` when it is not native to this machine.
 function selectAsset(entry, rel, host = {}) {
   const h = {
     platform: host.platform || process.platform,
@@ -271,29 +296,40 @@ function selectAsset(entry, rel, host = {}) {
     flavor: host.flavor || null,
     osRelease: host.osRelease || null,
   };
-  if (entry.asset) return core.matchAsset(rel.assets, entry.asset); // a hand-pinned pattern always wins
-  if (isGithub(entry)) return core.pickAsset(rel.assets, entry.type, h.arch, h.flavor, h.platform, h.osRelease);
-  const explicit = (rel.assets || []).some((a) => a.platform || a.type || a.kind);
-  if (explicit) return selectExplicit(entry, rel, h);
-  const runnable = strictArchFilter(rel.assets, h);
-  if (!runnable.length && (rel.assets || []).length) {
-    // Does the listing have a build for this OS at all, just not this architecture?
-    try {
-      core.pickAsset(rel.assets, entry.type, h.arch, h.flavor, h.platform, h.osRelease);
-      throw Object.assign(new Error(`no build for this machine (${assetTable(h.platform).label} ${h.arch}) in ${core.normTag(rel.tag_name)}`), { noArch: true });
-    } catch (e) {
-      if (e.noArch) throw e;
-    }
+  // GitHub entries are untouched, including the long-standing rule that a hand-pinned
+  // asset pattern is taken literally.
+  if (isGithub(entry)) {
+    if (entry.asset) return core.matchAsset(rel.assets, entry.asset);
+    return core.pickAsset(rel.assets, entry.type, h.arch, h.flavor, h.platform, h.osRelease);
   }
+  const chosen = selectSourced(entry, rel, h);
+  return isEmulated(chosen, h) ? { ...chosen, emulated: true } : chosen;
+}
+
+function selectSourced(entry, rel, h) {
+  const explicit = (rel.assets || []).some((a) => a.platform || a.type || a.kind);
+  if (explicit) {
+    // A pinned pattern narrows the choice; it never widens it past what this machine and
+    // this package type can use, and it can never select an unsupported row.
+    if (entry.asset) return core.matchAsset(eligibleExplicit(entry, rel, h), entry.asset);
+    return selectExplicit(entry, rel, h);
+  }
+  const runnable = strictArchFilter(rel.assets, h);
+  if (entry.asset) {
+    const table = assetTable(h.platform);
+    const ext = entry.type === 'installer' ? table.ext.installer : table.ext.portable;
+    return core.matchAsset(runnable.filter((a) => !table.reject.test(a.name) && ext.test(a.name)), entry.asset);
+  }
+  const noArch = () => new Error(`no build for this machine (${assetTable(h.platform).label} ${h.arch}) in ${core.normTag(rel.tag_name)}`);
   try {
     return core.pickAsset(runnable, entry.type, h.arch, h.flavor, h.platform, h.osRelease);
   } catch (e) {
-    // The picker's "no asset" message lists what it saw; if it saw nothing only because
-    // the architecture filter removed everything for this OS, say that instead.
-    if (runnable.length < (rel.assets || []).length && /^no .* asset in release/.test(e.message)) {
+    // The picker's "nothing found" lists what it saw. If it saw nothing only because the
+    // architecture filter removed the builds for this OS, say that instead.
+    if (runnable.length < (rel.assets || []).length) {
       let otherArch = false;
       try { core.pickAsset(rel.assets, entry.type, h.arch, h.flavor, h.platform, h.osRelease); otherArch = true; } catch {}
-      if (otherArch) throw new Error(`no build for this machine (${assetTable(h.platform).label} ${h.arch}) in ${core.normTag(rel.tag_name)}`);
+      if (otherArch) throw noArch();
     }
     throw e;
   }
@@ -322,20 +358,32 @@ function parseSums(text, assetName, sumsFileName) {
   return null;
 }
 
+const DIGEST = /^(sha256:[a-f0-9]{64}|sha512:[a-f0-9]{128})$/i;
+const validDigest = (d) => typeof d === 'string' && DIGEST.test(d);
+
 // Find a published checksum for `asset` among the release's own files.
+// -> { algo, expected } | null. Throws when the publisher DOES ship a checksum file but it
+// could not be read: that is not the same thing as there being none, and treating it as
+// "none" would let a network hiccup switch verification off.
 async function findPublishedChecksum(rel, asset, ctx) {
   const name = String(asset.name).toLowerCase();
   const candidates = (rel.assets || []).filter((a) => a !== asset && github.SUMS_FILE.test(a.name) &&
     (a.size == null || a.size <= MAX_SUMS_BYTES) &&
     // "<name>.sha256" must belong to OUR file; a shared sums file is matched by its lines.
-    (!/\.(sha256|sha512)$/i.test(a.name) || a.name.toLowerCase().startsWith(name) || !/\.(zip|7z|exe|msi|dmg|pkg|deb|rpm|appimage|tar\.[a-z0-9]+|tgz)\.(sha256|sha512)$/i.test(a.name)));
+    (!/\.(sha256|sha512)$/i.test(a.name) || a.name.toLowerCase().startsWith(name) || !/\.(zip|7z|exe|msi|dmg|pkg|deb|rpm|appimage|xz|gz|bz2|tgz)\.(sha256|sha512)$/i.test(a.name)));
+  let unreadable = null;
   for (const c of candidates) {
+    let text;
     try {
-      const { text } = await ctx.net.getText(c.browser_download_url, { maxBytes: MAX_SUMS_BYTES });
-      const hit = parseSums(text, asset.name, c.name);
-      if (hit) return hit;
-    } catch {}
+      ({ text } = await ctx.net.getText(c.browser_download_url, { maxBytes: MAX_SUMS_BYTES }));
+    } catch (e) {
+      if (!(e && e.unavailable)) unreadable = unreadable || c.name;
+      continue;
+    }
+    const hit = parseSums(text, asset.name, c.name);
+    if (hit) return hit;
   }
+  if (unreadable) throw new Error(`the published checksum file (${unreadable}) could not be read — try again`);
   return null;
 }
 
@@ -343,18 +391,35 @@ async function findPublishedChecksum(rel, asset, ctx) {
 //   pinned     the listing itself states the hash of this exact file (winget, Homebrew)
 //   published  the publisher ships a hash beside the file (asset digest or a sums file)
 //   none       nothing to verify against
+// A digest that is DECLARED but malformed is an error, never "none": a listing that tried
+// to state a hash and got it wrong must not degrade into an unverified install.
 async function resolveChecksum(entry, rel, asset, ctx) {
   const p = provider(sourceOf(entry).type);
-  if (asset.digest) {
+  if (asset.digest != null && asset.digest !== '') {
+    if (!validDigest(asset.digest)) throw new Error(`${p.label} published a malformed checksum for ${asset.name}`);
     return p.checksum === 'pinned'
-      ? { digest: asset.digest, state: 'pinned', note: `verified against the ${p.label} listing` }
-      : { digest: asset.digest, state: 'published', note: null };
+      ? { digest: asset.digest.toLowerCase(), state: 'pinned', note: `verified against the ${p.label} listing` }
+      : { digest: asset.digest.toLowerCase(), state: 'published', note: null };
   }
   const found = isGithub(entry)
     ? await github.fetchChecksumFromRelease(rel, asset.name)
     : await findPublishedChecksum(rel, asset, ctx || makeCtx());
   if (found) return { digest: `${found.algo}:${found.expected}`, state: 'published', note: 'verified via release checksums file' };
   return { digest: null, state: 'none', note: 'no checksum published' };
+}
+
+// The one name a downloaded file may be staged under: a single path segment, legal on
+// every platform, with nothing that could step out of the staging directory. Asset names
+// come from remote listings (a decoded URL segment, a free-text field), so they are
+// checked, never trusted.
+function safeFileName(name) {
+  const n = String(name == null ? '' : name);
+  const bad =
+    !n || n.length > 200 || n === '.' || n === '..' ||
+    /[\\/:*?"<>|\u0000-\u001f]/.test(n) || /[. ]$/.test(n) ||
+    /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\.|$)/i.test(n);
+  if (bad) throw new Error('the source listed a file whose name is not safe to save');
+  return n;
 }
 
 // How the bytes may be fetched for this entry's source.
@@ -369,9 +434,12 @@ function downloadPolicy(entry, asset, checksum) {
 // Resolver
 // ---------------------------------------------------------------------------
 
+// Is this an address rather than a name? Only with a scheme, or a host followed by a
+// path. A bare dotted word is NOT a domain here: "Paint.NET" is an app and
+// "Mozilla.Firefox" is a package id, and both must reach the name search.
 function looksLikeUrl(s) {
   if (/^https?:\/\//i.test(s)) return true;
-  return /^[a-z0-9.-]+\.[a-z]{2,}(\/|$)/i.test(s) && !/\s/.test(s);
+  return !/\s/.test(s) && /^[a-z0-9-]+(\.[a-z0-9-]+)+\/\S*/i.test(s);
 }
 
 function candidateOf(p, source, extra = {}) {
@@ -395,7 +463,9 @@ async function resolve(text, ctx, lookups = {}) {
   if (!input) return { kind: 'name', candidates: [] };
   if (input.length > 2048) throw new Error('that is too long to be an app name or address');
 
-  if (looksLikeUrl(input) || /^[^/\s]+\/[^/\s]+$/.test(input)) {
+  // owner/repo shorthand is an address too — but only when the owner has no dot, which a
+  // GitHub owner never does.
+  if (looksLikeUrl(input) || /^[^/\s.]+\/[^/\s]+$/.test(input)) {
     if (/^http:\/\//i.test(input)) throw new Error('only https:// addresses are accepted');
     const url = /^https:\/\//i.test(input) ? input : looksLikeUrl(input) ? `https://${input}` : input;
     const out = [];
@@ -497,7 +567,8 @@ async function inspect(candidateOrEntry, ctx, host = {}) {
         host: net.hostOf(asset.browser_download_url),
         size: asset.size || null,
         checksum: sum.state,
-        requires: asset.requires || null,
+        requires: Array.isArray(asset.requires) && asset.requires.length ? asset.requires : null,
+        emulated: !!asset.emulated,
       };
     } catch (e) {
       out.types[type] = { ok: false, reason: e.message };
@@ -536,6 +607,9 @@ module.exports = {
   strictArchFilter,
   parseSums,
   resolveChecksum,
+  validDigest,
+  safeFileName,
+  isEmulated,
   downloadPolicy,
   resolve,
   autoPick,

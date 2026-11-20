@@ -37,6 +37,92 @@ function hostOf(url) {
   try { return new URL(url).host; } catch { return String(url); }
 }
 
+// A URL for messages and logs: no credentials, no query string (either can carry a token).
+function safeUrl(url) {
+  try {
+    const u = new URL(url);
+    return `${u.origin}${u.pathname}${u.search ? '?…' : ''}`;
+  } catch {
+    return '(invalid address)';
+  }
+}
+
+function assertHttpsUrl(url) {
+  let u;
+  try {
+    u = new URL(String(url));
+  } catch {
+    throw new Error('not a valid address');
+  }
+  if (u.protocol !== 'https:') throw new Error(`refusing a non-HTTPS address (${u.host || 'invalid'})`);
+  if (u.username || u.password) throw new Error('refusing an address that carries credentials');
+  return u;
+}
+
+const MAX_REDIRECTS = 5;
+const isRedirect = (res) => res && res.status >= 300 && res.status < 400;
+
+// fetch for sources that restrict where a request may go. The restriction is applied by
+// the TRANSPORT, not checked afterwards: a redirect is never followed implicitly, so no
+// request reaches a host that was not approved first.
+//
+//   redirects: 'none'   the server must answer directly. `redirect: 'error'` makes fetch
+//                       itself reject a 3xx before requesting its target.
+//   redirects: 'https'  each hop is read with `redirect: 'manual'`, its Location is
+//                       validated as https, and only then requested — at most
+//                       MAX_REDIRECTS times.
+//
+// Returns { res, finalUrl }. Errors name hosts only, never a full URL.
+async function fetchWithPolicy(url, init, policy = {}) {
+  assertHttpsUrl(url);
+  if (policy.redirects !== 'https') {
+    let res;
+    try {
+      res = await doFetch(url, { ...init, redirect: 'error' });
+    } catch (e) {
+      if (isRedirectError(e)) throw redirectRefused(url);
+      throw e;
+    }
+    // Belt and braces for a fetch implementation that ignores the option.
+    if (isRedirect(res) || res.redirected || (res.url && stripSlash(res.url) !== stripSlash(url))) throw redirectRefused(url, res.url);
+    return { res, finalUrl: url };
+  }
+  let current = String(url);
+  for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+    const res = await doFetch(current, { ...init, redirect: 'manual' });
+    if (res.type === 'opaqueredirect' || res.status === 0) {
+      // A browser-style fetch hides the Location of a manual redirect, so the next hop
+      // cannot be validated before it is requested. Refuse rather than follow blind.
+      throw Object.assign(new Error(`${hostOf(current)} redirected the download and the next address could not be checked first`), { redirectRefused: true });
+    }
+    if (!isRedirect(res)) return { res, finalUrl: current };
+    const loc = res.headers && res.headers.get && res.headers.get('location');
+    if (!loc) throw new Error(`${hostOf(current)} sent a redirect with no destination`);
+    let next;
+    try {
+      next = new URL(loc, current);
+    } catch {
+      throw new Error(`${hostOf(current)} sent a redirect to an invalid address`);
+    }
+    if (next.protocol !== 'https:') throw Object.assign(new Error(`${hostOf(current)} redirected to a non-HTTPS address (${next.host})`), { redirectRefused: true });
+    if (next.username || next.password) throw Object.assign(new Error(`${hostOf(current)} redirected to an address that carries credentials`), { redirectRefused: true });
+    try { if (res.body && res.body.cancel) await res.body.cancel(); } catch {}
+    current = next.toString();
+  }
+  throw Object.assign(new Error(`too many redirects starting at ${hostOf(url)}`), { redirectRefused: true });
+}
+
+const stripSlash = (u) => String(u).replace(/\/+$/, '');
+function isRedirectError(e) {
+  const text = `${(e && e.message) || ''} ${(e && e.cause && e.cause.message) || ''} ${(e && e.cause && e.cause.code) || ''}`;
+  return /redirect/i.test(text);
+}
+function redirectRefused(url, to) {
+  const e = new Error(`${hostOf(url)} redirected the request${to ? ' to ' + hostOf(to) : ''}, which this source does not allow`);
+  e.redirectRefused = true; // not a network failure: never retried
+  return e;
+}
+
 // TLS trust failures never recover on retry, and almost always mean a corporate VPN/proxy is
 // doing SSL inspection with a root CA the app doesn't trust.
 const TLS_CERT_CODES = new Set([
@@ -55,6 +141,7 @@ const TLS_CERT_CODES = new Set([
 // retry them and report something the user can act on.
 function isNetworkError(err) {
   if (!err) return false;
+  if (err.redirectRefused) return false; // a policy decision, not a network failure
   if (err instanceof TypeError && err.cause) return true; // "fetch failed" / "terminated"
   const code = err.code || (err.cause && err.cause.code);
   return typeof code === 'string' && /^(E[A-Z]+|UND_ERR_)/.test(code);
@@ -180,28 +267,25 @@ async function listAssets(owner, repo, opts = {}) {
 // onProgress(pct 0-100) is called as bytes arrive (throttled) when a size is known.
 //
 // opts (all optional, used by non-GitHub sources — see src/sources/index.js):
-//   httpsOnly   refuse the download unless the URL, and the URL it finally resolved to after
-//               any redirects, are both https
-//   noRedirect  refuse the download if the server redirected at all (a listing we read
-//               directly must serve the file it names)
+//   httpsOnly   every address touched, including each redirect hop, must be https
+//   noRedirect  the server must answer directly; a redirect is refused IN THE TRANSPORT,
+//               before any request is made to wherever it points
 //   onFinalUrl  called with the URL the bytes actually came from, so the caller can show
 //               and log the real origin rather than only the declared one
+// With neither policy flag (every GitHub download) the request is exactly what it was.
 async function downloadAsset(url, destPath, onProgress, opts = {}) {
-  if (opts.httpsOnly && !/^https:\/\//i.test(String(url))) throw new Error(`refusing a non-HTTPS download: ${url}`);
+  const strict = !!(opts.httpsOnly || opts.noRedirect);
+  if (opts.httpsOnly) assertHttpsUrl(url);
   // Retry the whole download: a reset can hit either the initial connection (fetch rejects)
   // or the body stream (pipeline rejects). Each attempt re-fetches and overwrites destPath,
   // so a partial file from a failed try is never left behind.
   return withNetRetry(async () => {
-    const res = await doFetch(url, { headers: { 'User-Agent': UA } });
-    if (!res.ok) throw new Error(`download ${res.status} for ${url}`);
-    const finalUrl = res.url || url;
-    if (opts.noRedirect && (res.redirected || (res.url && res.url !== url))) {
-      throw new Error(`the download was redirected to ${hostOf(finalUrl)}, which this source does not allow`);
-    }
-    if (opts.httpsOnly && !/^https:\/\//i.test(String(finalUrl))) {
-      throw new Error(`the download was redirected to a non-HTTPS address (${hostOf(finalUrl)})`);
-    }
-    if (typeof opts.onFinalUrl === 'function') opts.onFinalUrl(finalUrl);
+    const init = { headers: { 'User-Agent': UA } };
+    const { res, finalUrl } = strict
+      ? await fetchWithPolicy(url, init, { redirects: opts.noRedirect ? 'none' : 'https' })
+      : { res: await doFetch(url, init), finalUrl: url };
+    if (!res.ok) throw new Error(`download ${res.status} for ${strict ? safeUrl(url) : url}`);
+    if (typeof opts.onFinalUrl === 'function') opts.onFinalUrl(strict ? finalUrl : res.url || url);
     const declared = Number(res.headers.get('content-length') || 0);
     if (declared && declared > MAX_BYTES) throw new Error(`asset too large: ${declared} bytes (cap ${MAX_BYTES})`);
     let seen = 0;
@@ -277,4 +361,4 @@ function verifyDigest(filePath, digest) {
   return { verified: true };
 }
 
-module.exports = { getLatestRelease, listAssets, downloadAsset, verifyDigest, fetchChecksumFromRelease, setFetch, doFetch, withNetRetry, UA, SUMS_FILE, MAX_BYTES };
+module.exports = { getLatestRelease, listAssets, downloadAsset, verifyDigest, fetchChecksumFromRelease, setFetch, doFetch, withNetRetry, fetchWithPolicy, assertHttpsUrl, safeUrl, UA, SUMS_FILE, MAX_BYTES };

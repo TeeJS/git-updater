@@ -16,7 +16,7 @@ const INDEX_MAX_AGE = 6 * 60 * 60 * 1000;
 const MANIFEST_LIMIT = 1024 * 1024;
 const ID_SEGMENT = /^[a-z0-9_+-]+$/i;
 const SHA256 = /^[a-f0-9]{64}$/i;
-const KIND = new Map([['msi', 'msi'], ['wix', 'msi'], ['nullsoft', 'nsis'], ['inno', 'inno']]);
+const KIND = new Map([['msi', 'msi'], ['wix', 'msi'], ['nullsoft', 'nsis'], ['inno', 'inno'], ['exe', 'exe'], ['burn', 'exe']]);
 const ARCH = new Map([['x86', 'ia32'], ['x64', 'x64'], ['arm64', 'arm64'], ['neutral', 'universal']]);
 const indexDownloads = new Map();
 
@@ -210,9 +210,10 @@ function manifestReference(db, id, version) {
 function installerArguments(info, kind) {
   const switches = info.InstallerSwitches || {};
   const silent = switches.Silent || switches.SilentWithProgress;
+  if (kind === 'exe' && !silent) return { unsupported: 'WinGet did not declare silent switches for this executable' };
   if (!silent && !switches.Custom) return {};
-  const baseArgs = installerCmd(kind, '').args;
-  const defaultSwitches = kind === 'msi' ? baseArgs.slice(2) : baseArgs;
+  const defaults = silent ? [] : installerCmd(kind, '').args;
+  const defaultSwitches = kind === 'msi' ? defaults.slice(2) : defaults;
   const words = [silent || defaultSwitches.join(' '), switches.Custom].filter(Boolean).join(' ').trim().split(/\s+/);
   if (!words.every((word) => /^(?:[/-][a-z0-9][a-z0-9_./=:+,-]*|[a-z_][a-z0-9_]*=[a-z0-9_./:+,-]+)$/i.test(word))) {
     return { unsupported: 'WinGet installer switches require manual setup' };

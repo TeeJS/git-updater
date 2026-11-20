@@ -425,6 +425,22 @@ ipcMain.handle('asset:preview', async (_e, appKey) => {
   };
 });
 
+// The source types this build knows, for the Settings "preferred sources" list. A
+// provider that cannot work here (wrong OS, missing runtime support) is listed as such.
+ipcMain.handle('sources:providers', () => {
+  const ctx = sources.makeCtx();
+  return sources.providerTypes().map((type) => {
+    const p = sources.provider(type);
+    let ok = !p.platforms || p.platforms.includes(process.platform);
+    let reason = ok ? '' : 'not available on this operating system';
+    if (ok && typeof p.available === 'function') {
+      const a = p.available(ctx);
+      if (a && a.ok === false) { ok = false; reason = a.reason || 'not available'; }
+    }
+    return { type, label: p.label, ok, reason, search: typeof p.search === 'function' };
+  });
+});
+
 // --- Adding apps from any source ----------------------------------------------
 // The Add box takes a GitHub URL, any other URL, or a program name. resolve turns that
 // text into candidates; inspect says what each one would install on THIS machine; add

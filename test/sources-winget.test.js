@@ -153,7 +153,9 @@ test('WinGet joins the announced version to its hash-pinned manifest and maps in
 
   const sevenZip = await winget.getLatestRelease(packageSource('7zip.7zip'), ctx);
   assert.equal(sevenZip.tag_name, '26.06');
-  assert.ok(sevenZip.assets.some((asset) => /installer type exe/.test(asset.unsupported)));
+  const executable = sevenZip.assets.find((asset) => asset.arch === 'x64' && asset.kind === 'exe');
+  assert.deepEqual(executable.installArgs, ['/S']);
+  assert.equal(executable.unsupported, undefined);
   assert.ok(sevenZip.assets.some((asset) => asset.kind === 'msi' && !asset.unsupported));
 
   const git = await winget.getLatestRelease(packageSource('Git.Git'), ctx);
@@ -167,6 +169,42 @@ test('WinGet refuses a modified or missing indexed manifest', { skip: !available
   await assert.rejects(winget.getLatestRelease(packageSource(row.id), ctx), /SHA-256 does not match/);
   await assert.rejects(winget.getLatestRelease(packageSource('Missing.Package'), ctx), /indexes disagree/);
   await assert.rejects(winget.getLatestRelease(packageSource('Unlisted.Package'), ctx), { unavailable: true });
+});
+
+test('WinGet executable and Burn installers require explicitly declared silent arguments that can become argv', { skip: !available.ok }, async (t) => {
+  const row = packages[0];
+  const buffer = Buffer.from(`PackageIdentifier: ${row.id}
+PackageVersion: ${row.version}
+ManifestType: merged
+Installers:
+- Architecture: x64
+  InstallerType: burn
+  InstallerUrl: https://vendor.example/bundle.exe
+  InstallerSwitches:
+    SilentWithProgress: -quiet -norestart
+- Architecture: x64
+  InstallerType: exe
+  InstallerUrl: https://vendor.example/no-flags.exe
+- Architecture: x64
+  InstallerType: exe
+  InstallerUrl: https://vendor.example/quoted-flags.exe
+  InstallerSwitches:
+    Silent: '-quiet -log "C:\\Install Logs\\vendor.log"'
+`);
+  const manifestSha256 = createHash('sha256').update(buffer).digest('hex');
+  const index = manifestIndex([{ ...row, manifestSha256 }]);
+  const cacheDir = path.join(scratch, 'exe-test');
+  t.after(() => {
+    if (!fs.existsSync(cacheDir)) return;
+    for (const file of fs.readdirSync(cacheDir)) fs.unlinkSync(path.join(cacheDir, file));
+    fs.rmdirSync(cacheDir);
+  });
+  const { ctx } = context({ cacheDir, replacements: [[row.url, buffer], [MICROSOFT_MANIFESTS, index]] });
+  const [burn, missing, complex] = (await winget.getLatestRelease(packageSource(row.id), ctx)).assets;
+  assert.equal(burn.kind, 'exe');
+  assert.deepEqual(burn.installArgs, ['-quiet', '-norestart']);
+  assert.match(missing.unsupported, /did not declare silent switches/);
+  assert.match(complex.unsupported, /switches require manual setup/);
 });
 
 test('WinGet distinguishes missing installer digests from invalid published digests', { skip: !available.ok }, async () => {

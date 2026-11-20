@@ -93,6 +93,11 @@ async function run(config, opts = {}) {
   const st = state.load(opts.statePath);
   const only = opts.only ? opts.only.toLowerCase() : null;
   const results = [];
+  // Two apps must never share one portable folder: installing either swaps the whole
+  // directory, so the second would delete the first. GitHub entries are keyed by repo
+  // name as before; a sourced entry's folder comes from its display name, and two
+  // different sources can sanitise to the same one.
+  const folderOwner = new Map();
   for (const repo of config.repos) {
     // Derive a non-GitHub entry's key from its source before anything reads it, so a
     // hand-edited config cannot claim one identity while pointing at another. An entry
@@ -104,13 +109,25 @@ async function run(config, opts = {}) {
       bad = e;
     }
     const id = displayId(repo);
-    // GitHub ids keep their case-folded match; a non-GitHub key is matched exactly.
     const key = appKey(repo);
-    if (only && id.toLowerCase() !== only && key.toLowerCase() !== only && key !== opts.only) continue;
+    let clash = null;
+    if (!bad && repo.type === 'portable' && repo.install && repo.install.dir) {
+      const dirKey = path.resolve(String(repo.install.dir)).toLowerCase();
+      const first = folderOwner.get(dirKey);
+      if (first && (repo.source || first.sourced)) clash = first.id;
+      else if (!first) folderOwner.set(dirKey, { id, sourced: !!repo.source });
+    }
+    if (only) {
+      // GitHub ids keep their case-folded match. A non-GitHub key encodes a URL path,
+      // where case can be significant, so it is matched exactly (as is its name).
+      const hit = repo.source ? key === opts.only || id === opts.only : id.toLowerCase() === only || key.toLowerCase() === only;
+      if (!hit) continue;
+    }
     let closed = false;
     const markClosed = () => { closed = true; };
     try {
       if (bad) throw bad;
+      if (clash) throw new Error(`its portable folder (${repo.install.dir}) is already used by ${clash} — give one of them its own install.dir in config.json`);
       const result = await handleRepo(repo, id, st, {
         ...opts,
         portableRoot: config.portableRoot,
@@ -147,6 +164,34 @@ async function pickFor(repo, rel) {
 }
 
 const NO_SUM_REASON = 'no checksum is published for this file, and "Only install files that have a checksum" is on';
+
+// Everything that decides whether THIS file may be installed on THIS machine, in one
+// place, so Check, dry-run and Update cannot disagree: the selection, the listing's
+// upgrade rule, and the checksum policy. Nothing is downloaded.
+//   -> { asset, sum }                      go ahead
+//   -> { asset, sum, blocked: reason }     the same answer for every mode
+// `sum` is null only for a plain GitHub entry with the checksum setting off — that path
+// keeps its original order (download, then look for a sums file).
+async function preflight(repo, rel, ctx, o) {
+  const asset = await pickFor(repo, rel);
+  if (o.tracked && (asset.upgradeBehavior === 'uninstallPrevious' || asset.upgradeBehavior === 'deny')) {
+    const who = o.label || 'the listing';
+    return {
+      asset,
+      sum: null,
+      blocked:
+        asset.upgradeBehavior === 'deny'
+          ? `${who} says this app cannot be upgraded in place — update it from the app itself`
+          : `${who} says the old version must be uninstalled first — uninstall it, then Install`,
+    };
+  }
+  let sum = null;
+  if (!o.gh || o.requireChecksum) {
+    sum = await sources.resolveChecksum(repo, rel, asset, ctx);
+    if (!sum.digest && o.requireChecksum) return { asset, sum, blocked: NO_SUM_REASON };
+  }
+  return { asset, sum };
+}
 
 function dirHasFiles(dir) {
   try {
@@ -237,32 +282,27 @@ async function handleRepo(repo, id, st, opts) {
 
   const base = { repo: id, id: key, from: fromV, to: core.normTag(latest), ...src };
 
-  if (opts.mode === 'check') {
-    if (gh) return { ...base, status: 'updated', ...(retyped ? { retyped, note: retyped.note } : {}) };
-    // For every other source, a check runs the SAME selection an update would, so it can
-    // never report an update that the install would then refuse (no build for this
-    // machine, an unsupported installer kind). The file and its origin ride along.
-    const chosen = await pickFor(repo, rel);
-    const sum = await sources.resolveChecksum(repo, rel, chosen, ctx);
-    if (!sum.digest && opts.requireChecksum) return { ...base, status: 'failed', reason: NO_SUM_REASON };
-    return { ...base, status: 'updated', ...fileInfo(chosen, sum) };
+  // A plain GitHub check with the checksum setting off stays exactly what it was: the
+  // version comparison alone, no selection, no extra request.
+  if (opts.mode === 'check' && gh && !opts.requireChecksum) {
+    return { ...base, status: 'updated', ...(retyped ? { retyped, note: retyped.note } : {}) };
   }
 
-  // A hand-pinned `asset` pattern overrides; otherwise the registry picks this machine's
-  // file from the entry's type.
-  const asset = await pickFor(repo, rel);
+  const pre = await preflight(repo, rel, ctx, {
+    gh,
+    tracked: !!tracked,
+    requireChecksum: !!opts.requireChecksum,
+    label: src.source && src.source.label,
+  });
+  const asset = pre.asset;
+  let sum = pre.sum;
+  if (pre.blocked) {
+    if (opts.mode !== 'check' && !opts.dryRun) log(`SKIP ${key}: ${pre.blocked}`);
+    return { ...base, status: 'failed', reason: pre.blocked, ...fileInfo(asset, sum) };
+  }
 
-  // An upgrade the listing says cannot be done in place is refused up front. A fresh
-  // install of the same package is unaffected.
-  if (tracked && (asset.upgradeBehavior === 'uninstallPrevious' || asset.upgradeBehavior === 'deny')) {
-    return {
-      ...base,
-      status: 'failed',
-      reason:
-        asset.upgradeBehavior === 'deny'
-          ? `${src.source ? src.source.label : 'the listing'} says this app cannot be upgraded in place — update it from the app itself`
-          : `${src.source ? src.source.label : 'the listing'} says the old version must be uninstalled first — uninstall it, then Install`,
-    };
+  if (opts.mode === 'check') {
+    return { ...base, status: 'updated', ...fileInfo(asset, sum), ...(retyped ? { retyped, note: retyped.note } : {}) };
   }
 
   if (opts.dryRun) {
@@ -271,20 +311,7 @@ async function handleRepo(repo, id, st, opts) {
       repo.type === 'installer'
         ? `install ${asset.name} silently`
         : `${verb} ${asset.name} -> ${repo.install.dir}`;
-    return { ...base, status: 'updated', note: plan, ...fileInfo(asset, null) };
-  }
-
-  // Know the checksum BEFORE downloading whenever it decides anything: for every
-  // non-GitHub source (the download policy depends on it), and for any source once the
-  // user has asked that only files with a checksum be installed. Plain GitHub entries
-  // keep their original order — download first, then look for a sums file.
-  let sum = null;
-  if (!gh || opts.requireChecksum) {
-    sum = await sources.resolveChecksum(repo, rel, asset, ctx);
-    if (!sum.digest && opts.requireChecksum) {
-      log(`SKIP ${key}: ${NO_SUM_REASON}`);
-      return { ...base, status: 'failed', reason: NO_SUM_REASON, ...fileInfo(asset, sum) };
-    }
+    return { ...base, status: 'updated', note: plan, ...fileInfo(asset, sum) };
   }
 
   // Proactive check: a running app blocks both installers (in-use files) and portable
@@ -325,7 +352,11 @@ async function handleRepo(repo, id, st, opts) {
   } catch {}
   const tmp = fs.mkdtempSync(path.join(stageBase, 'dl-'));
   try {
-    const file = path.join(tmp, asset.name);
+    // The name comes from a remote listing. One safe path segment, and the resolved path
+    // must still be inside the staging directory before anything is written to it.
+    const stagedName = gh ? asset.name : sources.safeFileName(asset.name);
+    const file = path.join(tmp, stagedName);
+    if (!gh && path.dirname(path.resolve(file)) !== path.resolve(tmp)) throw new Error('the source listed a file whose name is not safe to save');
     emit('downloading', 0);
     // Where the bytes really came from. A source that names a file must serve that file,
     // so most non-GitHub downloads may not be redirected at all; the exceptions (a forge's
@@ -341,8 +372,10 @@ async function handleRepo(repo, id, st, opts) {
     emit('verifying');
     let v;
     if (sum) {
-      // Resolved up front (see above). A hash that exists is always enforced.
+      // Resolved up front (see preflight). A hash that exists is always enforced: if one
+      // was found and the file was not positively verified against it, nothing installs.
       v = github.verifyDigest(file, sum.digest);
+      if (sum.digest && !(v && v.verified)) throw new Error('the checksum could not be verified');
       if (v && v.verified && sum.note) v.note = sum.note;
       if (v && v.skipped) v.note = 'no checksum published';
     } else {
@@ -394,9 +427,11 @@ async function handleRepo(repo, id, st, opts) {
       // A manifest that states the installer technology beats sniffing the file's bytes.
       const stated = asset.kind && core.INSTALLER_SWITCHES[asset.kind] ? asset.kind : null;
       const kind = (repo.install && repo.install.kind) || stated || install.detectInstallerKind(file);
-      if (!kind) {
-        // Unidentifiable installer: never guess silent switches — run its window instead.
-        if (interactive(asset.name)) return interactiveResult;
+      const declaredArgs = (repo.install && repo.install.args) || (Array.isArray(asset.installArgs) && asset.installArgs.length ? asset.installArgs : undefined);
+      if (!kind || (kind === 'exe' && !declaredArgs)) {
+        // Unidentifiable installer, or one with no silent switches declared for it: never
+        // guess — run its own window instead.
+        if (interactive(stagedName)) return interactiveResult;
         throw new Error(
           `could not identify the installer type for ${asset.name} — add "install":{"kind":"nsis|inno|msi"} for ${id} in config.json`
         );
@@ -404,13 +439,12 @@ async function handleRepo(repo, id, st, opts) {
       try {
         // Silent switches the listing declares are an argv array, used only when the user
         // has not pinned their own. Never a shell string.
-        const args = (repo.install && repo.install.args) || (Array.isArray(asset.installArgs) && asset.installArgs.length ? asset.installArgs : undefined);
-        install.installInstaller(file, { ...repo.install, kind, ...(args ? { args } : {}) });
+        install.installInstaller(file, { ...repo.install, kind, ...(declaredArgs ? { args: declaredArgs } : {}) });
       } catch (e) {
         // Silent installs can't show a UAC prompt, so unelevated they fail — MSI with
         // exit 1603, EXE installers with an elevation spawn error. Fall back to the
         // installer's own window in both cases. (No PowerShell, no self-elevation.)
-        if ((e.status === 1603 || e.elevation) && interactive(asset.name)) return interactiveResult;
+        if ((e.status === 1603 || e.elevation) && interactive(stagedName)) return interactiveResult;
         throw e;
       }
     } else {
@@ -456,7 +490,7 @@ async function handleRepo(repo, id, st, opts) {
         // mounted image. Mirrors the interactive-installer fallback above. Copy the image
         // out of the tmp dir first so it survives the cleanup in `finally`.
         if (e.licenceAgreement && opts.openFile) {
-          const keep = path.join(stageBase, asset.name);
+          const keep = path.join(stageBase, stagedName);
           fs.copyFileSync(file, keep);
           log(`  -> opening disk image for licence acceptance: ${keep}`);
           opts.openFile(keep);
@@ -515,6 +549,7 @@ function fileInfo(asset, sum, finalUrl) {
   const fin = finalUrl ? hostOf(finalUrl) : '';
   if (fin && fin !== declared) out.servedFrom = fin;
   if (sum && sum.state) out.checksum = sum.state;
+  if (asset.emulated) out.emulated = true; // not native to this machine; runs under emulation
   if (Array.isArray(asset.requires) && asset.requires.length) out.requires = asset.requires;
   return out;
 }

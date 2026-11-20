@@ -6,8 +6,9 @@
 //
 //   1. HTTPS only. A listing read over plain HTTP can be rewritten in transit, and every
 //      download URL a provider returns comes out of a listing.
-//   2. No redirects. A provider asked for one URL and reasons about the host it named; a
-//      response from somewhere else is not the listing it thinks it is reading.
+//   2. No redirects, enforced before the fact. A provider asked for one URL and reasons
+//      about the host it named; the transport refuses a redirect rather than following it
+//      and inspecting the result, so nothing is requested from anywhere else.
 //   3. A size cap. Listings are small. A response that is not small is not a listing.
 //
 // Requests go through github.doFetch, so the Electron GUI's net.fetch injection (OS
@@ -62,16 +63,9 @@ async function request(url, opts = {}) {
   assertHttps(url);
   const maxBytes = opts.maxBytes || DEFAULT_MAX;
   const headers = { 'User-Agent': github.UA, ...(opts.accept ? { Accept: opts.accept } : {}) };
-  const res = await github.withNetRetry(() => github.doFetch(url, { headers }), url);
-  // fetch follows redirects on its own. Rather than depend on every fetch implementation
-  // honouring `redirect: 'error'` identically (Node's and Chromium's differ in what a
-  // manual redirect looks like), let it follow and then refuse the result if it moved.
-  const finalUrl = res.url || url;
-  if (res.redirected || finalUrl !== url) {
-    // A trailing-slash normalisation by the same host is the listing we asked for.
-    const same = stripSlash(finalUrl) === stripSlash(url);
-    if (!same) throw Object.assign(new Error(`${hostOf(url)} redirected the request to ${hostOf(finalUrl)}`), { redirected: true, finalUrl });
-  }
+  // Redirects are refused by the transport itself (see github.fetchWithPolicy): no request
+  // is ever made to a host the provider did not name.
+  const { res } = await github.withNetRetry(() => github.fetchWithPolicy(url, { headers }, { redirects: 'none' }), url);
   if (!res.ok) {
     const e = new Error(`${hostOf(url)} answered ${res.status}`);
     e.status = res.status;
@@ -79,10 +73,8 @@ async function request(url, opts = {}) {
     throw e;
   }
   const buffer = await readCapped(res, maxBytes, url);
-  return { status: res.status, url: finalUrl, buffer };
+  return { status: res.status, url, buffer };
 }
-
-const stripSlash = (u) => String(u).replace(/\/+$/, '');
 
 async function getBuffer(url, opts) {
   return request(url, opts);

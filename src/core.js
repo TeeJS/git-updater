@@ -248,6 +248,11 @@ const INSTALLER_SWITCHES = {
     cmd: (file) => [file, ['/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART']],
     override: (file, args) => args,
   },
+  // A vendor executable built with no installer framework git-updater recognises. It has
+  // NO default switches: it runs only with switches a listing declared for this exact
+  // file, or ones the user pinned in config.json — never a guess. installerCmd refuses it
+  // outright when there are none.
+  exe: { cmd: (file) => [file, null], override: (file, args) => args },
   // macOS — installer(8) writes into /Library and needs root, so this only succeeds
   // when git-updater itself is running elevated; otherwise the caller falls back to
   // opening the .pkg in Installer.app, which prompts for authorization normally.
@@ -276,6 +281,7 @@ function installerCmd(kind, file, argsOverride) {
   if (Array.isArray(argsOverride) && argsOverride.length) {
     return { exe, args: spec.override(file, argsOverride) };
   }
+  if (!defaultArgs) throw new Error(`installer kind "${kind}" has no silent switches of its own — it needs explicit ones`);
   return { exe, args: defaultArgs };
 }
 

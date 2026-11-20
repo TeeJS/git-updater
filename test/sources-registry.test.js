@@ -119,9 +119,42 @@ test('selectAsset: GitHub entries still use the original picker, unchanged', () 
   assert.equal(sources.selectAsset(gh, rel(BLENDER), { platform: 'darwin', arch: 'x64' }).name, 'blender-5.3.0-macos-arm64.dmg');
 });
 
-test('selectAsset: a hand-pinned asset pattern always wins', () => {
-  const e = { ...folderEntry('portable'), asset: '*linux-x64*' };
-  assert.equal(sources.selectAsset(e, rel(BLENDER), { platform: 'win32', arch: 'x64' }).name, 'blender-5.3.0-linux-x64.tar.xz');
+test('selectAsset: a hand-pinned pattern narrows the choice but never past what this machine can use', () => {
+  const pin = (asset, platform, arch, type = 'portable') => sources.selectAsset({ ...folderEntry(type), asset }, rel(BLENDER), { platform, arch }).name;
+  assert.equal(pin('*windows*', 'win32', 'x64'), 'blender-5.3.0-windows-x64.zip', 'arm64 and the msi are not candidates');
+  assert.equal(pin('*windows*', 'win32', 'x64', 'installer'), 'blender-5.3.0-windows-x64.msi');
+  // A pattern cannot reach a build for another OS or one this CPU cannot run.
+  assert.throws(() => pin('*linux-x64*', 'win32', 'x64'), /no asset matched/);
+  assert.throws(() => pin('*macos-arm64*', 'darwin', 'x64'), /no asset matched/);
+});
+
+test('selectAsset: a GitHub entry keeps taking a pinned pattern literally', () => {
+  const gh = { owner: 'blender', repo: 'blender', type: 'portable', asset: '*linux-x64*' };
+  assert.equal(sources.selectAsset(gh, rel(BLENDER), { platform: 'win32', arch: 'x64' }).name, 'blender-5.3.0-linux-x64.tar.xz');
+});
+
+test('selectAsset: a pinned pattern cannot select an unsupported manifest row', () => {
+  const assets = [
+    { name: 'a.msix', browser_download_url: 'https://v.example/a.msix', platform: 'win32', arch: 'x64', type: 'installer', unsupported: 'MSIX packages are not supported' },
+    { name: 'a.msi', browser_download_url: 'https://v.example/a.msi', platform: 'win32', arch: 'x64', type: 'installer', kind: 'msi' },
+  ];
+  const e = { ...folderEntry('installer'), asset: '*.msix' };
+  assert.throws(() => sources.selectAsset(e, rel(assets), { platform: 'win32', arch: 'x64' }), /no asset matched/);
+});
+
+test('selectAsset: an emulated build is allowed but always flagged, never passed off as native', () => {
+  const x64only = BLENDER.filter((a) => !/arm64/.test(a.name));
+  const native = sources.selectAsset(folderEntry('portable'), rel(BLENDER), { platform: 'win32', arch: 'arm64' });
+  assert.equal(native.name, 'blender-5.3.0-windows-arm64.zip');
+  assert.equal(native.emulated, undefined);
+  const emu = sources.selectAsset(folderEntry('portable'), rel(x64only), { platform: 'win32', arch: 'arm64' });
+  assert.equal(emu.name, 'blender-5.3.0-windows-x64.zip');
+  assert.equal(emu.emulated, true);
+  // Stated architecture (manifest providers) is flagged the same way.
+  const m = sources.selectAsset(folderEntry('installer'), rel([{ name: 'a.msi', browser_download_url: 'https://v.example/a.msi', platform: 'win32', arch: 'x64', type: 'installer', kind: 'msi' }]), { platform: 'win32', arch: 'arm64' });
+  assert.equal(m.emulated, true);
+  // The provider's own asset object is not mutated.
+  assert.equal(x64only.some((a) => a.emulated), false);
 });
 
 const explicit = (over) => ({ name: 'a.msi', browser_download_url: 'https://v.example/a.msi', platform: 'win32', arch: 'x64', type: 'installer', kind: 'msi', ...over });
@@ -226,6 +259,35 @@ test('downloadPolicy: GitHub untouched; forges HTTPS; pinned mirrors HTTPS; the 
   assert.deepEqual(sources.downloadPolicy(folderEntry('portable'), {}, { digest: null }), { httpsOnly: true, noRedirect: false });
 });
 
+test('resolveChecksum: a declared but malformed digest is an error, never "none"', async () => {
+  const e = folderEntry('portable');
+  for (const digest of ['sha256:abc', 'md5:' + 'a'.repeat(32), 'sha256:' + 'z'.repeat(64), 'a'.repeat(64)]) {
+    const a = { name: 'f.zip', browser_download_url: 'https://h.example/f.zip', digest };
+    await assert.rejects(sources.resolveChecksum(e, rel([a]), a, stubCtx()), /published a malformed checksum for f\.zip/, digest);
+  }
+  assert.equal(sources.validDigest('sha512:' + 'A'.repeat(128)), true);
+});
+
+test('resolveChecksum: a checksum file that exists but cannot be read is an error, not "none"', async () => {
+  const e = folderEntry('portable');
+  const a = { name: 'f.zip', browser_download_url: 'https://h.example/f.zip' };
+  const sums = { name: 'SHA256SUMS', browser_download_url: 'https://h.example/SHA256SUMS' };
+  const down = stubCtx();
+  down.net.getText = async () => { throw new Error('network error reaching h.example: ECONNRESET'); };
+  await assert.rejects(sources.resolveChecksum(e, rel([a, sums]), a, down), /published checksum file \(SHA256SUMS\) could not be read/);
+  // Genuinely gone (404) is the publisher supplying none.
+  const gone = stubCtx();
+  gone.net.getText = async () => { throw Object.assign(new Error('h.example answered 404'), { status: 404, unavailable: true }); };
+  assert.equal((await sources.resolveChecksum(e, rel([a, sums]), a, gone)).state, 'none');
+});
+
+test('safeFileName: one legal path segment or nothing', () => {
+  for (const ok of ['blender-5.3.0-windows-x64.zip', 'Setup (x64).exe', 'a.tar.xz']) assert.equal(sources.safeFileName(ok), ok);
+  for (const bad of ['', '.', '..', '../evil.exe', 'a/b.zip', 'a\\b.zip', 'C:evil.exe', 'con.txt', 'nul', 'trailing.', 'trailing ', 'tab\tname', 'q?.zip', 'x'.repeat(201)]) {
+    assert.throws(() => sources.safeFileName(bad), /not safe to save/, JSON.stringify(bad));
+  }
+});
+
 // --- resolver ---------------------------------------------------------------------
 
 test('resolve: GitHub URLs and bare owner/repo', async () => {
@@ -245,6 +307,17 @@ test('resolve: GitLab and Codeberg URLs, including nested groups and page routes
   const cb = await sources.resolve('https://codeberg.org/forgejo/forgejo', stubCtx());
   assert.deepEqual(cb.candidates[0].source, { type: 'gitea', host: 'codeberg.org', owner: 'forgejo', repo: 'forgejo' });
   assert.equal(cb.candidates[0].listedBy, 'Codeberg');
+});
+
+test('resolve: a dotted word is a name or package id, not a domain', async () => {
+  for (const input of ['Paint.NET', 'Mozilla.Firefox', '7zip.7zip']) {
+    const seen = [];
+    const r = await sources.resolve(input, stubCtx({}, { platform: 'linux' }), { catalog: async (name) => { seen.push(name); return []; } });
+    assert.equal(r.kind, 'name', input);
+    assert.deepEqual(seen, [input], `${input} reaches the curated lookup`);
+  }
+  assert.equal(sources.looksLikeUrl('download.blender.org/release/'), true);
+  assert.equal(sources.looksLikeUrl('gitlab.com/a/b'), true);
 });
 
 test('resolve: plain http is refused outright', async () => {
