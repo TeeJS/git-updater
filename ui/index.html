@@ -596,6 +596,17 @@
         <span style="color:var(--muted);font-size:.9rem;min-width:8rem">At login</span>
         <label class="scan-label"><input type="checkbox" id="startAtLogin"> Start git-updater when I sign in</label>
       </div>
+      <div class="row" id="loginRow" style="margin-top:.35rem">
+        <span style="min-width:8rem"></span>
+        <label class="scan-label" for="loginAction" title="Check and ask me, and Check and update, only touch apps ticked in the Auto-update column that are already installed. An installer that needs your permission is left for you.">When it starts at sign-in:</label>
+        <select id="loginAction" title="Check and ask me, and Check and update, only touch apps ticked in the Auto-update column that are already installed. An installer that needs your permission is left for you.">
+          <option value="open">Just open</option>
+          <option value="check">Check</option>
+          <option value="ask">Check and ask me</option>
+          <option value="update">Check and update</option>
+        </select>
+        <label class="scan-label" id="loginQuitLabel"><input type="checkbox" id="loginQuit"> then quit when finished</label>
+      </div>
       <p class="hint">Starts hidden in the tray if that is on, otherwise minimized.</p>
       <div class="row" style="margin-top:.6rem">
         <span style="color:var(--muted);font-size:.9rem;min-width:8rem">Tray</span>
@@ -1775,6 +1786,7 @@ async function load() {
   $('rememberFilters').checked = !!config.rememberFilters;
   $('startAtLogin').checked = !!config.startAtLogin;
   $('keepRunning').checked = !!config.keepRunning;
+  syncLoginRow();
   $('scheduleCheckEnabled').checked = !!config.scheduleCheckEnabled;
   $('scheduleCheckCron').value = config.scheduleCheckCron || '';
   $('scheduleInstallEnabled').checked = !!config.scheduleInstallEnabled;
@@ -2383,7 +2395,7 @@ document.addEventListener('keydown', (e) => {
 // system's login list, the tray icon) and refuses with a reason when it cannot, in which case the
 // checkboxes go back to what is really set.
 async function saveBackgroundSettings() {
-  const next = { ...config, startAtLogin: $('startAtLogin').checked, keepRunning: $('keepRunning').checked };
+  const next = { ...config, startAtLogin: $('startAtLogin').checked, keepRunning: $('keepRunning').checked, loginAction: $('loginAction').value, loginQuit: $('loginQuit').disabled ? !!config.loginQuit : $('loginQuit').checked };
   try {
     await window.api.saveConfig(next);
     config = next;
@@ -2393,6 +2405,24 @@ async function saveBackgroundSettings() {
     $('keepRunning').checked = !!config.keepRunning;
     msg(clean(e), 'bad');
   }
+  syncLoginRow();
+}
+// "When it starts at sign-in": what the line shows is what is saved; what is greyed out is what
+// cannot apply right now. Quitting when finished makes no sense for "Just open", and never happens
+// with "Keep running in the tray" on, so the box says why instead of looking tickable.
+const LOGIN_ACTIONS = ['open', 'check', 'ask', 'update'];
+function syncLoginRow() {
+  const on = !!config.startAtLogin;
+  const action = LOGIN_ACTIONS.includes(config.loginAction) ? config.loginAction : 'open';
+  $('loginAction').value = action;
+  $('loginAction').disabled = !on;
+  const tray = !!config.keepRunning;
+  const canQuit = on && action !== 'open' && !tray;
+  $('loginQuit').checked = !!config.loginQuit && !tray;
+  $('loginQuit').disabled = !canQuit;
+  $('loginQuitLabel').title = tray ? 'Not available while "Keep running in the tray" is on.'
+    : 'Quits only when nothing is left for you: no update waiting, nothing that needs your permission, nothing that failed.';
+  $('loginRow').style.opacity = on ? '' : '.55';
 }
 // Schedules (Check and Install). The preview comes from the main process (the same parser that runs the
 // schedule), so what you see under the box is what will happen. A bad schedule is refused with the reason.
@@ -2549,6 +2579,8 @@ for (const kind of SCHEDULE_KINDS) {
 $('scheduleCatchUp').onchange = saveSchedule;
 $('startAtLogin').onchange = saveBackgroundSettings;
 $('keepRunning').onchange = saveBackgroundSettings;
+$('loginAction').onchange = saveBackgroundSettings;
+$('loginQuit').onchange = saveBackgroundSettings;
 // A scheduled check finished (while the window was hidden, or open): show what it found.
 async function applyBackgroundResults() {
   try {

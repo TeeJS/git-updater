@@ -96,7 +96,10 @@ The tarball has no such requirement, which is why it is the recommended Linux do
   own unless you turn on the separate **Install** schedule, and even then it only touches apps
   you ticked in the **Auto-update** column that are already installed. It never force-closes
   a running app and never opens an installer window or permission prompt: an installer that
-  needs your permission is skipped and reported as "needs you". It even tells you when
+  needs your permission is skipped and reported as "needs you". *Start at login* can do the
+  same work once at sign-in: **When it starts at sign-in** offers *Just open*, *Check*,
+  *Check and ask me* or *Check and update*, with the same rules, and can quit again when
+  nothing is left for you. It even tells you when
   git-updater itself has a new release. Settings has two more switches for that, both off:
   *check for git-updater updates when it opens*, and *auto-update git-updater* (updated by the
   Install schedule like a ticked app, then it restarts, quietly if the window is hidden).

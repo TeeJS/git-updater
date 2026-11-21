@@ -110,6 +110,8 @@ function saveConfigFile(cfg) {
   if (cfg.typePreference != null && cfg.typePreference !== 'portable' && cfg.typePreference !== 'installer') delete cfg.typePreference;
   if (cfg.requireChecksum != null) cfg.requireChecksum = !!cfg.requireChecksum;
   if (cfg.categoriesEnabled != null) cfg.categoriesEnabled = !!cfg.categoriesEnabled;
+  if (cfg.loginAction != null && !autoupdate.LOGIN_ACTIONS.includes(cfg.loginAction)) delete cfg.loginAction;
+  if (cfg.loginQuit != null) cfg.loginQuit = !!cfg.loginQuit;
   fs.mkdirSync(path.dirname(CONFIG_PATH), { recursive: true });
   if (fs.existsSync(CONFIG_PATH)) {
     const stamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -256,31 +258,32 @@ async function backgroundCheck() {
   if (updates) notify(`${updates} update${updates > 1 ? 's' : ''} available. Click to open git-updater.`);
   else if (results.length && failed === results.length) notify(`The scheduled check could not finish: ${results[0].reason || 'see the log'}`);
   if (win && !win.isDestroyed()) win.webContents.send('schedule:done');
+  return { total: results.length, updates, failed };
 }
 
 // "Auto-update git-updater" (Settings -> Updating) is the same as ticking an app in the list: the
 // scheduled install updates git-updater itself too. If the window is not on screen (hidden in the
 // tray, or minimized) the app comes back the same way, quietly, and says so in a notification.
-async function backgroundSelfUpdate() {
-  if (!app.isPackaged) { log('scheduled install: git-updater itself is not updated in a development run'); return; }
+async function backgroundSelfUpdate(what = 'scheduled install') {
+  if (!app.isPackaged) { log(`${what}: git-updater itself is not updated in a development run`); return; }
   try {
     const found = await checkSelfUpdate();
-    if (!found) { log('scheduled install: git-updater is up to date'); return; }
+    if (!found) { log(`${what}: git-updater is up to date`); return; }
     if (found.canApply === false) {
       // Only an AppImage in a folder this user cannot write (say /opt, put there by root) gets here. There is
       // nothing to apply, so it is reported as a version to download, the way the window's button does it,
       // instead of failing with the same error on every scheduled run.
-      log(`scheduled install: git-updater ${found.version} is available, but its AppImage cannot be replaced where it is`);
+      log(`${what}: git-updater ${found.version} is available, but its AppImage cannot be replaced where it is`);
       notify(`git-updater ${found.version} is available. It cannot replace its own file where it is installed; press Check all, then Download.`);
       return;
     }
     const onScreen = !!(win && !win.isDestroyed() && win.isVisible() && !win.isMinimized());
-    log(`scheduled install: updating git-updater to ${found.version}${onScreen ? '' : ' (restarting quietly)'}`);
+    log(`${what}: updating git-updater to ${found.version}${onScreen ? '' : ' (restarting quietly)'}`);
     const send = (phase, pct) => { if (win && !win.isDestroyed()) win.webContents.send('update:progress', { id: 'self', phase, pct }); };
     await performSelfUpdate({ onProgress: send, quiet: !onScreen });
   } catch (e) {
     const why = e && e.message ? e.message : String(e);
-    log(`scheduled install: git-updater could not update itself: ${why}`);
+    log(`${what}: git-updater could not update itself: ${why}`);
     notify(`git-updater could not update itself: ${why}`);
   }
 }
@@ -291,20 +294,23 @@ async function backgroundSelfUpdate() {
 // "needs you" and left for the window), and a running app follows "Automatically close apps and
 // re-open when complete": on, it is closed gracefully and re-opened; off, it is skipped. Nothing is
 // ever force-closed. The rules are in src/autoupdate.js; the runner records dates like any update.
-async function backgroundInstall() {
-  if (updating) return; // an update started from the window is running; the scheduler tries again next tick
+// what: how this run is named in the log ("scheduled install", or "sign-in update" when it is the
+// one a start at sign-in asked for). -> { summary, stopped }, or null when an update was already running.
+async function backgroundInstall(what = 'scheduled install') {
+  if (updating) return null; // an update started from the window is running; the scheduler tries again next tick
   updating = true;
   const entries = [];
+  let summary = null;
+  let stopped = false; // GitHub said stop: git-updater itself is left for the next run too
   try {
     const cfg = readConfig();
     const config = core.validateConfig(cfg);
     const installed = await computeInstalled(cfg);
     const { targets, skipped } = autoupdate.pickTargets(config.repos, installed);
-    for (const s of skipped) log(`scheduled install: skipping ${s.name} (${s.why})`);
-    if (!targets.length) log('scheduled install: no ticked apps that are installed');
-    else log(`scheduled install: ${targets.map((r) => core.displayId(r)).join(', ')}`);
+    for (const s of skipped) log(`${what}: skipping ${s.name} (${s.why})`);
+    if (!targets.length) log(`${what}: no ticked apps that are installed`);
+    else log(`${what}: ${targets.map((r) => core.displayId(r)).join(', ')}`);
     const autoClose = !!cfg.autoCloseReopen;
-    let stopped = false; // GitHub said stop: git-updater itself is left for the next run too
     for (const r of targets) {
       const key = autoupdate.keyOf(r);
       const name = core.displayId(r); // owner/repo for GitHub, the app's name for any other source
@@ -321,23 +327,118 @@ async function backgroundInstall() {
       }
       entries.push({ name, result });
       if (result && result.closed && autoClose) {
-        try { await launchApp(key); log(`scheduled install: re-opened ${name}`); } catch (e) { log(`scheduled install: could not re-open ${name}: ${e && e.message ? e.message : e}`); }
+        try { await launchApp(key); log(`${what}: re-opened ${name}`); } catch (e) { log(`${what}: could not re-open ${name}: ${e && e.message ? e.message : e}`); }
       }
-      if (result && result.stopRun) { log('scheduled install: stopping (GitHub rate limit or a rejected token)'); stopped = true; break; }
+      if (result && result.stopRun) { log(`${what}: stopping (GitHub rate limit or a rejected token)`); stopped = true; break; }
     }
     if (entries.length) {
-      const s = autoupdate.summarize(entries);
-      log(`scheduled install: updated ${s.updated.length}, already current ${s.current}, need you ${s.needsYou.length + s.running.length}, failed ${s.failed.length}`);
-      for (const x of s.needsYou) log(`scheduled install: ${x.name} needs you: ${x.reason}`);
-      for (const x of s.failed) log(`scheduled install: ${x.name} failed: ${x.reason}`);
+      const s = (summary = autoupdate.summarize(entries));
+      log(`${what}: updated ${s.updated.length}, already current ${s.current}, need you ${s.needsYou.length + s.running.length}, failed ${s.failed.length}`);
+      for (const x of s.needsYou) log(`${what}: ${x.name} needs you: ${x.reason}`);
+      for (const x of s.failed) log(`${what}: ${x.name} failed: ${x.reason}`);
       const text = autoupdate.summaryText(s);
       if (text) notify(text);
     }
     // git-updater itself comes last, because applying its update restarts this process.
-    if (cfg.selfAutoUpdate && !stopped) await backgroundSelfUpdate();
+    if (cfg.selfAutoUpdate && !stopped) await backgroundSelfUpdate(what);
   } finally {
     updating = false;
     if (win && !win.isDestroyed()) win.webContents.send('schedule:done', { kind: 'install' });
+  }
+  return { summary, stopped };
+}
+
+// --- at sign-in (Settings -> Background -> "When it starts at sign-in") -----------------
+// A start at sign-in can do more than open: check, check and ask, or check and update. It runs
+// once, in this process, from the lifecycle block at the bottom of this file, and only when this
+// start really was the sign-in one. The rules are the scheduled install's (src/autoupdate.js):
+// only apps ticked in the Auto-update column that are already installed, and an installer that
+// needs permission is reported as "needs you" and left for the window.
+
+// Which of the apps a sign-in update would touch have an update. -> their names.
+async function signInUpdates() {
+  const cfg = readConfig();
+  const config = core.validateConfig(cfg);
+  const { targets } = autoupdate.pickTargets(config.repos, await computeInstalled(cfg));
+  const names = [];
+  for (const r of targets) {
+    const out = await runner.run(config, { mode: 'check', only: autoupdate.keyOf(r) });
+    const res = out.results[0];
+    if (res && res.status === 'updated') names.push(core.displayId(r)); // in a check, "updated" means an update is there
+    if (res && res.stopRun) break;
+  }
+  return names;
+}
+
+// One notification with two buttons. -> true (Update), false (Not now, or it was dismissed), or
+// null when the user clicked the notification itself: the window opens and the choice is theirs there.
+// Notification buttons exist on Windows and macOS only; elsewhere the same question is a small box.
+let asking = null; // kept so the notification is not collected while it waits for an answer
+function askToUpdate(names) {
+  const body = autoupdate.askText(names);
+  const box = () => dialog.showMessageBox({ type: 'question', title: 'git-updater', message: body, buttons: ['Update', 'Not now'], defaultId: 1, cancelId: 1, noLink: true })
+    .then((r) => r.response === 0);
+  if (process.platform === 'linux' || !Notification.isSupported()) return box();
+  return new Promise((resolve) => {
+    let done = false;
+    const end = (answer) => { if (!done) { done = true; asking = null; resolve(answer); } };
+    try {
+      const n = new Notification({ title: 'git-updater', body, actions: [{ type: 'button', text: 'Update' }, { type: 'button', text: 'Not now' }] });
+      n.on('action', (details, index) => end((typeof index === 'number' ? index : details && details.actionIndex) === 0));
+      n.on('click', () => { showWindow(); end(null); });
+      n.on('close', () => end(false));
+      n.on('failed', (_e, error) => { log(`sign-in: the notification could not be shown: ${error}`); end(null); });
+      asking = n;
+      n.show();
+    } catch (e) {
+      log(`sign-in: the notification could not be shown: ${e && e.message ? e.message : e}`);
+      end(null);
+    }
+  });
+}
+
+// A computer that has just signed in is often not on the network yet. Wait up to a minute for it
+// rather than report every app as failed.
+async function waitForNetwork() {
+  for (let i = 0; i < 30 && !net.isOnline(); i++) await new Promise((r) => setTimeout(r, 2000));
+}
+
+async function signInRun() {
+  const action = autoupdate.loginAction(readConfig());
+  if (action === 'open') return;
+  log(`sign-in: ${action === 'check' ? 'checking' : action === 'ask' ? 'checking, and asking before updating' : 'checking and updating'}`);
+  let clean = false; // finished, and nothing is left that needs the user
+  try {
+    await waitForNetwork();
+    if (action === 'check') {
+      const found = await backgroundCheck();
+      clean = found.updates === 0 && found.failed === 0;
+    } else {
+      let go = true;
+      if (action === 'ask') {
+        const names = await signInUpdates();
+        if (!names.length) { log('sign-in: nothing to update'); go = false; clean = true; }
+        else {
+          const answer = await askToUpdate(names);
+          log(`sign-in: ${names.length} to update; answer: ${answer === true ? 'Update' : answer === false ? 'Not now' : 'opened the window'}`);
+          go = answer === true;
+          clean = answer === false;
+        }
+      }
+      if (go) {
+        const out = await backgroundInstall('sign-in update');
+        clean = !!out && !out.stopped && !autoupdate.needsUser(out.summary);
+      }
+    }
+  } catch (e) {
+    const why = e && e.message ? e.message : String(e);
+    log(`sign-in: could not finish: ${why}`);
+    notify(`git-updater could not finish its sign-in check: ${why}`);
+  }
+  const inUse = !!(win && !win.isDestroyed() && win.isVisible() && !win.isMinimized());
+  if (autoupdate.quitAfterLogin(readConfig(), clean, inUse)) {
+    log('sign-in: finished with nothing left for you; quitting');
+    app.quit();
   }
 }
 
@@ -1993,10 +2094,14 @@ function resolveRedirects(url, { checkHop, maxHops, headers, firstHopOnly }) {
         ? `git-updater updated to v${app.getVersion()}.`
         : `git-updater tried to update to v${quietRestart.expectVersion} but is still v${app.getVersion()}. See the log.`);
     }
-    const loginLaunch = !!quietRestart || background.isLoginLaunch(process.argv, { macWasOpenedAtLogin: IS_MAC && app.getLoginItemSettings().wasOpenedAtLogin });
+    const signedIn = background.isLoginLaunch(process.argv, { macWasOpenedAtLogin: IS_MAC && app.getLoginItemSettings().wasOpenedAtLogin });
+    const loginLaunch = !!quietRestart || signedIn;
     const mode = background.startupWindow(readConfig(), loginLaunch, process.platform);
     if (mode === 'hidden') log('started at login: hidden in the tray');
     else createWindow({ minimized: mode === 'minimized' });
+    // What "When it starts at sign-in" asks for. Not after a quiet restart: that one is this
+    // same sign-in run's own self-update coming back, or a scheduled one, and must not start again.
+    if (signedIn && !quietRestart) signInRun();
   });
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) showWindow();

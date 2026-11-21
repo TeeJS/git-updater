@@ -773,6 +773,36 @@ screen); months 1, 2, 3, 4, 6, 12. There is no minutes dropdown because a schedu
 often than hourly. `describeCron` is the reverse, so typing a line moves the dropdowns and a saved line
 shows in them when it has one of these shapes (otherwise they read 0).
 
+### What a start at sign-in does (`loginAction`, `loginQuit`)
+
+One line under **Start git-updater when I sign in**: *When it starts at sign-in:* **Just open**
+(`loginAction` absent or `open`, the default and what every older install does), **Check**,
+**Check and ask me** (`ask`) or **Check and update** (`update`), plus **then quit when finished**
+(`loginQuit`). The rules are pure functions in `src/autoupdate.js` (`loginAction`, `needsUser`,
+`quitAfterLogin`, `askText`); `signInRun()` in `electron/main.js` does the running.
+
+- It runs once per process, and only when the start really was the sign-in one
+  (`background.isLoginLaunch`, the `--auto-start` flag or macOS's own report). A quiet restart
+  after a self-update is not one, so a sign-in run that updates git-updater does not start over.
+- It first waits up to a minute for the network (`net.isOnline()`), because a computer that has
+  just signed in is often not connected yet and every app would report as failed.
+- **Check** is `backgroundCheck()`, the scheduled check: every app, one notification.
+- **Check and update** is `backgroundInstall('sign-in update')`, the scheduled install with all of
+  its rules (only ticked, installed apps; portable first; installers that need permission are
+  "needs you"; auto-close and force close as set; git-updater itself last if *Auto-update
+  git-updater* is on). Only the name in the log differs.
+- **Check and ask me** checks those same apps, and if any has an update asks once: a notification
+  with **Update** and **Not now**. Electron has notification buttons on Windows and macOS only, so
+  on Linux the same question is a small message box (Not now is the default button). Dismissing
+  the notification is Not now; clicking its body opens the window and leaves the choice there.
+- **then quit when finished** quits only when the run finished and nothing is left for the user:
+  no update waiting (Check), nothing that needs permission, is running, or failed, and Not now
+  counts as finished. It never quits with **Keep running in the tray** on (the box is greyed out
+  and says why), and never once the window is on screen, because then the user is using it.
+
+Not checked on real hardware: the notification buttons on Windows and macOS. The Linux run was
+driven for real (starts with `--auto-start`, quits or stays as the rules say).
+
 ### Auto-update column and the Install schedule
 
 Each app row has an **Auto-update** checkbox (`repo.autoUpdate: true` in `config.json`; unticking

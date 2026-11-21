@@ -69,4 +69,36 @@ function summaryText(s) {
   return parts.length ? `${parts.join(' ')} Click to open git-updater.` : null;
 }
 
-module.exports = { keyOf, pickTargets, classify, summarize, summaryText };
+// --- at sign-in (Settings -> Background -> "When it starts at sign-in") -----------------
+// What a start at sign-in does, beyond opening:
+//   'open'    nothing more (the default, and what every install did before this existed)
+//   'check'   the same check as the schedule's: every app, and a notification if any has an update
+//   'ask'     checks the apps the scheduled install would touch, and asks once before updating them
+//   'update'  updates those apps without asking
+// 'ask' and 'update' follow every rule at the top of this file. Nothing here runs unless
+// "Start git-updater when I sign in" is on and this start really was the sign-in one.
+const LOGIN_ACTIONS = ['open', 'check', 'ask', 'update'];
+function loginAction(cfg) {
+  if (!cfg || !cfg.startAtLogin) return 'open';
+  return LOGIN_ACTIONS.includes(cfg.loginAction) && cfg.loginAction !== 'open' ? cfg.loginAction : 'open';
+}
+
+// Does anything in a finished install run still wait for the user?
+function needsUser(s) {
+  return !!s && (s.needsYou.length > 0 || s.running.length > 0 || s.failed.length > 0);
+}
+
+// "then quit when finished": only after a sign-in run that left nothing for the user, never
+// with "Keep running in the tray" on (staying is that setting's whole point), and never
+// once the user has brought the window up, because then they are using it.
+//   clean: the run finished and nothing needs the user.  windowInUse: on screen, not minimized.
+function quitAfterLogin(cfg, clean, windowInUse) {
+  return loginAction(cfg) !== 'open' && !!cfg.loginQuit && !cfg.keepRunning && !!clean && !windowInUse;
+}
+
+// The one question 'ask' puts to the user. names: the apps with an update.
+function askText(names) {
+  return `${names.length} ${plural(names.length, 'update is', 'updates are')} ready: ${list(names)}.`;
+}
+
+module.exports = { keyOf, pickTargets, classify, summarize, summaryText, LOGIN_ACTIONS, loginAction, needsUser, quitAfterLogin, askText };
