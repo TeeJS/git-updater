@@ -34,7 +34,9 @@ function classify(result) {
   if (result.status === 'updated') return 'updated';
   if (result.status === 'current') return 'current';
   const reason = String(result.reason || '');
-  if (/^needs you/i.test(reason)) return 'needsYou';
+  // A file has to be chosen by hand (see sources.selectAsset): nothing went wrong, and an
+  // unattended run cannot answer it — so "needs you", not "could not be updated".
+  if (result.chooseFile || /^needs you/i.test(reason)) return 'needsYou';
   if (/is running|did not close gracefully/i.test(reason)) return 'running';
   return 'failed';
 }

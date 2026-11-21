@@ -27,8 +27,12 @@ the running platform automatically:
 ```jsonc
 {
   "portableRoot": "C:/PortableApps",     // portable apps install to <portableRoot>/<repo>
+  "categories": [                         // optional: your own groups, each with its own folder
+    { "name": "Games", "dir": "C:/Games" }
+  ],
   "repos": [
     { "owner": "ShareX", "repo": "ShareX", "type": "portable" },
+    { "owner": "TeeJS", "repo": "open-quake", "type": "portable", "category": "Games" }, // -> C:/Games/open-quake
     { "owner": "TeeJS", "repo": "tts-stt-windows", "type": "installer" }
   ]
 }
@@ -47,7 +51,10 @@ bonuses — are all in `src/platform/assets.js`, which is pure data so `core.js`
 
 Optional per-app overrides (rarely needed):
 - `"asset": "*-win-x64.zip"` (glob or `/regex/`) pins a specific file instead of auto-pick.
-- Portable: `"install": { "dir": "D:/Custom" }` to override the folder.
+  The app sets this itself from **⋯ → Choose download…** (below); hand-editing is no longer
+  the only way.
+- Portable: `"install": { "dir": "D:/Custom" }` to override the folder (it wins over a category).
+  With categories switched on this is the **Folder** field of **⋯ → Edit…** (see "Categories").
 - Installer: `"install": { "kind": "inno", "args": ["/VERYSILENT"] }` — required when detection
   can't identify an unusual installer (`kind` is `msi` | `nsis` | `inno` | `exe` | `pkg` | `deb` | `rpm`;
   `exe` has no switches of its own and runs only with `args`).
@@ -56,6 +63,52 @@ Optional per-app overrides (rarely needed):
 - `"tagPrefix": "desktop-v"` pins release lookup to one train, for repos that publish several
   products' releases in one place (e.g. bitwarden/clients also ships `web-v*`/`browser-v*`/
   `cli-v*` — without this, "latest release" can resolve to the wrong product entirely).
+
+### Choose download…
+
+Auto-pick is a score, and some releases have no right answer to score: two `.deb`s for two
+Ubuntu releases, a tarball beside an AppImage, or nothing that names this platform at all.
+**⋯ → Choose download…** on a row lists the latest release's files, best fit for this
+machine first, each with why it does or does not suit it (another system, another
+processor, installer vs portable, runs under emulation) and which one would be picked
+automatically. **Use this file** saves that choice and closes; **Pick automatically**
+removes it. (Ported from PlayingKarrde/git-updater `12043aa`, reworked for sources.)
+
+- **What is saved** is the `asset` override above — no second mechanism. The picked file's
+  name has the release's version replaced by `*` (`core.assetPatternFor`), so the next
+  release's equivalent file matches with no prompt: `OBS-Studio-32.2.2-Ubuntu-24.04-x86_64.deb`
+  → `OBS-Studio-*-Ubuntu-24.04-x86_64.deb`. A name without the version, or one whose
+  wildcard would also catch a sibling, is saved exactly; a name that would itself read as a
+  glob or regex is saved as an escaped, anchored `/regex/`.
+- **Which sources.** GitHub, GitLab and Gitea releases, and vendor folders
+  (`sources.canChooseFile`). Not WinGet or Homebrew: their listing resolves to the one
+  vendor file it hash-pins, chosen on stated facts rather than names, so there is no list
+  and no name to remember. The menu item is not shown there and main refuses the call.
+- **What may be chosen.** A GitHub entry takes its override literally, as it always has, so
+  any listed file except one of the other package type can be chosen — each with the
+  warning its row carries. Every other source only ever *narrows* what this machine and
+  this package type can use (`selectSourced`), so only those files have a button; the rest
+  are listed with the reason. `sources.fileChoices` proves each file's saved form by running
+  the real selection with it, so a choice can never be saved that the next Check refuses.
+- **Rows that need a choice.** When nothing fits automatically, or a saved choice stops
+  matching (the project renamed its files) or now matches several files, the selection
+  error carries `chooseFile` and a plain-words `chooseWhy` — but only when the chooser has
+  something to offer. The runner returns that as a failed result with `chooseFile: true`
+  and the row's versions, at Check as well as on Update, and the row shows **Choose a
+  download** with a **Choose…** button where its status and button already are. "Only ships
+  an installer / portable builds" keeps its own fix (change the type). A plain GitHub
+  check still makes no extra request for this: the selection is tried on the release
+  already in hand.
+- **IPC.** `asset:choices` and `asset:choose`, main window only (`fromWindow`). Main keeps
+  the listing it handed out; `asset:choose` takes `{ listId, index }` — a position in that
+  listing, never a file name, pattern or URL from the renderer — re-proves the override
+  against the entry on disk, and saves through `saveConfigFile`. An in-page `<dialog>` in
+  `ui/index.html`, not a window: nothing new to sandbox or sender-check.
+- **Bad values.** `config:save` rejects an `asset` that is new or edited and cannot be read
+  (an unclosed `/regex/`, a non-string). One already in a hand-edited `config.json` does not
+  block saving other settings or fail the whole run: its own row asks for a new choice.
+- **Private repositories.** Only the override is stored. Every run resolves it against the
+  release again, so the file still carries its API address for the token fallback.
 
 You can track the same repo as **both** portable and installed — each is a separate entry with
 its own update history.
@@ -502,6 +555,38 @@ launcher on its first update — its files are never touched again.
   `update:progress` stream and `last-apply.json` marker are reused. `selfupdate:openRelease`
   remains as a fallback link. `electron/main.js` reaches all of this behind an `IS_MAC` guard,
   so electron-updater never loads on Windows or Linux.
+- **A copy running from an AppImage replaces the image file** (same module, same two calls
+  from `electron/main.js`: `prepareUpdate` then `relaunchViaLauncher`). The launcher model has
+  nowhere to work there: `process.execPath` is inside the image's mount (`/tmp/.mount_*`), a
+  read-only squashfs, so staging `app-<tag>` beside it failed with EROFS, and the mount is gone
+  when the process exits anyway. What happens instead:
+  - *Detection* (`appImageFile`): Linux, `$APPIMAGE` set, **and** our own executable inside
+    `$APPDIR`. `$APPIMAGE` alone is not trusted, because every child of an AppImage inherits
+    it: a tarball install started from an AppImage terminal or editor would otherwise rename
+    our release over that other program.
+  - *Asset* (`appImageAsset`): the release's `.AppImage` for this architecture
+    (`…-linux-x86_64.AppImage` / `…-linux-arm64.AppImage`), refused outright if only the other
+    architecture's is there. `selfUpdateAssets`, which drops AppImages, is still what a tarball
+    install uses. The download limit, the digest check and the beta channel are the same code
+    path as every other self-update.
+  - *Replace* (`replaceAppImage`): the verified download is copied **beside** the image
+    (`.git-updater-selfupdate-appimage-<pid>`), given the old image's mode, flushed, and renamed
+    over it. The path never changes, so the desktop entry, the login entry and the user's own
+    shortcut keep working; the cost is that a file named `git-updater-0.3.0-…AppImage` can
+    contain a later version. A leftover temporary file is removed by `cleanupLeftovers()`.
+  - *Relaunch*: the same path is started with `--wait-pid`, with `APPIMAGE`, `APPDIR`, `ARGV0`
+    and `OWD` removed and the old mount's entries taken out of `PATH`, `LD_LIBRARY_PATH`,
+    `XDG_DATA_DIRS` and `GSETTINGS_SCHEMA_DIR` (`relaunchEnv`; the lists are what
+    electron-builder's runtime and AppRun set). A run started with `--appimage-extract-and-run`
+    is given `APPIMAGE_EXTRACT_AND_RUN=1`, since the flag itself never reaches the app.
+  - *An image that cannot be replaced* (its folder is not writable, e.g. `/opt`, or the file was
+    moved while running): `canApply()` is false, so the header button reads **Download
+    <version>** and opens the release page, and the scheduled install sends a notification
+    saying so instead of failing on every run.
+
+  None of this has been run against a real AppImage yet. `test/selfupdate-appimage.test.js`
+  describes the environment (`env`, `platform`, `execPath`, `arch` are arguments) and uses
+  plain files for the image and its mount.
 - On every start (`electron/main.js`, before the single-instance lock): if `--wait-pid` is
   present, wait for that process to exit (it holds the lock). Then, if a newer `app-*` folder
   exists that isn't the one we're running from, spawn its exe and exit — that's the launcher
@@ -606,6 +691,37 @@ No shell, no scheduled task, no second process and no listening port is involved
 smoke test of `electron/main.js` (window hides on close with the tray on, quits with it off, the
 login-start modes, the tray following `config:save`) was run with config, data and Chromium user
 data redirected to a temp folder.
+
+### The main window remembers its size and position
+
+The main window (only that one) comes back where it was left: size, position and whether it was
+maximized. The state is `window-state.json` next to `config.json`, not in it, because `config.json`
+writes a `.bak` on every save and would collect one per resize. The rules are in
+`src/windowstate.js`, which has no Electron import (`test/windowstate.test.js` drives it with plain
+rectangles and a fake window); `electron/main.js` only reads the displays and hands over the window.
+Ported from PlayingKarrde's fork.
+
+- **Opening.** A saved position is used only while its title bar still lands on a connected display.
+  After a monitor is unplugged or a resolution drops, the position is left out and the window is
+  centred the way a first run is, keeping its size. The size is capped at the work area of the
+  display it opens on and never goes below the window's minimum. A missing, corrupt or unreadable
+  file is simply a first run.
+- **Saving.** Half a second after a move or resize stops, and at once on close. Hiding to the tray is
+  a close too, so that is covered, and Quit from the tray changes nothing because a hidden or
+  minimized window is not read. What is saved is the un-maximized bounds plus a `maximized` flag, so
+  un-maximizing after a restart returns to the earlier size.
+- **No creep.** At 125% or 150% display scaling Windows hands back a new window a few pixels off what
+  it was asked for; saving that would grow or shift the window a little on every run. So the bounds
+  the window was *asked* to open with are what get written, until the size (or, separately, the
+  position) is more than 8 px away from what it opened with.
+- **A maximized window can forget.** On macOS, maximize then minimize then restore makes Electron
+  report the maximized bounds as the normal ones. A maximized window whose normal bounds equal its
+  current ones is not believed; the last ones known are kept.
+
+Checked in a real window on macOS with every folder in a temp directory: move and resize, close,
+reopen; maximize and back; a state on a display that is not there; an oversized, an undersized and a
+cut-off file; hide to the tray and Quit; a minimized login start. The Windows scaling case is covered
+by reasoning and unit tests only.
 
 ### Scheduled check (cron-style)
 
@@ -783,6 +899,88 @@ choices (`filterType`, `filterStatus`) when they change and restores them once a
 the same `booted` guard as the startup sort. The search text always starts empty. Turning the
 checkbox off resets the saved choices to All.
 
+### Categories and app folders
+
+**Settings → Apps and display → "Group apps into categories"** (`config.categoriesEnabled`,
+**off by default**). Off, the window is exactly what it was before the feature existed: no
+headers, nothing draggable, no extra menu items, no Folder field. Ported from
+PlayingKarrde/git-updater (ee988da, and the folder fixes of 473bd94) and rebuilt on our
+structure.
+
+A category is one of the user's own groups in the main list, and it has a folder: a portable
+app in it lives in `<category folder>/<app>` instead of `<portableRoot>/<app>`. Any app can be
+in a category (an installer app, a WinGet or Homebrew app); only a portable one has a folder
+there. An app can also have a folder of its own (`install.dir`, the Folder field), which wins.
+`core.portableDirOf` is the one rule, and `core.validateConfig` fills it in, so the window, the
+scheduled install and the CLI all resolve the same folder.
+
+This is **not** the "category" of Popular apps (`src/catalog.js`, `shortcuts.json`, the
+favorites file), which is the heading an app is listed under in that window. The two never
+meet: these live in `config.json`, are read through `core.findCategory`, and the main window's
+Popular apps tooltip stops using the word while the switch is on.
+
+**The switch only shows or hides screens.** Where an app's files are is decided by
+`config.json` alone, whether the switch is on or off. Turning it off moves nothing and loses
+nothing; turning it on again shows the same categories.
+
+What appears when it is on:
+
+- The list is grouped: apps with no category first, then each category in its saved order,
+  one thin header line each (name, count, folder). A header click collapses the group; which
+  groups are collapsed is kept in the window's `localStorage` (`collapsedGroups`), never in
+  `config.json`, which writes a `.bak` on every save. Collapsing is only visual: the toolbar's
+  buttons and the "Showing 5 of 23" count still include the folded rows.
+- **Sorting, search and filters.** Grouping is applied *after* sorting and filtering
+  (`groupRows(visibleRepos(sortedRepos()))`), so a column sort applies inside each group and a
+  category with no visible app has no header. An app can be dragged to a new place within its
+  group only while no column is sorted, because only then is the order on screen the saved
+  order (`config.repos`). Categories can be dragged among each other at any time. Nothing is
+  draggable while a check or update runs. A header click used to be a one-way door (up, down,
+  up…), so with the switch on a third click on the same column clears the sort.
+- Dragging uses pointer events, not HTML drag-and-drop: the browser hands that to the OS,
+  where it cannot be driven by a test and behaves differently per platform.
+- **⋯ → Move to …** / **Remove from category**, and in **⋯ → Edit…** a category picker and,
+  for a portable app, **Folder** with "in its own subfolder" (ticked by default, so the folder
+  typed works the way a category's folder does). An edit changes the entry in place: position
+  and hand-set overrides are kept. Editing only the category or folder is not re-checked and
+  can be saved while a check runs.
+- Settings lists the categories (Change folder…, Remove, drag to reorder) with a row to add one.
+- Apps added from Add an app, Popular apps or Scan this PC land uncategorised.
+
+**Moving files.** `grouping:change` (`electron/main.js`, "Categories and app folders") is the
+one call that can change where an app lives, accepted from the main window's own page only.
+The window sends what was asked (an app's key, a category's name, a folder); main builds the
+new config from the one on disk, validates the folder (a full path, no control characters),
+and `core.planRelocations` says which folders have to move: an app changing category, a
+category's folder changing, an app's own folder set, changed or cleared. Changing
+`portableRoot` alone still moves nothing, a new app has nothing to move, and an app whose
+type changed is a different entry.
+
+1. If a folder that is really on disk would move, main answers with the list and changes
+   nothing. The window shows exactly that list ("Move quake's folder? from … to …") and only
+   the user's yes sends it back, as a token of those exact paths.
+2. Refused, with nothing changed and a message naming the app and the reason, when: the app
+   is running (`detect.isRunning`, the same check as before an update); an update is running
+   here or from the CLI (the `updating` flag and the state lock are both held for the move);
+   the new place exists and is not empty (an empty folder is fine); the new place is inside
+   the old one; two apps would share a folder or sit one inside the other; the folder is not
+   a full path; the category does not exist; a category that still has apps is removed.
+3. `src/relocate.js` moves them, **all or nothing**: if one cannot move, every one already
+   moved is put back and `config.json` is not saved. Same drive: one rename (with the retry
+   install uses for antivirus locks). Another drive (`EXDEV`): copied with
+   `platform.copyTree` (ditto on macOS, so a bundle keeps its links and signature), checked
+   file by file against the original, a bundle that verified before must verify after, and
+   the original is deleted only after `config.json` is saved.
+4. `config:save` can never change any of this: `core.holdFolders` keeps the categories, each
+   app's category and its own folder as they are on disk, so a stale window (or a
+   hand-edit behind it) cannot leave an app pointing where its files are not.
+
+`state.json` needs no change after a move: an app's record holds its files relative to its
+folder and no folder at all, so the next update lands in the new place and prunes by the same
+manifest. Hand-editing `category` or a category's `dir` in `config.json` moves nothing; an
+unknown category, a duplicate name (names that differ only by case are the same) or a folder that
+is not a full path is a config error.
+
 ### Sort at startup
 
 Clicking a column header saves `config.sortColumn` / `config.sortDirection`, so by default the
@@ -856,7 +1054,8 @@ src/                 the engine (no UI, no shell):
   install.js         transactional portable dir-swap, archive extraction, silent installer
   tar.js             tar reader that preserves Unix modes and symlinks (7-Zip drops both)
   runner.js          orchestration + progress events; state keyed per (repo + type)
-  selfupdate.js      git-updater updating itself: download/verify/extract, launcher hand-off
+  selfupdate.js      git-updater updating itself: download/verify/extract, launcher hand-off;
+                     run from an AppImage, replacing the image file instead
   state.js           atomic state + cross-process update lock
   paths.js           per-platform config/data directories
   detect.js          installed versions/flavor + running-app check (async) — matching only
@@ -870,6 +1069,8 @@ src/                 the engine (no UI, no shell):
     index.js         the registry: keys, selection, checksum policy, resolver, provenance
     net.js           ctx.net for providers: HTTPS only, no redirects, size-capped
     github.js gitlab.js gitea.js winget.js brew.js folder.js   one provider per file
+  windowstate.js     the main window's remembered size and position: <config dir>/window-state.json
+  relocate.js        moves app folders when a category or folder changes: all or nothing
   log.js             file log -> <config dir>/logs (Settings -> Open log)
   platform/          EVERYTHING OS-specific lives here, behind one interface:
     index.js         dispatch on process.platform; a no-op impl for anything unsupported

@@ -208,6 +208,39 @@
   .menu button:hover { background: #2a313a; }
   .menu button.danger { color: var(--red); }
   .menu .sep { height: 1px; background: var(--border); margin: .3rem .2rem; }
+  /* Choose download: a dialog over the list, so the page itself gives up no space to it. One
+     card per file, the same shape as a source in the Add an app window. */
+  #chooser { width: min(700px, calc(100vw - 2rem)); max-height: calc(100vh - 2rem); padding: 14px 16px; color: var(--text);
+             color-scheme: dark; /* the list's scrollbar: without this it is a white bar on the dark dialog */
+             background: linear-gradient(180deg, var(--panel), var(--panel-2)); border: 1px solid var(--border);
+             border-radius: 12px; box-shadow: 0 18px 50px -12px #000; }
+  #chooser[open] { display: flex; flex-direction: column; }
+  #chooser::backdrop { background: rgba(1,4,9,.7); }
+  #chooser .sec-h { margin: 0; }
+  .ch-sub { font-size: 12.5px; line-height: 17px; color: var(--muted); margin: .15rem 0 .6rem; overflow-wrap: anywhere; }
+  .ch-sub b { color: var(--accent); font-weight: 600; }
+  .ch-list { flex: 1; min-height: 3rem; overflow-y: auto; display: flex; flex-direction: column; gap: .45rem;
+             border-top: 1px solid var(--border); padding-top: .65rem; }
+  .ch-file { flex: none; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .15rem .8rem; align-items: center;
+             border: 1px solid var(--border); border-radius: 10px; padding: .5rem .7rem; background: var(--panel); }
+  .ch-file.picked { border-color: rgba(227,161,60,.55); }
+  .ch-name { font: 500 13px var(--mono); overflow-wrap: anywhere; }
+  .ch-name .src-badge { display: inline-block; margin-left: .45rem; vertical-align: 1px; }
+  .ch-name .src-badge.yours { color: var(--accent); border-color: rgba(227,161,60,.4); }
+  .ch-name .src-badge.auto { color: var(--blue); border-color: rgba(88,166,255,.35); }
+  .ch-why { grid-column: 1; font-size: 12.5px; line-height: 17px; color: var(--muted); }
+  .ch-why.warn { color: var(--accent); }
+  /* Files not meant for this computer are most of a three-system release: kept quiet, under
+     their own small heading, so the ones that fit are what the eye lands on. */
+  .ch-group { flex: none; font: 600 .68rem var(--mono); letter-spacing: .07em; text-transform: uppercase; color: var(--faint); margin: .35rem 0 0 .1rem; }
+  .ch-file.off { background: transparent; }
+  .ch-file.off .ch-name { color: var(--muted); }
+  .ch-file.off .ch-why { color: var(--faint); }
+  .ch-file.off button { background: transparent; color: var(--muted); }
+  .ch-file button { grid-column: 2; grid-row: 1 / span 2; white-space: nowrap; }
+  .ch-bar { display: flex; gap: .55rem; align-items: center; padding-top: .7rem; border-top: 1px solid var(--border); margin-top: .7rem; }
+  #chooserStatus { margin-right: auto; min-width: 0; font-size: 12.5px; color: var(--muted); }
+  #chooserStatus.bad { color: var(--red); }
   .hint { font-size: .84rem; color: var(--faint); margin: .6rem 0 0; }
   .hint:empty { display: none; }
   /* "Repeat every:" above each cron line: label over each dropdown, one unit active at a time. */
@@ -248,6 +281,49 @@
     #selfup.current #selfupText { display: none; }
     #selfup.current::after { content: '✓'; }
   }
+  /* Categories (Settings → "Group apps into categories"). Nothing below is on screen while
+     that is off. A category's header is one thin line: arrow, name, count, folder. */
+  .group-h { display: flex; align-items: baseline; gap: .55rem; min-width: 0; padding: .26rem 0 .2rem; border-top: 1px solid var(--border);
+             cursor: pointer; user-select: none; }
+  .group-h:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+  .group-h .chev { flex: none; width: .75rem; color: var(--faint); font-size: .62rem; transition: transform .12s; }
+  .group-h.shut .chev { transform: rotate(-90deg); }
+  .group-h .name { flex: none; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+                   font: 600 .72rem var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--accent); }
+  .group-h .n { flex: none; font-size: .74rem; color: var(--faint); white-space: nowrap; }
+  .group-h .n .up { color: var(--blue); }
+  .group-h .dir { margin-left: auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 400 .72rem var(--mono); color: var(--faint); }
+  /* Drag to reorder: apps within their group, categories among each other. */
+  .can-drag { cursor: grab; }
+  .can-drag input, .can-drag button { cursor: pointer; }
+  .dragging { opacity: .45; }
+  .drop-before { box-shadow: inset 0 2px 0 var(--accent); }
+  .drop-after { box-shadow: inset 0 -2px 0 var(--accent); }
+  body.drag-on, body.drag-on .can-drag { cursor: grabbing; user-select: none; }
+  .cat-pick { flex: none; height: 35px; max-width: 11rem; font: 400 13.5px var(--sans); padding: 0 .5rem; border-radius: 8px; color: var(--text); background: #0d1117; border: 1px solid var(--border); }
+  .cat-pick:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(227,161,60,.18); }
+  .edit-sub { display: flex; align-items: center; gap: .35rem; flex: 1 1 0; min-width: 8rem; margin-left: .8rem; font-size: 12px; color: var(--muted); cursor: pointer; }
+  .edit-sub input { flex: none; }
+  .edit-sub span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cat-list { display: flex; flex-direction: column; gap: .3rem; margin-bottom: .45rem; }
+  .cat-list:empty { display: none; }
+  .cat-item { display: flex; align-items: center; gap: .5rem; min-width: 0; }
+  .cat-item .name { flex: none; max-width: 35%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 13.5px var(--mono); }
+  .cat-item .dir { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 400 13px var(--mono); color: var(--muted); }
+  .cat-item .n { flex: none; font-size: .8rem; color: var(--faint); white-space: nowrap; }
+  .cat-item button { flex: none; padding: .3rem .6rem; font-size: 13px; }
+  /* "Move these folders?": asked over the page, like Choose download, so it takes no room in it. */
+  #moveAsk { width: min(580px, calc(100vw - 2rem)); max-height: calc(100vh - 2rem); padding: 14px 16px; color: var(--text); color-scheme: dark;
+             background: linear-gradient(180deg, var(--panel), var(--panel-2)); border: 1px solid var(--border);
+             border-radius: 12px; box-shadow: 0 18px 50px -12px #000; }
+  #moveAsk[open] { display: flex; flex-direction: column; }
+  #moveAsk::backdrop { background: rgba(1,4,9,.7); }
+  #moveAsk .sec-h { margin: 0 0 .55rem; overflow-wrap: anywhere; }
+  .mv-list { flex: 1; min-height: 2rem; overflow-y: auto; display: flex; flex-direction: column; gap: .5rem; }
+  .mv-item { font-size: 12.5px; line-height: 17px; color: var(--muted); }
+  .mv-item b { display: block; font: 600 13px var(--mono); color: var(--text); }
+  .mv-item .path { display: block; font-family: var(--mono); overflow-wrap: anywhere; }
+  #moveAskNote { margin-right: auto; min-width: 0; font-size: 12.5px; color: var(--muted); }
 </style>
 </head>
 <body>
@@ -340,13 +416,20 @@
           <button type="button" data-type="portable" class="active">Portable</button>
           <button type="button" data-type="installer">Installer</button>
         </div>
+        <select id="editCat" class="cat-pick" aria-label="Category" title="Category" hidden></select>
         <button id="cancelEdit" style="display:none">Cancel</button>
         <button id="addRepo" class="primary">Find</button>
+      </div>
+      <div class="add-row" id="editDirRow" hidden style="margin-top:.45rem">
+        <span style="color:var(--muted);font-size:12px;flex:none">Folder</span>
+        <input type="text" id="editDir" aria-label="Folder for this app" spellcheck="false" autocomplete="off" style="height:31px;font-size:13px">
+        <button type="button" id="editDirBrowse" style="height:31px;padding-top:0;padding-bottom:0">Browse…</button>
       </div>
       <div class="row" style="margin-top:.45rem; gap:.4rem">
         <label style="display:flex;align-items:center;gap:.35rem;font-size:12px;color:var(--muted);cursor:pointer">
           <input type="checkbox" id="preRel"> include beta (pre-release) versions
         </label>
+        <label class="edit-sub" id="editSubRow" hidden><input type="checkbox" id="editSub" checked> <span id="editSubText"></span></label>
       </div>
       <p class="helper" id="addHint">Type an app's name, or paste a GitHub URL or any https:// address. The sources found open in their own window for you to choose from, and every app shows where its file comes from.</p>
     </section>
@@ -370,6 +453,23 @@
         <button id="saveRoot">Save</button>
       </div>
       <p class="hint">Portable apps unzip into <code>&lt;folder&gt;/&lt;app&gt;</code>.</p>
+      <div class="row" style="margin-top:.6rem">
+        <span style="color:var(--muted);font-size:.9rem;min-width:8rem">Categories</span>
+        <label class="scan-label" title="Off by default. Shows your apps in groups you name, each with its own folder, and lets you drag them into your own order."><input type="checkbox" id="categoriesEnabled"> Group apps into categories</label>
+      </div>
+      <div class="row" id="catEditor" hidden style="margin-top:.45rem;align-items:flex-start">
+        <span style="min-width:8rem"></span>
+        <div style="flex:1;min-width:12rem">
+          <div class="cat-list" id="catList"></div>
+          <div class="row">
+            <input type="text" id="newCatName" placeholder="Name, e.g. Games" aria-label="Name of the new category" maxlength="40" style="width:10rem">
+            <input type="text" id="newCatDir" placeholder="Folder for its apps" aria-label="Folder for the new category" spellcheck="false" autocomplete="off" style="flex:1;min-width:8rem">
+            <button type="button" id="newCatBrowse">Browse…</button>
+            <button type="button" id="addCat">Add</button>
+          </div>
+        </div>
+      </div>
+      <p class="hint" id="catHint" hidden>A category's portable apps go in its folder, one subfolder per app. Moving an app to another category, or changing a category's folder, moves its files too.</p>
       <div class="row" style="margin-top:.6rem">
         <span style="color:var(--muted);font-size:.9rem;min-width:8rem">Preferred sources</span>
         <div class="pref-list" id="srcPref"></div>
@@ -524,11 +624,34 @@
         <button id="editFavorites" title="Your own apps and packs, added to Popular apps. Opens the file in your editor; a starter with examples is created the first time.">Edit favorites file</button>
         <button id="openLog">Open log</button>
       </div>
-      <p class="hint">config.json: per-app overrides such as asset pattern, install folder and installer arguments. Favorites file: your own apps and packs for Popular apps.</p>
+      <p class="hint">config.json: per-app overrides such as install folder and installer arguments. Favorites file: your own apps and packs for Popular apps.</p>
       <p class="hint">git-updater <span id="appVersion"></span></p>
     </section>
   </div>
 </div>
+
+<dialog id="chooser" aria-labelledby="chooserTitle">
+  <h2 class="sec-h" id="chooserTitle">Choose download</h2>
+  <p class="ch-sub" id="chooserSub"></p>
+  <div class="ch-list" id="chooserList"></div>
+  <div class="ch-bar">
+    <span id="chooserStatus" role="status"></span>
+    <button type="button" id="chooserAuto" title="Forget your choice and let git-updater pick the file again">Pick automatically</button>
+    <!-- Focus starts here, not on the first "Use this file": a stray Enter must not save a choice. -->
+    <button type="button" id="chooserClose" autofocus>Close</button>
+  </div>
+</dialog>
+
+<dialog id="moveAsk" aria-labelledby="moveAskTitle">
+  <h2 class="sec-h" id="moveAskTitle"></h2>
+  <div class="mv-list" id="moveAskList"></div>
+  <div class="ch-bar">
+    <span id="moveAskNote">Nothing is deleted. If one cannot be moved, none are.</span>
+    <!-- Focus starts on Cancel: a stray Enter must not move anything. -->
+    <button type="button" id="moveAskNo" autofocus>Cancel</button>
+    <button type="button" id="moveAskYes" class="primary">Move</button>
+  </div>
+</dialog>
 
 <script>
 // Browser copy of core.cmpVersion. Kept in sync by the parity test in ui-sort.test.js.
@@ -591,7 +714,9 @@ const keyOf = (r) => `${r.owner}/${r.repo}#${r.type}`;
 // A long message (a file's full address, a rate-limit explanation) is marked so the toolbar can
 // give it a row of its own instead of wrapping it into a narrow column beside the buttons.
 const msg = (t, cls) => { const m = $('msg'); m.textContent = t || ''; m.className = [cls, String(t || '').length > 70 ? 'long' : ''].filter(Boolean).join(' '); };
-const clean = (e) => String(e && e.message ? e.message : e).replace(/^Error:\s*/, '');
+// A refusal from the main process arrives wrapped ("Error invoking remote method 'x': Error: …");
+// only the reason itself is something to show.
+const clean = (e) => String(e && e.message ? e.message : e).replace(/^Error:\s*/, '').replace(/^Error invoking remote method '[^']+':\s*(Error:\s*)?/, '');
 const selectedType = () => $('newType').querySelector('button.active').dataset.type;
 $('newType').querySelectorAll('button').forEach((b) =>
   b.onclick = () => { $('newType').querySelectorAll('button').forEach((x) => x.classList.remove('active')); b.classList.add('active'); });
@@ -604,8 +729,8 @@ const rowName = (r) => (r.source ? (r.name || r.repo) : `${r.owner}/${r.repo}`);
 const shortName = (r) => (r.source ? (r.name || r.repo) : r.repo);
 const nameOfKey = (k) => { const r = config.repos.find((x) => keyOf(x) === k); return r ? rowName(r) : k.split('#')[0]; };
 function localDescribe(r) {
-  if (!r.source) return { type: 'github', label: 'GitHub', host: 'github.com', ref: `${r.owner}/${r.repo}` };
-  return { type: r.source.type, label: r.source.type, host: '', ref: '' };
+  if (!r.source) return { type: 'github', label: 'GitHub', host: 'github.com', ref: `${r.owner}/${r.repo}`, canChoose: true };
+  return { type: r.source.type, label: r.source.type, host: '', ref: '', canChoose: false };
 }
 const SUM_TEXT = { pinned: 'checksum pinned by the listing', published: 'checksum published', none: 'no checksum published' };
 function sourceLine(r, key, s) {
@@ -672,7 +797,8 @@ function statusView(s) {
     case 'available': return s.present ? { text: 'Update available', cls: 'c-up' } : { text: 'Available to install', cls: 'c-up' };
     case 'installed': return datedStatus({ ...s, lastAction: 'installed' });
     case 'updated': return datedStatus({ ...s, lastAction: 'updated' });
-    case 'failed': return { text: s.reason || 'Failed', cls: 'c-bad' };
+    // Not an error to read but a decision to make: the row's button becomes "Choose…".
+    case 'failed': return s.chooseFile ? { text: 'Choose a download', cls: 'c-warn', tip: s.reason } : { text: s.reason || 'Failed', cls: 'c-bad' };
     default: return s.present ? { text: 'Not checked', cls: 'c-muted' } : { text: 'Not installed', cls: 'c-warn' };
   }
 }
@@ -859,12 +985,27 @@ function renderSortHeaders() {
     const active = header.dataset.sort === config.sortColumn;
     header.setAttribute('aria-sort', active ? (config.sortDirection === 'desc' ? 'descending' : 'ascending') : 'none');
     header.querySelector('.sort-arrow').textContent = active ? (config.sortDirection === 'desc' ? ' ↓' : ' ↑') : '';
+    // With categories on, the next click on a column sorted downwards un-sorts the list (see the click handler).
+    const button = header.querySelector('button');
+    if (catsOn() && active && config.sortDirection === 'desc') button.title = 'Click to go back to your own order';
+    else button.removeAttribute('title');
   });
 }
 document.querySelectorAll('.table-header [data-sort]').forEach((header) => {
   header.querySelector('button').onclick = async () => {
     if (busy) return;
     const col = header.dataset.sort;
+    // With categories on the list has an order of your own (the one you drag apps into), and
+    // dragging is only offered while no column is sorted. A header click used to be a one-way
+    // door: up, down, up, and never back to the saved order. So there, and only there, a third
+    // click on the same column goes back to it.
+    if (catsOn() && config.sortColumn === col && config.sortDirection === 'desc') {
+      delete config.sortColumn;
+      delete config.sortDirection;
+      renderRepos();
+      await saveConfig();
+      return;
+    }
     config.sortDirection = config.sortColumn === col && config.sortDirection !== 'desc' ? 'desc' : 'asc';
     config.sortColumn = col;
     renderRepos();
@@ -881,10 +1022,15 @@ function renderRepos() {
   shownKeys = new Set(shown.map(keyOf));
   $('noMatch').hidden = !(config.repos.length && !shown.length);
   renderFindState(shown.length, config.repos.length);
-  shown.forEach((r) => {
+  // Categories on: an app can be dragged to a new place in its group, but only while no
+  // column is sorted, because only then is the order on screen the saved one. Never while a
+  // check or update runs: progress redraws the list and would pull the row out of the drag.
+  const dragApps = catsOn() && !busy && !SORT_COLUMNS.includes(config.sortColumn);
+  const renderRow = (r, group) => {
     const key = keyOf(r);
     const s = st[key] || (st[key] = { ph: 'idle' });
     const row = el('div', 'app-row'); // 7 grid children, same template as the header
+    if (dragApps) makeDraggable(row, { kind: 'app', group, id: key }, reorderApps);
 
     const cb = el('input'); cb.type = 'checkbox'; cb.checked = selected.has(key);
     cb.onchange = () => { cb.checked ? selected.add(key) : selected.delete(key); syncBar(); };
@@ -893,6 +1039,7 @@ function renderRepos() {
     const appCell = el('span', 'app-cell');
     const appSpan = el('span', 'app-name', `${rowName(r)}${r.prerelease ? ' β' : ''}`);
     appSpan.title = rowName(r) + (r.prerelease ? ' — tracking beta (pre-release) versions' : '');
+    if (catsOn() && r.type === 'portable' && dirOf(r)) appSpan.title += `\nFolder: ${dirOf(r)}`;
     appCell.appendChild(appSpan);
     appCell.appendChild(sourceLine(r, key, s));
     row.appendChild(appCell);
@@ -913,7 +1060,7 @@ function renderRepos() {
 
     // Status
     const sv = statusView(s);
-    const stTxt = el('span', 'txt', sv.text); stTxt.title = sv.text;
+    const stTxt = el('span', 'txt', sv.text); stTxt.title = sv.tip || sv.text;
     const stEl = el('span', 'status st ' + sv.cls); stEl.append(el('span', 'dot'), stTxt);
     row.appendChild(stEl);
 
@@ -934,10 +1081,14 @@ function renderRepos() {
     // Actions
     const act = el('div', 'row-actions');
     const runningFail = s.ph === 'failed' && /is running/.test(s.reason || '');
-    const label = runningFail ? 'Retry' : primaryAction(s);
+    // A row that needs a file chosen says so right here, where its status and button
+    // already are: no banner, and no error text to decode.
+    const choose = s.ph === 'failed' && !!s.chooseFile;
+    const label = choose ? 'Choose…' : runningFail ? 'Retry' : primaryAction(s);
     const b = el('button', 'primary rowbtn', label); b.disabled = busy;
     if (runningFail) b.title = 'Close the app and retry the update';
-    b.onclick = () => (runningFail ? closeAndRetry(r, key) : label === 'Check' ? checkApps([key]) : runBatch([key]));
+    if (choose) b.title = 'Choose which file of the latest version to download';
+    b.onclick = () => (choose ? openChooser(r) : runningFail ? closeAndRetry(r, key) : label === 'Check' ? checkApps([key]) : runBatch([key]));
     act.appendChild(b);
     const kb = el('button', 'kebab ghost', '⋯'); kb.title = 'More';
     kb.onclick = (ev) => { ev.stopPropagation(); openMenu(r, kb); };
@@ -945,7 +1096,10 @@ function renderRepos() {
     row.appendChild(act);
 
     tb.appendChild(row);
-  });
+  };
+  // Off, or on with no category made yet: the plain list, exactly as it always was.
+  if (catsOn() && listCats().length) renderGroups(tb, shown, renderRow);
+  else shown.forEach((r) => renderRow(r, ''));
   syncBar();
 }
 
@@ -1027,14 +1181,28 @@ function openMenu(r, anchor) {
   item('Preview selected file', async () => {
     try {
       const p = await window.api.previewAsset(key);
+      if (p.needsChoice) {
+        // No file can be picked: put the row in the same "Choose…" state a Check would.
+        st[key] = { ...(st[key] || {}), ph: 'failed', reason: p.reason, chooseFile: true };
+        renderRepos();
+        return msg(`${shortName(r)} needs a download chosen.`, 'bad');
+      }
       st[key] = { ...(st[key] || {}), fileHost: p.host, checksum: p.checksum };
       renderRepos();
-      msg(`${rowName(r)} @ ${p.tag} → ${p.asset} — ${p.url} — listed by ${p.listedBy}; ${SUM_TEXT[p.checksum] || ''}${p.requires && p.requires.length ? '; needs ' + p.requires.join(', ') : ''}`, 'info');
+      msg(`${rowName(r)} @ ${p.tag} → ${p.asset}${p.chosen ? ' (your choice)' : ''} — ${p.url} — listed by ${p.listedBy}; ${SUM_TEXT[p.checksum] || ''}${p.requires && p.requires.length ? '; needs ' + p.requires.join(', ') : ''}`, 'info');
     } catch (e) { msg(clean(e), 'bad'); }
   });
+  // Only where the source publishes a list of files to choose from (not WinGet or Homebrew,
+  // whose listing names the one file itself). Main refuses the others too.
+  if ((srcInfo[key] || localDescribe(r)).canChoose) item(r.asset ? 'Change download…' : 'Choose download…', () => openChooser(r));
   if (r.type === 'portable') item('Open folder', () => window.api.openFolder(key));
   sep();
   item('Edit…', () => startEdit(r));
+  if (catsOn()) {
+    const cur = catOf(r);
+    listCats().filter((c) => c !== cur).forEach((c) => item(`Move to ${c.name}`, () => moveToCategory(r, c.name)));
+    if (cur) item('Remove from category', () => moveToCategory(r, null));
+  }
   // git-updater never edits the favorites file: the ready-made line goes to the clipboard.
   item('Copy as favorite', () => window.api.favoritesCopyRow(key)
     .then((c) => msg(`Copied. Paste it under "apps:" in ${c.file} (Settings → Edit favorites file).`, 'ok'))
@@ -1054,6 +1222,518 @@ function openMenu(r, anchor) {
   setTimeout(() => document.addEventListener('click', closeMenu), 0);
 }
 
+// --- choose download ---
+// ⋯ → "Choose download…", and the "Choose…" button of a row that cannot pick a file by itself.
+// Lists the files of the app's latest version, best fit for this computer first, each with why
+// it does or does not suit it. "Use this file" saves that choice at once and closes; the main
+// process remembers the file by its name without the version, so later versions use the same one.
+// The window only ever sends back a position in the list it was given.
+let chooser = null; // { r, key, listId } while the dialog is open
+const fmtSize = (n) => (!n ? '' : n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
+function closeChooser() { chooser = null; if ($('chooser').open) $('chooser').close(); }
+async function openChooser(r) {
+  if (busy) return msg('Wait for the current check or update to finish.', 'bad');
+  const key = keyOf(r);
+  msg(`Reading the files in the latest version of ${shortName(r)}…`, 'info');
+  let data;
+  try { data = await window.api.fileChoices(key); }
+  catch (e) { return msg(clean(e), 'bad'); }
+  msg('', '');
+  chooser = { r, key, listId: data.listId };
+  const sub = $('chooserSub');
+  sub.textContent = `${rowName(r)} ${data.version} · ${typeLabel(data.type)} for ${data.system}. Your choice is remembered for later versions too. `;
+  // What needs saying about this list as a whole, if anything, in the same line.
+  const note = data.saved && !data.hasCurrent ? 'Your saved choice fits no file in this version, so choose again.'
+    : !data.saved && !data.hasAuto ? 'No file clearly fits this computer, so none is picked automatically.'
+    : data.tie ? 'Several files fit equally well, so the automatic pick is close to a guess.' : '';
+  if (note) sub.appendChild(el('b', null, note));
+  const list = $('chooserList');
+  list.replaceChildren();
+  if (!data.files.length) list.appendChild(el('div', 'empty', 'The latest version has no files to download.'));
+  let grouped = false;
+  data.files.forEach((f) => {
+    if (f.tone === 'off' && !grouped) { grouped = true; list.appendChild(el('div', 'ch-group', 'Not for this computer')); }
+    const card = el('div', 'ch-file' + (f.tone === 'off' ? ' off' : '') + (f.current || (f.auto && !data.saved) ? ' picked' : ''));
+    const name = el('span', 'ch-name', f.name);
+    if (f.auto) name.appendChild(el('span', 'src-badge auto', 'Automatic pick'));
+    if (f.current) name.appendChild(el('span', 'src-badge yours', 'Your choice'));
+    const size = fmtSize(f.size);
+    card.append(name, el('span', 'ch-why' + (f.tone === 'warn' ? ' warn' : ''), size ? `${size} · ${f.note}` : f.note));
+    if (f.choosable && !f.current) {
+      const use = el('button', null, 'Use this file');
+      use.onclick = () => saveChoice(f.index);
+      card.appendChild(use);
+    }
+    list.appendChild(card);
+  });
+  $('chooserAuto').hidden = !data.saved;
+  $('chooserStatus').textContent = ''; $('chooserStatus').className = '';
+  $('chooser').showModal();
+}
+// index null: forget the choice and go back to the automatic pick.
+async function saveChoice(index) {
+  if (!chooser) return;
+  const { r, key, listId } = chooser;
+  const buttons = [...$('chooser').querySelectorAll('button')];
+  buttons.forEach((b) => { b.disabled = true; });
+  try {
+    await window.api.chooseFile(listId, index);
+  } catch (e) {
+    // Still open, so the reason is shown where the user is looking.
+    buttons.forEach((b) => { b.disabled = false; });
+    $('chooserStatus').textContent = clean(e); $('chooserStatus').className = 'bad';
+    return;
+  }
+  buttons.forEach((b) => { b.disabled = false; });
+  closeChooser();
+  // The choice was saved by the main process: re-read the list so the next save from this
+  // window cannot write the old value back over it.
+  st[key] = { ...(st[key] || {}), ph: 'idle', chooseFile: false, reason: null };
+  await reloadConfig();
+  msg(index === null ? `${shortName(r)} picks its download automatically again.` : `Download chosen for ${shortName(r)}.`, 'ok');
+  checkApps([key]);
+}
+$('chooserAuto').onclick = () => saveChoice(null);
+$('chooserClose').onclick = closeChooser;
+// Esc closes a <dialog> by itself; clicking the dimmed page around it should too. A click on
+// the dialog's own padding also reports the dialog as its target, so go by where it landed.
+$('chooser').addEventListener('click', (e) => {
+  const b = $('chooser').getBoundingClientRect();
+  if (e.target === $('chooser') && (e.clientX < b.left || e.clientX > b.right || e.clientY < b.top || e.clientY > b.bottom)) closeChooser();
+});
+$('chooser').addEventListener('close', () => { chooser = null; });
+// --- end of the choose download block ---
+
+// --- categories: pure helpers -----------------------------------------------------
+// Settings → "Group apps into categories". A category is one of your own groups in this
+// list, and each has a folder. (Popular apps sorts its apps under headings it also calls
+// categories; those are a different thing and this window never shows them.)
+// This block has no DOM and no globals, so the tests run it on its own.
+function findListCat(cats, name) {
+  if (!name || typeof name !== 'string') return null;
+  const k = name.trim().toLowerCase();
+  return (cats || []).find((c) => c && typeof c.name === 'string' && c.name.trim().toLowerCase() === k) || null;
+}
+const listCatId = (cat) => (cat ? cat.name.trim().toLowerCase() : '');
+// rows: the apps to show, already sorted and filtered. -> [{ id, cat, rows }] in the order
+// they are drawn: apps with no category first, then each category in its saved order, and
+// inside each group the order `rows` came in (so the column sort applies within a group).
+// A group with nothing to show is left out, so a category whose apps are all hidden by the
+// search or a filter has no header either.
+function groupRows(rows, cats) {
+  const groups = [{ id: '', cat: null, rows: [] }, ...(cats || []).map((c) => ({ id: listCatId(c), cat: c, rows: [] }))];
+  (rows || []).forEach((r) => {
+    const c = findListCat(cats, r.category);
+    (groups.find((g) => g.cat === c) || groups[0]).rows.push(r);
+  });
+  return groups.filter((g) => g.rows.length);
+}
+// A copy of `list` with `item` moved to just before or just after `target`.
+function movedNextTo(list, item, target, after) {
+  if (item === target || !list.includes(item) || !list.includes(target)) return list;
+  const out = list.filter((x) => x !== item);
+  out.splice(out.indexOf(target) + (after ? 1 : 0), 0, item);
+  return out;
+}
+// Browser copies of core.resolvePortableDir and core.folderName, for showing where an app
+// would go before anything is saved. The main process decides the real folder; these are
+// kept in step with it by the parity tests in test/ui-categories.test.js.
+function joinDir(root, name) {
+  const base = String(root);
+  const sep = /^(?:[a-zA-Z]:\\|\\\\)/.test(base) ? '\\' : '/';
+  return `${base.replace(/[\\/]+$/, '')}${sep}${name}`;
+}
+function folderNameOf(r) {
+  if (!r || !r.source) return r ? r.repo : '';
+  const cleaned = String(r.name || r.repo || '')
+    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/[. ]+$/, '');
+  return cleaned || 'app';
+}
+// The Folder field shows a folder that ends in the app's own name as its parent, with "in
+// its own subfolder" ticked: the same way a category's folder works.
+function splitOwnFolder(dir, name) {
+  const pin = String(dir || '').replace(/[\\/]+$/, '');
+  const m = /^(.+)[\\/]([^\\/]+)$/.exec(pin);
+  const sub = !!m && m[2].toLowerCase() === String(name).toLowerCase();
+  return { folder: sub ? m[1] : pin, sub: sub || !pin };
+}
+// --- end of the pure category helpers ---
+
+// --- categories ---------------------------------------------------------------------
+// Everything here is behind one switch, config.categoriesEnabled (Settings, off by default).
+// Off, none of it is on screen and the list is drawn exactly as before. The switch never
+// decides where an app's files are: that follows config.json whether it is on or off, so
+// turning it off moves nothing and loses nothing, and turning it on again shows the same
+// categories.
+const catsOn = () => config.categoriesEnabled === true;
+const listCats = () => (Array.isArray(config.categories) ? config.categories.filter((c) => c && typeof c.name === 'string') : []);
+const findCat = (name) => findListCat(listCats(), name);
+const catOf = (r) => findCat(r.category);
+// Where a portable app's files are: its own folder, else <its category's folder>/<app>,
+// else <portable apps folder>/<app>.
+const defaultDir = (name, cat) => { const root = cat ? cat.dir : config.portableRoot; return root && name ? joinDir(root, name) : ''; };
+const dirOf = (r) => (r.install && r.install.dir) || defaultDir(folderNameOf(r), catOf(r));
+const POPULAR_TIP = $('browseAll').title;
+
+// Which groups are collapsed is how this window is arranged, not a setting: it is kept in
+// the window's own storage, never in config.json (which writes a .bak on every save).
+// Keyed by the category's name in lower case; '' is the apps with no category.
+const collapsed = new Set((() => { try { const v = JSON.parse(localStorage.getItem('collapsedGroups')); return Array.isArray(v) ? v.filter((x) => typeof x === 'string') : []; } catch { return []; } })());
+function toggleGroup(id) {
+  collapsed.has(id) ? collapsed.delete(id) : collapsed.add(id);
+  try { localStorage.setItem('collapsedGroups', JSON.stringify([...collapsed])); } catch {}
+  renderRepos();
+}
+
+// The list, one thin header line per category. Collapsing only folds the rows away: the
+// toolbar's Check all / Update all and the "Showing 5 of 23" count still include them.
+function renderGroups(tb, shown, renderRow) {
+  groupRows(shown, listCats()).forEach((g) => {
+    const shut = collapsed.has(g.id);
+    const h = el('div', 'group-h' + (shut ? ' shut' : ''));
+    h.setAttribute('role', 'button');
+    h.tabIndex = 0;
+    h.setAttribute('aria-expanded', String(!shut));
+    const ups = g.rows.filter((r) => st[keyOf(r)]?.ph === 'available').length;
+    const n = el('span', 'n', `${g.rows.length} app${g.rows.length === 1 ? '' : 's'}`);
+    if (ups) n.append(' · ', el('span', 'up', `${ups} update${ups > 1 ? 's' : ''}`));
+    const dir = g.cat ? g.cat.dir : config.portableRoot;
+    const dirEl = el('span', 'dir', dir || '');
+    if (dir) dirEl.title = `Portable apps here go in ${dir}`;
+    h.append(el('span', 'chev', '▼'), el('span', 'name', g.cat ? g.cat.name : 'No category'), n, dirEl);
+    h.title = shut ? 'Show these apps' : 'Hide these apps';
+    h.onclick = () => toggleGroup(g.id);
+    h.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleGroup(g.id); } };
+    if (g.cat && !busy) makeDraggable(h, { kind: 'cat', group: 'list', id: g.id }, reorderCats);
+    tb.appendChild(h);
+    if (!shut) g.rows.forEach((r) => renderRow(r, g.id));
+  });
+}
+
+// --- drag to reorder: apps within their group, categories among each other ---
+// Done with pointer events, not the browser's own drag-and-drop. That one hands the drag to
+// the operating system the moment it starts: it draws its own ghost, behaves differently on
+// each platform, and cannot be driven by a test, so "the row lands where it was dropped"
+// could only ever be checked by hand.
+// `info` is { kind: 'app'|'cat', group, id }; a drop is accepted only on something of the
+// same kind and group. A press on a checkbox or a button inside the row is never a drag.
+const dragInfo = new WeakMap();
+let drag = null; // { kind, group, id, node, onDrop, x, y, live, over, after } while the button is down
+let swallowClick = false; // the click that ends a drag must not also collapse the header it landed on
+const clearDrop = () => document.querySelectorAll('.drop-before, .drop-after').forEach((n) => n.classList.remove('drop-before', 'drop-after'));
+function makeDraggable(node, info, onDrop) {
+  node.classList.add('can-drag');
+  dragInfo.set(node, info);
+  node.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0 || e.target.closest('input, button, select, a')) return;
+    drag = { ...info, node, onDrop, x: e.clientX, y: e.clientY, live: false, over: null, after: false };
+  });
+}
+function endDrag(drop) {
+  if (!drag) return;
+  const d = drag;
+  drag = null;
+  clearDrop();
+  d.node.classList.remove('dragging');
+  document.body.classList.remove('drag-on');
+  if (!d.live) return;
+  swallowClick = true;
+  setTimeout(() => { swallowClick = false; }, 0);
+  if (drop && d.over != null) d.onDrop(d.id, d.over, d.after);
+}
+document.addEventListener('pointermove', (e) => {
+  if (!drag) return;
+  if (!drag.live) {
+    if (Math.hypot(e.clientX - drag.x, e.clientY - drag.y) < 6) return; // a click with a shaky hand
+    drag.live = true;
+    drag.node.classList.add('dragging');
+    document.body.classList.add('drag-on');
+  }
+  clearDrop();
+  drag.over = null;
+  const under = document.elementFromPoint(e.clientX, e.clientY);
+  const target = under && under.closest('.can-drag');
+  const t = target && dragInfo.get(target);
+  if (!t || t.kind !== drag.kind || t.group !== drag.group || t.id === drag.id) return;
+  const b = target.getBoundingClientRect();
+  drag.after = e.clientY > b.top + b.height / 2;
+  drag.over = t.id;
+  target.classList.add(drag.after ? 'drop-after' : 'drop-before');
+});
+document.addEventListener('pointerup', () => endDrag(true));
+document.addEventListener('pointercancel', () => endDrag(false));
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && drag && drag.live) { e.preventDefault(); endDrag(false); } }, true);
+document.addEventListener('click', (e) => { if (swallowClick) { swallowClick = false; e.stopPropagation(); e.preventDefault(); } }, true);
+
+// The order of the apps is the order of config.repos, which is the window's to save.
+async function reorderApps(id, targetId, after) {
+  const item = config.repos.find((r) => keyOf(r) === id);
+  const target = config.repos.find((r) => keyOf(r) === targetId);
+  if (!item || !target) return;
+  config.repos = movedNextTo(config.repos, item, target, after);
+  renderRepos();
+  await saveConfig();
+}
+// The categories themselves belong to the main process (they decide where files are), so
+// their new order is sent to it; the list is redrawn at once and corrected if it says no.
+async function reorderCats(id, targetId, after) {
+  const cats = listCats();
+  const item = cats.find((c) => listCatId(c) === id);
+  const target = cats.find((c) => listCatId(c) === targetId);
+  if (!item || !target) return;
+  config.categories = movedNextTo(cats, item, target, after);
+  renderCatEditor();
+  renderRepos();
+  try { await window.api.changeGrouping({ op: 'order-categories', names: config.categories.map((c) => c.name) }); }
+  catch (e) { msg(clean(e), 'bad'); await reloadGrouping().catch(() => {}); }
+}
+
+// --- changing categories and folders ---
+// Every change that can decide where an app's files are is made by the main process, from
+// the config on disk ("Categories and app folders" in electron/main.js). If folders would
+// move, main first answers with the list and changes nothing; the user is shown that exact
+// list, and only their yes sends it back to be carried out.
+let moveAnswer = null;
+function askMove(moves) {
+  return new Promise((resolve) => {
+    const places = new Set(moves.map((m) => String(m.to).replace(/[\\/][^\\/]*$/, '')));
+    const to = places.size === 1 && moves.length > 1 ? ` to ${[...places][0]}` : '';
+    $('moveAskTitle').textContent = moves.length === 1 ? `Move ${moves[0].name}'s folder?` : `Move ${moves.length} apps' folders${to}?`;
+    const list = $('moveAskList');
+    list.replaceChildren();
+    moves.forEach((m) => {
+      const it = el('div', 'mv-item');
+      it.append(el('b', null, m.name), el('span', 'path', `from ${m.from}`), el('span', 'path', `to ${m.to}`));
+      list.appendChild(it);
+    });
+    moveAnswer = resolve;
+    $('moveAsk').showModal();
+  });
+}
+function answerMove(yes) {
+  const answer = moveAnswer;
+  moveAnswer = null;
+  if ($('moveAsk').open) $('moveAsk').close();
+  if (answer) answer(yes);
+}
+$('moveAskYes').onclick = () => answerMove(true);
+$('moveAskNo').onclick = () => answerMove(false);
+$('moveAsk').addEventListener('close', () => answerMove(false)); // Esc
+
+async function reloadGrouping() {
+  config = await window.api.getConfig();
+  if (!config.repos) config.repos = [];
+  renderCatEditor();
+  renderRepos(); // regroup at once; reading what is installed, below, is the slow part
+  srcInfo = await window.api.describeSources().catch(() => ({}));
+  await refreshInstalled();
+  renderRepos();
+}
+let grouping = false; // one change at a time: a second would be planned against a list the first is about to change
+// -> main's answer ({ text, key, moved, notes }), or null when it was refused or the user said no.
+async function groupingChange(change) {
+  if (grouping) { msg('Wait for the change in progress to finish.', 'bad'); return null; }
+  grouping = true;
+  msg('', ''); // whatever the status line said belongs to something earlier
+  try {
+    let res = await window.api.changeGrouping(change);
+    while (res && res.needsConfirm) {
+      if (!(await askMove(res.moves))) return null;
+      msg(res.moves.length === 1 ? `Moving ${res.moves[0].name}…` : `Moving ${res.moves.length} apps…`, 'info');
+      res = await window.api.changeGrouping(change, res.token);
+    }
+    await reloadGrouping();
+    return res;
+  } catch (e) {
+    msg(clean(e), 'bad');
+    await reloadGrouping().catch(() => {});
+    return null;
+  } finally {
+    grouping = false;
+  }
+}
+// What was done, and every folder that moved: files are never moved without saying so.
+function groupingText(res, lead) {
+  const moved = res.moved || [];
+  const parts = [lead === undefined ? res.text : lead];
+  if (moved.length === 1) parts.push(`Moved ${moved[0].name}'s folder to ${moved[0].to}.`);
+  else if (moved.length) parts.push(`Moved ${moved.length} apps' folders: ${moved.map((m) => m.name).join(', ')}.`);
+  parts.push(...(res.notes || []));
+  return parts.filter(Boolean).join(' ');
+}
+const sayGrouping = (res, lead) => msg(groupingText(res, lead), res.notes && res.notes.length ? 'info' : 'ok');
+
+async function moveToCategory(r, name) {
+  if (busy) return msg('Wait for the current check or update to finish.', 'bad');
+  const res = await groupingChange({ op: 'move-app', key: keyOf(r), category: name });
+  if (res) sayGrouping(res);
+}
+
+// --- Settings: the switch and the list of categories ---
+function syncCatsSwitch() {
+  const on = catsOn();
+  $('categoriesEnabled').checked = on;
+  $('catEditor').hidden = !on;
+  $('catHint').hidden = !on;
+  // Popular apps calls its headings categories too. With this on the main list has
+  // categories of its own, so its button says what it opens without using the word.
+  $('browseAll').title = on ? 'Pick apps from a list of well-known apps' : POPULAR_TIP;
+  renderCatEditor();
+}
+function renderCatEditor() {
+  const list = $('catList');
+  list.replaceChildren();
+  if (!catsOn()) return;
+  listCats().forEach((c) => {
+    const n = config.repos.filter((r) => catOf(r) === c).length;
+    const row = el('div', 'cat-item');
+    makeDraggable(row, { kind: 'cat', group: 'settings', id: listCatId(c) }, reorderCats);
+    const dir = el('span', 'dir', c.dir);
+    dir.title = c.dir;
+    row.append(el('span', 'name', c.name), dir, el('span', 'n', `${n} app${n === 1 ? '' : 's'}`));
+    const change = el('button', null, 'Change folder…');
+    change.type = 'button';
+    change.title = `Pick another folder for ${c.name}. Its apps' files move there.`;
+    change.onclick = async () => {
+      if (busy) return msg('Wait for the current check or update to finish.', 'bad');
+      let picked;
+      try { ({ path: picked } = await window.api.pickFolder('category', c.dir)); } catch (e) { return msg(clean(e), 'bad'); }
+      if (!picked) return;
+      const res = await groupingChange({ op: 'set-category-folder', name: c.name, dir: picked });
+      if (res) sayGrouping(res);
+    };
+    const remove = el('button', 'ghost', 'Remove');
+    remove.type = 'button';
+    remove.onclick = async () => {
+      if (busy) return msg('Wait for the current check or update to finish.', 'bad');
+      const res = await groupingChange({ op: 'remove-category', name: c.name });
+      if (res) sayGrouping(res);
+    };
+    row.append(change, remove);
+    list.appendChild(row);
+  });
+}
+$('categoriesEnabled').onchange = () => {
+  config.categoriesEnabled = $('categoriesEnabled').checked;
+  if (editingKey) cancelEdit(); // the form has, or lacks, the category and Folder controls of the other mode
+  syncCatsSwitch();
+  renderRepos();
+  saveConfig().then(() => msg('Saved.', 'ok'));
+};
+$('newCatBrowse').onclick = async () => {
+  try { const { path: picked } = await window.api.pickFolder('category', $('newCatDir').value.trim() || config.portableRoot || ''); if (picked) $('newCatDir').value = picked; }
+  catch (e) { msg(clean(e), 'bad'); }
+};
+$('addCat').onclick = async () => {
+  if (busy) return msg('Wait for the current check or update to finish.', 'bad');
+  const name = $('newCatName').value.trim();
+  const dir = $('newCatDir').value.trim();
+  if (!name) { $('newCatName').focus(); return msg('Give the category a name.', 'bad'); }
+  if (!dir) { $('newCatDir').focus(); return msg(`Choose a folder for ${name}.`, 'bad'); }
+  const res = await groupingChange({ op: 'add-category', name, dir });
+  if (!res) return;
+  $('newCatName').value = '';
+  $('newCatDir').value = '';
+  sayGrouping(res, `${res.text} To put an app in it, use ⋯ → Move to ${name} on its row.`);
+};
+['newCatName', 'newCatDir'].forEach((id) => $(id).addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); $('addCat').click(); } }));
+
+// --- the Edit form: category and Folder ---
+// Shown only while an app is being edited with categories on. Folder is for portable apps:
+// empty means the default place, which the grey text spells out. With "in its own subfolder"
+// ticked (the default) the folder typed is where the app's own folder goes, the same way a
+// category's folder works; unticked, the app's files go straight into it.
+const editedEntry = () => (editingKey ? config.repos.find((x) => keyOf(x) === editingKey) : null);
+// The name of the app's own folder: a GitHub app's repo (as retyped, if it has been).
+const editedFolderName = (r) => (r.source ? folderNameOf(r) : (parseRepo($('newRepo').value) || r).repo);
+const editedFolder = (r) => { const typed = $('editDir').value.trim(); return typed && $('editSub').checked ? joinDir(typed, editedFolderName(r)) : typed; };
+function syncEditFolder() {
+  const r = catsOn() ? editedEntry() : null;
+  const portable = !!r && selectedType() === 'portable';
+  $('editCat').hidden = !(r && listCats().length);
+  $('editDirRow').hidden = !portable;
+  $('editSubRow').hidden = !(portable && $('editDir').value.trim());
+  if (!r) return;
+  const def = defaultDir(editedFolderName(r), findCat($('editCat').value));
+  $('editDir').placeholder = def ? `Default: ${def}` : 'Choose a folder';
+  $('editDir').title = 'The folder this app is kept in. Leave it empty to use the default' + (def ? ` (${def}).` : '.');
+  $('editSubText').textContent = `in its own subfolder (${joinDir($('editDir').value.trim(), editedFolderName(r))})`;
+  $('editSubText').title = $('editSubText').textContent;
+}
+function startEditFolder(r) {
+  const pick = $('editCat');
+  pick.replaceChildren(new Option('No category', ''), ...listCats().map((c) => new Option(c.name, c.name)));
+  pick.value = catOf(r) ? catOf(r).name : '';
+  const own = splitOwnFolder((r.install && r.install.dir) || '', folderNameOf(r));
+  $('editDir').value = own.folder;
+  $('editSub').checked = own.sub;
+  $('addHint').textContent = `Editing ${rowName(r)} — change its ${r.source ? '' : 'address, '}type, category or folder, then Save. A new folder moves the app's files there.`;
+  syncEditFolder();
+  $('addHint').scrollIntoView({ block: 'nearest' }); // the Folder row is under the name field: bring the whole form into view
+}
+$('newRepo').addEventListener('input', syncEditFolder);
+$('newType').addEventListener('click', syncEditFolder);
+$('editCat').addEventListener('change', syncEditFolder);
+$('editDir').addEventListener('input', syncEditFolder);
+$('editSub').addEventListener('change', syncEditFolder);
+$('editDir').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') $('addRepo').click();
+  if (e.key === 'Escape' && editingKey) cancelEdit();
+});
+// Opens where the app would go now: the folder typed in, else its category's, else the
+// portable apps folder.
+$('editDirBrowse').onclick = async () => {
+  const start = $('editDir').value.trim() || (findCat($('editCat').value) || {}).dir || config.portableRoot || '';
+  try { const { path: picked } = await window.api.pickFolder('app', start); if (picked) { $('editDir').value = picked; syncEditFolder(); } }
+  catch (e) { msg(clean(e), 'bad'); }
+};
+
+// Save an edit with categories on. One call to the main process changes the app in place
+// (so it keeps its position in the list and every hand-set override) and moves its files if
+// its folder changed. A refusal leaves the form open with what was typed.
+async function saveEditGrouped() {
+  const r = editedEntry();
+  if (!r) return cancelEdit();
+  const type = selectedType();
+  const prerelease = $('preRel').checked;
+  let retarget = null;
+  if (!r.source) {
+    const parsed = parseRepo($('newRepo').value);
+    if (!parsed) return msg('Paste a GitHub releases URL or owner/repo.', 'bad');
+    if (parsed.owner !== r.owner || parsed.repo !== r.repo) retarget = parsed;
+  }
+  // An edit that only changes the category or the folder asks the app's source nothing:
+  // same app, same version, same row. So it is not re-checked, and it can be saved while a
+  // check is running.
+  const sameApp = !retarget && type === r.type && !!r.prerelease === prerelease;
+  if (!sameApp && busy) return msg('Wait for the current check or update to finish.', 'bad');
+  const was = editingKey;
+  const cat = findCat($('editCat').value);
+  $('addRepo').disabled = true;
+  try {
+    if (retarget) {
+      msg(`Checking ${retarget.owner}/${retarget.repo}…`, 'info');
+      try { await window.api.validateRepo(retarget.owner, retarget.repo, prerelease); }
+      catch (e) { return msg(`Can't save — ${clean(e)}`, 'bad'); }
+    }
+    const change = { op: 'edit-app', key: was, type, prerelease, category: cat ? cat.name : null };
+    if (type === 'portable') change.folder = editedFolder(r);
+    if (retarget) change.retarget = retarget;
+    const res = await groupingChange(change);
+    if (!res) return;
+    if (res.key !== was) { delete st[was]; selected.delete(was); }
+    cancelEdit();
+    sayGrouping(res);
+    if (!sameApp) checkApps([res.key]);
+  } finally {
+    $('addRepo').disabled = false;
+  }
+}
+// --- end of the categories block ---
+
 // --- config ops ---
 async function saveConfig() {
   config.portableRoot = $('portableRoot').value.trim();
@@ -1072,6 +1752,7 @@ async function load() {
   srcInfo = await window.api.describeSources().catch(() => ({}));
   $('portableRoot').value = config.portableRoot || '';
   $('requireChecksum').checked = !!config.requireChecksum;
+  syncCatsSwitch();
   $('typePref').value = config.typePreference === 'portable' || config.typePreference === 'installer' ? config.typePreference : '';
   renderSourcePrefs();
   $('selfPreRel').checked = !!config.selfUpdatePrerelease;
@@ -1273,6 +1954,7 @@ function startEdit(r) {
     : `Editing ${rowName(r)} — change the repo or type, then Save.`;
   ($('newRepo').disabled ? $('addRepo') : $('newRepo')).focus();
   $('newRepo').scrollIntoView({ block: 'nearest' });
+  if (catsOn()) startEditFolder(r);
 }
 function cancelEdit() {
   editingKey = null;
@@ -1283,6 +1965,9 @@ function cancelEdit() {
   $('preRel').checked = false;
   $('addHint').textContent = ADD_HINT;
   if (config.typePreference) setTypeToggle(config.typePreference);
+  $('editDir').value = '';
+  $('editSub').checked = true;
+  syncEditFolder(); // nothing is being edited: the category and Folder controls go away
   msg('', '');
 }
 $('cancelEdit').onclick = cancelEdit;
@@ -1304,6 +1989,7 @@ async function reloadConfig() {
 // source and every hand-set override in config.json survive. Only a GitHub entry whose
 // owner/repo text was actually retyped is replaced.
 async function saveEdit() {
+  if (catsOn()) return saveEditGrouped(); // also saves the category and the Folder field, and moves the files
   const r = config.repos.find((x) => keyOf(x) === editingKey);
   if (!r) return cancelEdit();
   const type = selectedType();
@@ -1493,7 +2179,7 @@ async function closeAndRetry(r, key) {
 async function checkApps(keys) {
   if (busy) return;
   holdVisible(); // before the statuses change, so rows do not vanish from a filtered list mid-run
-  busy = true; keys.forEach((k) => (st[k] = { ...(st[k] || {}), ph: 'checking' })); renderRepos();
+  busy = true; keys.forEach((k) => (st[k] = { ...(st[k] || {}), ph: 'checking', chooseFile: false })); renderRepos();
   const retyped = { portable: [], installer: [] }; // type corrections — reported, never silent
   let stopped = null; // rate-limit / bad-token reason that ended the run early
   try {
@@ -1504,7 +2190,8 @@ async function checkApps(keys) {
         const s = st[k] || {};
         if (r.retyped && retyped[r.retyped.to]) retyped[r.retyped.to].push(nameOfKey(k));
         const prov = { ...(r.fileHost ? { fileHost: r.servedFrom || r.fileHost } : {}), ...(r.checksum ? { checksum: r.checksum } : {}) };
-        if (r.status === 'failed') st[k] = { ...s, ...prov, ph: 'failed', reason: r.reason };
+        // A row that needs a file chosen still knows its versions, so it keeps showing them.
+        if (r.status === 'failed') st[k] = { ...s, ...prov, ph: 'failed', reason: r.reason, chooseFile: !!r.chooseFile, ...(r.chooseFile ? { from: r.from || s.from, to: r.to || s.to } : {}) };
         else st[k] = { ...s, ...prov, ph: r.status === 'current' ? 'current' : 'available', from: r.from || s.from, to: r.to, present: s.present };
       }
       renderRepos();
@@ -1539,8 +2226,8 @@ async function runBatch(keys, force, autoClose = false) {
   if (busy || !keys.length) return;
   holdVisible(); // before the statuses change, so rows do not vanish from a filtered list mid-run
   busy = true;
-  keys.forEach((k) => (st[k] = { ...(st[k] || {}), ph: 'queued' })); renderRepos();
-  let done = 0, installed = 0, failed = 0;
+  keys.forEach((k) => (st[k] = { ...(st[k] || {}), ph: 'queued', chooseFile: false })); renderRepos();
+  let done = 0, installed = 0, failed = 0, needChoice = 0;
   const reopenErrors = [];
   async function reopen(k) {
     try { await window.api.openApp(k); }
@@ -1562,6 +2249,8 @@ async function runBatch(keys, force, autoClose = false) {
         installerPending = true;
         watchInstall(k, s.from, wasInstall, closed ? () => reopen(k) : undefined);
       }
+      // Nothing was attempted: the row asks for a file to be chosen, which is not a failure.
+      else if (r.chooseFile) { st[k] = { ...s, ph: 'failed', reason: r.reason, chooseFile: true, to: r.to || s.to }; needChoice++; }
       else { st[k] = { ...s, ph: 'failed', reason: r.reason }; failed++; }
       if (r && r.stopRun) { // same as checkApps: the rest would only fail the same way
         keys.slice(keys.indexOf(k) + 1).forEach((x) => { st[x] = { ...(st[x] || {}), ph: 'failed', reason: r.reason }; failed++; });
@@ -1579,8 +2268,9 @@ async function runBatch(keys, force, autoClose = false) {
   if (installed) parts.push(`${installed} installed`);
   if (waiting) parts.push(`${waiting} waiting for its installer window`);
   if (failed) parts.push(`${failed} failed`);
+  if (needChoice) parts.push(`${needChoice} need${needChoice === 1 ? 's' : ''} a download chosen`);
   if (reopenErrors.length) parts.push(`${reopenErrors.length} could not be re-opened: ${reopenErrors.join('; ')}`);
-  msg(parts.length ? parts.join(', ') + '.' : 'Nothing to update.', failed || reopenErrors.length ? 'bad' : 'ok');
+  msg(parts.length ? parts.join(', ') + '.' : 'Nothing to update.', failed || needChoice || reopenErrors.length ? 'bad' : 'ok');
 }
 
 window.api.onProgress(({ id, phase, pct }) => {

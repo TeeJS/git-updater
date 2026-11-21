@@ -15,7 +15,8 @@ test('portable entry with no install.dir defaults to portableRoot/<repo>', () =>
 
 test('trailing slash on portableRoot is not doubled', () => {
   assert.strictEqual(core.resolvePortableDir('C:/Apps/', 'fd'), 'C:/Apps/fd');
-  assert.strictEqual(core.resolvePortableDir('C:\\Apps\\', 'fd'), 'C:\\Apps/fd');
+  // A Windows folder is joined with its own separator, so it reads the way it was typed.
+  assert.strictEqual(core.resolvePortableDir('C:\\Apps\\', 'fd'), 'C:\\Apps\\fd');
 });
 
 test('explicit install.dir is preserved over portableRoot', () => {
