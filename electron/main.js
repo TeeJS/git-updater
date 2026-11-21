@@ -6,7 +6,7 @@
 // window exits everything. Two opt-in settings change that (src/background.js): start at login,
 // and keep running in the tray when the window is closed.
 
-const { app, BrowserWindow, ipcMain, dialog, shell, screen, net, safeStorage, Tray, Menu, nativeImage, Notification, powerMonitor } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, screen, net, safeStorage, Tray, Menu, nativeImage, Notification, powerMonitor, clipboard } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const { fileURLToPath } = require('url');
@@ -21,6 +21,7 @@ const catalog = require('../src/catalog');
 const selfupdate = require('../src/selfupdate');
 const sources = require('../src/sources');
 const packs = require('../src/packs');
+const favorites = require('../src/favorites');
 const background = require('../src/background');
 const cron = require('../src/cron');
 const schedule = require('../src/schedule');
@@ -686,7 +687,7 @@ ipcMain.handle('sources:providers', () => {
 // The Add box takes a GitHub URL, any other URL, or a program name. resolve turns that
 // text into candidates; inspect says what each one would install on THIS machine; add
 // builds the config entry main-side. The renderer never constructs a key or a URL.
-const catalogLookup = (name, platform) => catalog.lookup(name, platform);
+const catalogLookup = (name, platform) => { loadFavorites(); return catalog.lookup(name, platform); }; // the user's own apps are found by name too
 const addPage = path.join(__dirname, '..', 'ui', 'add.html');
 const mainPage = path.join(__dirname, '..', 'ui', 'index.html');
 const popularPage = path.join(__dirname, '..', 'ui', 'popular.html');
@@ -972,10 +973,93 @@ ipcMain.handle('source:add', (e, items) => {
 // cannot be. Nothing is saved until the user confirms that list (source:add).
 const PACKS_FILE = path.join(DATA_DIR, 'packs.json');
 const knownTypes = () => sources.providerTypes();
+
+// --- Favorites: the user's own apps and packs, from a file they write by hand -----------
+// <config dir>/favorites.yaml, read and never written (src/favorites.js has the format and
+// the rules). It is re-read whenever it has changed on disk, so an edit shows up the next
+// time a window asks, with no restart. A missing file is simply no favorites.
+const FAVORITES_PATH = path.join(DATA_DIR, favorites.FILE_NAME);
+let favState = { stamp: null, apps: 0, pins: 0, packs: [], problems: [] };
+function loadFavorites() {
+  let stamp = 'none';
+  let size = 0;
+  try {
+    const st = fs.statSync(FAVORITES_PATH);
+    stamp = `${st.mtimeMs}:${st.size}`;
+    size = st.size;
+  } catch {}
+  if (stamp === favState.stamp) return favState;
+  let found = { apps: [], pins: [], notes: {}, packs: [], problems: [] };
+  if (stamp !== 'none') {
+    try {
+      found = size > favorites.MAX_BYTES
+        ? { ...found, problems: [`${favorites.FILE_NAME} is too large to read (limit ${favorites.MAX_BYTES / 1024} KB)`] }
+        : favorites.parse(fs.readFileSync(FAVORITES_PATH, 'utf8'), { find: catalog.findBuiltin });
+    } catch (e) {
+      found = { ...found, problems: [`${favorites.FILE_NAME} could not be read — ${e.message}`] };
+    }
+  }
+  catalog.setFavorites(found);
+  const problems = found.problems.slice();
+  const filePacks = [];
+  for (const p of found.packs) {
+    try {
+      // The same gate an imported pack goes through: app references and nothing else.
+      const pack = packs.validatePack({ format: packs.FORMAT, version: 1, name: p.name, description: p.description, apps: p.apps }, { ...packOpts(), id: `favorites-${packs.slug(p.name)}` });
+      filePacks.push({ ...pack, fromFile: true });
+    } catch (e) {
+      problems.push(`pack "${p.name}": ${e.message}`);
+    }
+  }
+  if (stamp !== 'none') log(`favorites: ${found.apps.length} app(s), ${found.pins.length} pinned, ${filePacks.length} pack(s)${problems.length ? `, ${problems.length} problem(s)` : ''} from ${FAVORITES_PATH}`);
+  favState = { stamp, apps: found.apps.length, pins: found.pins.length, packs: filePacks, problems };
+  return favState;
+}
+ipcMain.handle('favorites:status', () => {
+  const f = loadFavorites();
+  return { path: FAVORITES_PATH, file: favorites.FILE_NAME, exists: f.stamp !== 'none', apps: f.apps, pins: f.pins, packs: f.packs.length, problems: f.problems };
+});
+// Open the file in the user's editor, creating the commented starter the first time. This
+// is the only write git-updater ever makes to it ('wx': never over an existing file).
+ipcMain.handle('favorites:open', async () => {
+  let created = false;
+  try {
+    fs.mkdirSync(path.dirname(FAVORITES_PATH), { recursive: true });
+    fs.writeFileSync(FAVORITES_PATH, favorites.STARTER, { flag: 'wx' });
+    created = true;
+  } catch (e) {
+    if (e.code !== 'EEXIST') throw e;
+  }
+  const err = await shell.openPath(FAVORITES_PATH); // '' on success
+  // No program is set up to open a .yaml file: show it in the file manager instead.
+  if (err) shell.showItemInFolder(FAVORITES_PATH);
+  return { path: FAVORITES_PATH, created, revealed: !!err };
+});
+// The line that adds a tracked app to the favorites file, put on the clipboard for the user
+// to paste: git-updater does not edit the file itself.
+ipcMain.handle('favorites:copy-row', (_e, appKey) => {
+  loadFavorites();
+  const cfg = readConfig();
+  const r = cfg.repos.find((x) => `${x.owner}/${x.repo}#${x.type}` === appKey);
+  if (!r) throw new Error('app not found');
+  const source = sources.sourceOf(r);
+  const same = (a, b) => a.type === b.type && sources.provider(a.type).canonicalRef(a) === sources.provider(b.type).canonicalRef(b);
+  const known = catalog.builtinApps().find((a) => a.listed && ['win32', 'darwin', 'linux'].some((plat) => catalog.sourcesFor(a, plat).some((s) => same(s, source))));
+  const text = favorites.rowFor(r, known);
+  if (!text) throw new Error(`${core.displayId(r)} comes from a source the favorites file cannot name yet`);
+  clipboard.writeText(text);
+  return { text, file: favorites.FILE_NAME };
+});
 const trackedKeys = (cfg) => new Set(cfg.repos.map((r) => `${r.owner}/${r.repo}`));
 const isTracked = (set, source) => {
   const k = sources.keyParts(source);
   return set.has(`${k.owner}/${k.repo}`);
+};
+// The same app, tracked from a GitHub repository that is not one of the row's own sources
+// (see `also` in src/catalog.js): Bitwarden from bitwarden/clients is still Bitwarden.
+const alsoTracked = (set, catalogApp) => {
+  const repos = catalogApp && Array.isArray(catalogApp.also) ? catalogApp.also.map((r) => r.toLowerCase()) : [];
+  return repos.length > 0 && [...set].some((k) => repos.includes(k.toLowerCase()));
 };
 
 let popularWin = null;
@@ -1001,17 +1085,33 @@ ipcMain.handle('popular:list', () => {
   const cfg = readConfig();
   const tracked = trackedKeys(cfg);
   const types = knownTypes();
-  return catalog.popular(process.platform).map((a) => {
+  loadFavorites();
+  const rows = catalog.popular(process.platform).map((a) => {
     const usable = a.sources.filter((s) => types.includes(s.type));
     return {
       id: a.id,
       name: a.name,
       category: a.category,
+      description: a.description, // one line about the app, shown on hover
+      favorite: !!a.favorite,
       windowsOnly: catalog.isWindowsOnly(a.category), // the picker groups these in their own section
       sources: usable.map((s) => sources.provider(s.type).label),
-      tracked: usable.some((s) => isTracked(tracked, s)),
+      tracked: usable.some((s) => isTracked(tracked, s)) || alsoTracked(tracked, a),
     };
   }).filter((a) => a.sources.length);
+  // "My favorites" leads the list: the built-in apps the user's file names (a second row for
+  // each, alongside the one in its own category), then their own apps. A favorite given
+  // another category joins that category, or starts a new one after the built-in ones.
+  const mine = favorites.DEFAULT_CATEGORY;
+  const pinned = catalog.favoritePins().map((id) => rows.find((a) => a.id === id)).filter(Boolean)
+    // The user's own line about a pinned app replaces the built-in one, on this row only.
+    .map((a) => ({ ...a, category: mine, favorite: true, windowsOnly: false, description: catalog.favoriteNote(a.id) || a.description }));
+  return [
+    ...pinned,
+    ...rows.filter((a) => a.favorite && a.category === mine),
+    ...rows.filter((a) => !a.favorite),
+    ...rows.filter((a) => a.favorite && a.category !== mine),
+  ];
 });
 
 // items: [{ name, sources: [...], appId?, reason? }] -> one plan row each. Sequential on
@@ -1038,7 +1138,7 @@ async function planItems(items) {
       continue;
     }
     // Already tracked from ANY of its sources: nothing to add.
-    const had = list.find((s) => isTracked(tracked, s));
+    const had = list.find((s) => isTracked(tracked, s)) || (it.appId && alsoTracked(tracked, catalog.appById(it.appId)) ? list[0] : undefined);
     if (had) {
       out.push({ ...base, source: had, listedBy: labelOf(had), reason: 'already in your list', tracked: true });
       continue;
@@ -1097,6 +1197,7 @@ async function planItems(items) {
 
 ipcMain.handle('popular:plan', async (_e, ids) => {
   if (!Array.isArray(ids) || ids.length > packs.MAX_APPS) throw new Error('too many apps selected');
+  loadFavorites();
   const cfg = readConfig();
   const pack = { apps: ids.filter((id) => typeof id === 'string').map((id) => ({ id })) };
   return planItems(packs.resolveRefs(pack, process.platform, cfg.sourcePreference, knownTypes()));
@@ -1105,13 +1206,16 @@ ipcMain.handle('popular:plan', async (_e, ids) => {
 // A pack's explicit source references are reduced to a provider's own identity fields.
 const packOpts = () => ({ cleanSource: (src) => sources.cleanSource(src) });
 const myPacks = () => packs.loadMine(PACKS_FILE, packOpts());
-const findPack = (id) => [...packs.builtin(), ...myPacks()].find((p) => p.id === id);
+// Packs written in the favorites file sit beside the ones saved in the app, but only the file
+// changes them: they cannot be deleted or replaced from the window.
+const filePacks = () => loadFavorites().packs;
+const findPack = (id) => [...packs.builtin(), ...filePacks(), ...myPacks()].find((p) => p.id === id);
 const packSummary = (p) => {
   const cfg = readConfig();
   const rows = packs.resolveRefs(p, process.platform, cfg.sourcePreference, knownTypes());
-  return { id: p.id, name: p.name, description: p.description, builtin: !!p.builtin, count: p.apps.length, available: rows.filter((r) => r.sources.length).length, apps: rows.map((r) => r.name) };
+  return { id: p.id, name: p.name, description: p.description, builtin: !!p.builtin, fromFile: !!p.fromFile, count: p.apps.length, available: rows.filter((r) => r.sources.length).length, apps: rows.map((r) => r.name) };
 };
-ipcMain.handle('packs:list', () => ({ builtin: packs.builtin().map(packSummary), mine: myPacks().map(packSummary) }));
+ipcMain.handle('packs:list', () => ({ builtin: packs.builtin().map(packSummary), mine: [...filePacks(), ...myPacks()].map(packSummary) }));
 ipcMain.handle('packs:plan', async (_e, id) => {
   const p = findPack(String(id));
   if (!p) throw new Error('pack not found');
@@ -1119,10 +1223,19 @@ ipcMain.handle('packs:plan', async (_e, id) => {
 });
 // Save the apps tracked on this machine (or a picked subset of shortcut ids) as a pack.
 ipcMain.handle('packs:save', (_e, { name, description, ids }) => {
+  loadFavorites();
   const cfg = readConfig();
   let pack;
   if (Array.isArray(ids)) {
-    pack = packs.validatePack({ format: packs.FORMAT, version: 1, name, description, apps: ids.map((id) => ({ id })) }, packOpts());
+    // One of the user's own apps is stored by where it comes from, not by its id: the pack
+    // may be opened on a machine whose favorites file does not have it.
+    const refs = ids.map((id) => {
+      const fav = typeof id === 'string' ? catalog.appById(id) : null;
+      if (!fav || !fav.favorite) return { id };
+      const source = catalog.preferredSource(fav, process.platform, cfg.sourcePreference);
+      return source ? { name: fav.name, source } : null;
+    }).filter(Boolean);
+    pack = packs.validatePack({ format: packs.FORMAT, version: 1, name, description, apps: refs }, packOpts());
   } else {
     if (!cfg.repos.length) throw new Error('there are no apps in your list to save');
     const built = packs.fromEntries(name, description, cfg.repos, sources.sourceOf, (s) => `${s.type}:${sources.provider(s.type).canonicalRef(s)}`);
@@ -1135,6 +1248,7 @@ ipcMain.handle('packs:save', (_e, { name, description, ids }) => {
   return packSummary(r.saved);
 });
 ipcMain.handle('packs:delete', (_e, id) => {
+  if (filePacks().some((p) => p.id === id)) throw new Error(`that pack is written in ${favorites.FILE_NAME} — remove it there`);
   packs.saveMine(PACKS_FILE, myPacks().filter((p) => p.id !== id));
   return { ok: true };
 });
@@ -1358,7 +1472,14 @@ ipcMain.handle('selfupdate:apply', async (e) => {
 // this uses net.request, which raises 'redirect' before the next request is made. The
 // rule for a hop is the engine's (checkHop); this only drives it. The request is aborted
 // as soon as some address answers — the caller then fetches that address directly.
-function resolveRedirects(url, { checkHop, maxHops }) {
+//
+// `headers` are sent with the FIRST request only when `firstHopOnly` is set: the walk then
+// stops at the first redirect and returns where it points, without requesting it. That is how
+// a private GitHub release file is found — the token goes to api.github.com and no further
+// (see openPrivateAsset in src/github.js). Headers are refused without firstHopOnly, so they
+// can never ride along a chain of redirects.
+function resolveRedirects(url, { checkHop, maxHops, headers, firstHopOnly }) {
+  if (headers && !firstHopOnly) return Promise.reject(new Error('request headers are only sent when the walk stops at the first hop'));
   return new Promise((resolve, reject) => {
     let current = url;
     let hops = 0;
@@ -1374,10 +1495,12 @@ function resolveRedirects(url, { checkHop, maxHops }) {
     // A mirror that accepts the connection and then says nothing must not hang an update.
     const timer = setTimeout(() => finish(reject, new Error('timed out finding where the download is served from')), 30 * 1000);
     req.setHeader('User-Agent', 'release-watcher');
+    for (const [name, value] of Object.entries(headers || {})) req.setHeader(name, String(value));
     req.on('redirect', (_status, _method, redirectUrl) => {
       try {
         if (++hops > maxHops) throw Object.assign(new Error('too many redirects'), { redirectRefused: true });
         current = checkHop(current, redirectUrl);
+        if (firstHopOnly) return finish(resolve, current); // approved, and NOT requested
         req.followRedirect();
       } catch (e) {
         finish(reject, e);

@@ -16,7 +16,8 @@ const LIMIT_HINT = 'raise the download limit (Settings, or downloadLimitMiB in c
 // Unauthenticated API calls get 60/hour per IP address — shared with every other tool and
 // machine behind the same public IP (a corporate VPN egress, a household NAT). A token raises
 // that to 5,000/hour for the account. The GUI sets one from Settings (setToken); the headless
-// CLI falls back to GITHUB_TOKEN. Sent to api.github.com only, never to asset downloads.
+// CLI falls back to GITHUB_TOKEN. Sent to api.github.com only, never to asset downloads —
+// which holds for a private repository's files too: see openPrivateAsset below.
 let _token = null;
 function setToken(t) { _token = typeof t === 'string' && t.trim() ? t.trim() : null; }
 function currentToken() { return _token || process.env.GITHUB_TOKEN || null; }
@@ -263,6 +264,14 @@ async function ghJson(url, token) {
   return res.json();
 }
 
+// GitHub answers 404 for a private repository the caller may not see, exactly as for one that
+// does not exist. So the message says what to do in the case the user can fix.
+function repoNotFound() {
+  return currentToken()
+    ? 'repository not found — it was deleted or renamed, or it is private and your GitHub token cannot read it (the token needs Contents: Read-only access to that repository)'
+    : 'repository not found — it was deleted or renamed, or it is private (a private repository needs a GitHub token that can read it: Settings → GitHub)';
+}
+
 // True if the repo itself is gone (deleted/renamed/private) rather than just release-less.
 async function repoMissing(owner, repo) {
   try {
@@ -307,7 +316,7 @@ async function getLatestRelease(owner, repo, opts = {}) {
     return await ghJson(`${API}/repos/${owner}/${repo}/releases/latest`);
   } catch (e) {
     if (e.status === 404) {
-      if (await repoMissing(owner, repo)) throw new Error('repository not found (deleted, renamed, or private)');
+      if (await repoMissing(owner, repo)) throw new Error(repoNotFound());
       throw new Error(opts.tagPrefix ? `no releases found with tag prefix "${opts.tagPrefix}"` : 'no releases found for this repository');
     }
     throw e;
@@ -327,6 +336,54 @@ async function listAssets(owner, repo, opts = {}) {
   return { tag: rel.tag_name, assets: (rel.assets || []).map((a) => a.name) };
 }
 
+// --- a private repository's release files -----------------------------------------------
+//
+// A release file has two addresses. The public one (browser_download_url, on github.com) is
+// what every download uses, with no token. For a PRIVATE repository that address answers 404
+// to anyone not signed in to the website, token or not. GitHub serves the same file from its
+// API (the asset's `url`): asked for with the token and `Accept: application/octet-stream`,
+// api.github.com answers with a redirect to a short-lived signed address on GitHub's storage.
+//
+// So the token still goes to api.github.com and nowhere else:
+//   1. ONE request to api.github.com, with the token, not following its redirect;
+//   2. the signed address it names is then fetched WITHOUT the token (the signature in that
+//      address is the permission; storage hosts reject a request that carries both).
+// The address must be exactly an api.github.com release-asset URL, so a release listing can
+// never direct the token to another host. Used only after the public address said 404.
+const API_ASSET = /^https:\/\/api\.github\.com\/repos\/[A-Za-z0-9-]+\/[A-Za-z0-9._-]+\/releases\/assets\/\d+$/;
+const isApiAsset = (url) => typeof url === 'string' && API_ASSET.test(url);
+
+// -> { res, finalUrl }, or null when there is no token or the address is not an API asset.
+async function openPrivateAsset(apiUrl) {
+  const token = currentToken();
+  if (!token || !isApiAsset(apiUrl)) return null;
+  const headers = { ...apiHeaders(token), Accept: 'application/octet-stream' };
+  let signed = null;
+  if (_redirectResolver) {
+    // Electron: net.fetch cannot show a redirect's destination, so the GUI's resolver reads
+    // the first hop and stops there (firstHopOnly) — it never carries the token onwards.
+    const next = await _redirectResolver(apiUrl, { checkHop, maxHops: 1, headers, firstHopOnly: true });
+    if (stripSlash(next) !== stripSlash(apiUrl)) signed = next;
+  } else {
+    const first = await doFetch(apiUrl, { headers, redirect: 'manual' });
+    if (first.type === 'opaqueredirect' || first.status === 0) {
+      throw Object.assign(new Error('api.github.com redirected the download and the next address could not be checked first'), { redirectRefused: true });
+    }
+    if (!isRedirect(first)) return { res: first, finalUrl: apiUrl }; // served directly, or an error status
+    signed = checkHop(apiUrl, first.headers && first.headers.get && first.headers.get('location'));
+    try { if (first.body && first.body.cancel) await first.body.cancel(); } catch {}
+  }
+  if (!signed) {
+    // No redirect: api.github.com serves the bytes itself. Ask again, refusing any redirect,
+    // so the token cannot leave this host on the second request either.
+    const { res } = await fetchWithPolicy(apiUrl, { headers }, { redirects: 'none' });
+    return { res, finalUrl: apiUrl };
+  }
+  if (new URL(signed).host === 'api.github.com') throw Object.assign(new Error('api.github.com redirected the download to itself'), { redirectRefused: true });
+  // From here on there is no token: only the signed address, every hop https.
+  return fetchWithPolicy(signed, { headers: { 'User-Agent': UA } }, { redirects: 'https' });
+}
+
 // fetch follows redirects by default; enforce the size cap while streaming.
 // onProgress(pct 0-100) is called as bytes arrive (throttled) when a size is known.
 //
@@ -337,6 +394,8 @@ async function listAssets(owner, repo, opts = {}) {
 //               before any request is made to wherever it points
 //   onFinalUrl  called with the URL the bytes actually came from, so the caller can show
 //               and log the real origin rather than only the declared one
+//   apiUrl      a GitHub asset's API address. Tried only when `url` answers 404 and a token
+//               is set: that is a private repository's file (see openPrivateAsset)
 // With neither policy flag (every GitHub download) the request is exactly what it was.
 async function downloadAsset(url, destPath, onProgress, maxBytes = DEFAULT_MAX_BYTES, opts = {}) {
   const strict = !!(opts.httpsOnly || opts.noRedirect);
@@ -346,11 +405,23 @@ async function downloadAsset(url, destPath, onProgress, maxBytes = DEFAULT_MAX_B
   // so a partial file from a failed try is never left behind.
   return withNetRetry(async () => {
     const init = { headers: { 'User-Agent': UA } };
-    const { res, finalUrl } = strict
+    let { res, finalUrl } = strict
       ? await fetchWithPolicy(url, init, { redirects: opts.noRedirect ? 'none' : 'https' })
       : { res: await doFetch(url, init), finalUrl: url };
-    if (!res.ok) throw new Error(`download ${res.status} for ${strict ? safeUrl(url) : url}`);
-    if (typeof opts.onFinalUrl === 'function') opts.onFinalUrl(strict ? finalUrl : res.url || url);
+    let viaApi = false;
+    if (res.status === 404 && isApiAsset(opts.apiUrl) && currentToken()) {
+      try { if (res.body && res.body.cancel) await res.body.cancel(); } catch {}
+      ({ res, finalUrl } = await openPrivateAsset(opts.apiUrl));
+      viaApi = true;
+    }
+    if (!res.ok) {
+      const hint = viaApi && (res.status === 404 || res.status === 403 || res.status === 401)
+        ? ' — if this repository is private, your GitHub token needs Contents: Read-only access to it'
+        : '';
+      throw new Error(`download ${res.status} for ${strict || viaApi ? safeUrl(url) : url}${hint}`);
+    }
+    // A signed address carries its signature in the query: it is reported without it.
+    if (typeof opts.onFinalUrl === 'function') opts.onFinalUrl(viaApi ? safeUrl(finalUrl) : strict ? finalUrl : res.url || url);
     const declared = Number(res.headers.get('content-length') || 0);
     if (maxBytes != null && declared && declared > maxBytes) throw new Error(`asset too large: ${declared} bytes (cap ${maxBytes}) — ${LIMIT_HINT}`);
     let seen = 0;
@@ -392,7 +463,9 @@ async function fetchChecksumFromRelease(rel, assetName) {
   );
   for (const c of candidates) {
     try {
-      const res = await doFetch(c.browser_download_url, { headers: { 'User-Agent': UA } });
+      let res = await doFetch(c.browser_download_url, { headers: { 'User-Agent': UA } });
+      // A private repository's checksum file, like its other files, is only served by the API.
+      if (res.status === 404 && isApiAsset(c.url) && currentToken()) ({ res } = await openPrivateAsset(c.url));
       if (!res.ok) continue;
       const text = await res.text();
       // Lines look like "<hex>  <filename>" (or "<hex> *<filename>"), or a bare hex
@@ -450,7 +523,7 @@ const TOKEN_CREATE_URL = 'https://github.com/settings/personal-access-tokens/new
 }).toString();
 
 module.exports = {
-  getLatestRelease, listAssets, downloadAsset, verifyDigest, fetchChecksumFromRelease, setFetch, setToken, rateLimit, TOKEN_CREATE_URL,
+  getLatestRelease, listAssets, downloadAsset, verifyDigest, fetchChecksumFromRelease, setFetch, setToken, rateLimit, TOKEN_CREATE_URL, openPrivateAsset,
   // shared with the source providers (src/sources/)
   doFetch, withNetRetry, fetchWithPolicy, checkHop, setRedirectResolver, assertHttpsUrl, safeUrl, UA, SUMS_FILE, DEFAULT_MAX_BYTES,
 };

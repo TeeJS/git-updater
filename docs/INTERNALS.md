@@ -198,6 +198,14 @@ categories are Windows runtimes: the picker shows them under "Windows only" and 
 offered on macOS or Linux. A `CATALOG` row with no shortcut is not in the picker, but is still
 found by name from the Add box.
 
+**Favorites** (`src/favorites.js`): `<config dir>/favorites.yaml` holds the user's own apps and
+packs. The main process re-reads it whenever its size or modified time changes
+(`loadFavorites` in `electron/main.js`), hands the apps to `catalog.setFavorites`, and keeps
+the packs beside the saved ones, flagged `fromFile`. The app never writes the file, except to
+create the commented starter the first time it is opened. A favorite's id is `fav` + its
+squashed name, so it can never collide with a built-in id; a pack saved inside the app stores
+a favorite by its source, never by that id, because another machine may not have the file.
+
 **How a WinGet installer is run** (`src/sources/winget.js`, `src/core.js` `installerCmd`):
 
 - Plain switches (`/S`, `--silent`, `/mergetasks=!runcode`, `NAME=value`) become an argv array.
@@ -823,6 +831,7 @@ src/                 the engine (no UI, no shell):
                      Bedrock Panel and the `git` package is not git-updater)
   catalog.js         known-apps catalog for "Scan this PC", plus name lookup over shortcuts.json
   shortcuts.json     popular apps -> WinGet id / Homebrew cask / GitHub repo (curated, verified)
+  favorites.js       the user's own apps and packs: reads and checks <config dir>/favorites.yaml
   packs.js           packs: built-in, saved, and the validation gate for imported files
   sources/           where an app can come from (see "Sources" above):
     index.js         the registry: keys, selection, checksum policy, resolver, provenance

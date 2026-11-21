@@ -116,3 +116,25 @@ test('Scan this PC shows main\'s refusal in the status line instead of an unhand
   await els.scanPc.onclick();
   assert.deepEqual(shown, [['Scan this PC is not available on linux; use Popular apps to add known apps', 'bad']]);
 });
+
+// --- favorites: the file is opened from Settings, and a tracked app can be copied into it ----
+
+test('Settings has an Edit favorites file button, and an app\'s menu has Copy as favorite', () => {
+  assert.equal(html.split('id="editFavorites"').length - 1, 1);
+  assert.ok(html.indexOf('id="editFavorites"') > html.indexOf('id="editJson"'), 'beside Edit config.json');
+  assert.match(html, /\$\('editFavorites'\)\.onclick = \(\) => window\.api\.favoritesOpen\(\)/);
+  assert.match(html, /item\('Copy as favorite', \(\) => window\.api\.favoritesCopyRow\(key\)/);
+});
+
+test('Popular apps: My favorites button, the skipped-entries note, and Save as pack', () => {
+  const pop = fs.readFileSync(path.join(__dirname, '..', 'ui', 'popular.html'), 'utf8').replace(/\r\n/g, '\n');
+  for (const id of ['favEdit', 'favNote', 'savePack', 'packForm', 'packName', 'packSave', 'packCancel']) {
+    assert.equal(pop.split(`id="${id}"`).length - 1, 1, id);
+  }
+  assert.match(pop, /window\.api\.packsSave\(name, 'Picked in Popular apps\.', \[\.\.\.picked\]\)/, 'the ticked apps are what is saved');
+  assert.match(pop, /if \(!p\.builtin && !p\.fromFile\) \{\n\s+const del = /, 'a pack from the file has no Delete button');
+  assert.match(pop, /window\.addEventListener\('focus'/, 'coming back from the editor re-reads the file');
+  assert.match(pop, /row\.title = a\.description \? `\$\{a\.description\}\\n\$\{where\}` : where;/, 'a favorite\'s description leads its tooltip');
+  const preload = fs.readFileSync(path.join(__dirname, '..', 'electron', 'preload.js'), 'utf8');
+  for (const api of ['favoritesStatus', 'favoritesOpen', 'favoritesCopyRow']) assert.ok(preload.includes(`${api}:`), api);
+});

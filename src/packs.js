@@ -135,7 +135,9 @@ function exportPack(pack) {
 // platform's source for the same app — and anything else by its source reference.
 function fromEntries(name, description, entries, sourceOf, canonical) {
   const index = new Map();
-  for (const app of catalog.apps()) {
+  // Built-in apps only: a pack saved here may be opened on a machine that has no favorites
+  // file, so one of the user's own apps is stored by its source, never by its id.
+  for (const app of catalog.builtinApps()) {
     for (const plat of ['win32', 'darwin', 'linux']) {
       for (const s of catalog.sourcesFor(app, plat)) index.set(canonical(s), app.id);
     }

@@ -379,6 +379,8 @@ async function handleRepo(repo, id, st, opts) {
     const policy = sources.downloadPolicy(repo, asset, sum);
     await github.downloadAsset(asset.browser_download_url, file, (pct) => emit('downloading', pct), opts.maxBytes, {
       ...policy,
+      // A private GitHub repository's file is only served through the API (with the token).
+      ...(gh && asset.url ? { apiUrl: asset.url } : {}),
       onFinalUrl: (u) => { finalUrl = u; },
     });
     if (!gh) log(`  ${key}: ${src.source ? src.source.label : 'source'} -> ${sources.redact(finalUrl)}`);

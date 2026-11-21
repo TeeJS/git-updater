@@ -38,6 +38,28 @@ test('shortcuts: every row is well-formed and names at least one source', () => 
   assert.ok(catalog.SHORTCUTS.length >= 60);
 });
 
+test('every app in Popular apps says what it is, in one line of at most 100 characters', () => {
+  const seen = new Map();
+  for (const s of catalog.SHORTCUTS) {
+    const d = s.description;
+    assert.ok(typeof d === 'string' && d.trim() === d && d.length >= 12, `${s.name} has a description`);
+    assert.ok(d.length <= 100, `${s.name}: ${d.length} characters`);
+    assert.ok(!/[\r\n\t]/.test(d), `${s.name}: one line`);
+    assert.match(d, /^[A-Z0-9.]/, `${s.name}: starts like a sentence`);
+    assert.match(d, /[.)]$/, `${s.name}: ends like a sentence`);
+    // A description that only repeats the name tells the reader nothing.
+    assert.notEqual(d.replace(/[^a-z0-9]/gi, '').toLowerCase(), s.name.replace(/[^a-z0-9]/gi, '').toLowerCase(), s.name);
+    // Two different apps with the same sentence means one of them was not really described.
+    assert.ok(!seen.has(d), `${s.name} and ${seen.get(d)} share a description`);
+    seen.set(d, s.name);
+  }
+  // It reaches the picker for every row, on every platform.
+  for (const plat of ['win32', 'darwin', 'linux']) {
+    for (const a of catalog.popular(plat)) assert.ok(a.description, `${plat}: ${a.name}`);
+  }
+  assert.equal(catalog.appById('vlcmediaplayer').description, 'Open-source player that handles nearly every audio and video format.');
+});
+
 test('shortcuts: sources are offered per platform, first-party first', () => {
   const hb = catalog.appById('handbrake');
   assert.deepEqual(catalog.sourcesFor(hb, 'win32').map((s) => s.type), ['github', 'winget']);
