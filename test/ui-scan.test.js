@@ -242,7 +242,14 @@ test('Review and add hands the ticked apps to the Popular apps review, installer
 test('the Popular apps window opens straight on the review when it is given scanned apps', () => {
   const pop = fs.readFileSync(path.join(root, 'ui', 'popular.html'), 'utf8');
   assert.match(pop, /const scanIds = \(new URLSearchParams\(location\.search\)\.get\('scan'\) \|\| ''\)/);
-  assert.match(pop, /review\(\(\) => window\.api\.scanPlan\(scanIds\), 'apps',/);
+  assert.match(pop, /review\(\(\) => window\.api\.scanPlan\(scanIds\), 'scan',/);
+  // A scan review ends on the MAIN window: adding closes this one, and so does leaving it.
+  // It used to fall back to the Popular apps list, a page the user never opened.
+  assert.match(pop, /window\.api\.addSources\(items, fromScan \? \{ scan: true \} : undefined\)/);
+  assert.match(pop, /if \(res\.closing\) return window\.close\(\);/);
+  assert.match(pop, /if \(planFrom === 'scan'\) return window\.close\(\);/);
+  assert.match(pop, /\$\('back'\)\.textContent = planFrom === 'scan' \? 'Cancel' : 'Back';/);
+  assert.match(preloadJs, /addSources: \(items, opts\) => ipcRenderer\.invoke\('source:add', items, opts\)/);
   assert.match(preloadJs, /scanPlan: \(ids\) => ipcRenderer\.invoke\('scan:plan', ids\)/);
   assert.match(preloadJs, /scanReview: \(ids\) => ipcRenderer\.invoke\('scan:review', ids\)/);
   assert.doesNotMatch(preloadJs, /scanAdd|scan:add/, 'the old add-without-review path is gone');
