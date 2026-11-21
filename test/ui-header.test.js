@@ -24,6 +24,34 @@ test('the version is filled in from the running app, with a leading v', () => {
   assert.match(html, /\.ver:empty \{ display: none; \}/, 'nothing is shown until the version is known');
 });
 
+// git-updater's own update status used to be a full-width banner under the header, and the
+// status line ("Check complete.") a line of its own above the list. Neither takes a line now.
+test('git-updater\'s own update status sits in the header right after the version, not in a banner', () => {
+  const header = html.slice(html.indexOf('<header class="topbar">'), html.indexOf('</header>'));
+  const ver = header.indexOf('id="headerVersion"');
+  const selfup = header.indexOf('id="selfup"');
+  const group = header.indexOf('<div class="top-actions">');
+  assert.ok(ver >= 0 && selfup > ver && group > selfup, 'version, then the update status, then the buttons');
+  assert.ok(header.includes('id="selfupText"') && header.includes('id="selfupBtn"'));
+  assert.equal(html.split('id="selfup"').length - 1, 1, 'and nowhere else');
+  assert.ok(!html.includes('selfupDismiss'), 'nothing to dismiss: it is not a banner any more');
+  assert.match(html, /\$\('selfupText'\)\.textContent = 'up to date'/);
+  assert.match(html, /#selfup \{[^}]*color: var\(--accent\)/, 'in the accent colour');
+});
+
+test('nothing sits between the header and the list: no tagline, and the status line is in the toolbar', () => {
+  const main = html.slice(html.indexOf('<div id="mainScreen">'), html.indexOf('<div id="settingsScreen"'));
+  const between = main.slice(main.indexOf('</header>') + '</header>'.length, main.indexOf('<div class="panel">'));
+  assert.equal(between.trim(), '', 'the panel follows the header directly');
+  assert.ok(!html.includes('class="tagline"'));
+  const toolbar = main.slice(main.indexOf('<div class="toolbar">'), main.indexOf('<div class="table-wrapper">'));
+  const msgAt = toolbar.indexOf('id="msg"');
+  const countAt = toolbar.indexOf('id="count"');
+  assert.ok(msgAt >= 0 && countAt > msgAt, 'the status line comes first, then the "N updates available" count');
+  assert.ok(toolbar.indexOf('id="openAddWindow"') > countAt, 'and the buttons after both');
+  assert.match(html, /#msgHome #msg:empty \{ display: none; \}/, 'an empty status takes no room');
+});
+
 // Scan this PC, Packs and Popular apps moved from a "Known apps" row at the bottom of the list
 // (easy to miss under a long list) to the top right, immediately left of Settings.
 const header = html.slice(html.indexOf('<header class="topbar">'), html.indexOf('</header>'));
