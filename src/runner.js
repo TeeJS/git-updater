@@ -214,6 +214,32 @@ function dirHasFiles(dir) {
   }
 }
 
+// Close a running app so its update can go ahead ("Automatically close apps and re-open").
+// It is always ASKED to close first. Only with "Force close apps that do not close" on
+// (opts.forceClose) is one that stays open then stopped outright, which can lose unsaved
+// work in it; that is why the setting is off by default and says so next to it.
+// before: 'update' or 'swap', for the log. -> { stillRunning, reason? }
+async function closeForUpdate(repo, key, opts, before) {
+  const name = core.processName(repo);
+  let result = await detect.closeApp(name);
+  let forced = false;
+  if (result.stillRunning && opts.forceClose) {
+    log(`FORCE-CLOSE ${key}: ${core.appName(repo)} did not close when asked; closing it by force before ${before}`);
+    const again = await detect.closeApp(name, { force: true });
+    result = { closed: Math.max(result.closed, again.closed), stillRunning: again.stillRunning };
+    forced = true;
+  }
+  if (result.stillRunning) {
+    log(`SKIP ${key}: auto-close could not stop ${core.appName(repo)} before ${before}${forced ? ', even by force' : ''}`);
+    return { stillRunning: true, reason: `${core.appName(repo)} did not close ${forced ? 'even when forced' : 'gracefully'} — close it manually, then Retry` };
+  }
+  if (result.closed > 0) {
+    opts.markClosed();
+    log(`AUTO-CLOSE ${key}: closed ${result.closed} process(es) before ${before}${forced ? ' (forced)' : ''}`);
+  }
+  return { stillRunning: false };
+}
+
 async function handleRepo(repo, id, st, opts) {
   const key = appKey(repo);
   const emit = (phase, pct) => opts.onProgress && opts.onProgress(key, phase, pct);
@@ -355,15 +381,8 @@ async function handleRepo(repo, id, st, opts) {
   // swaps (locked files). Tell the user up front instead of failing mid-download.
   if (await detect.isRunning(core.processName(repo))) {
     if (opts.autoClose) {
-      const result = await detect.closeApp(core.processName(repo));
-      if (result.stillRunning) {
-        log(`SKIP ${key}: auto-close could not stop ${core.appName(repo)}`);
-        return { ...base, status: 'failed', reason: `${core.appName(repo)} did not close gracefully — close it manually, then Retry` };
-      }
-      if (result.closed > 0) {
-        opts.markClosed();
-        log(`AUTO-CLOSE ${key}: closed ${result.closed} process(es) before update`);
-      }
+      const result = await closeForUpdate(repo, key, opts, 'update');
+      if (result.stillRunning) return { ...base, status: 'failed', reason: result.reason };
     } else {
       log(`SKIP ${key}: ${core.appName(repo)} is running`);
       return { ...base, status: 'failed', reason: `${core.appName(repo)} is running — close it, then Retry` };
@@ -547,15 +566,8 @@ async function handleRepo(repo, id, st, opts) {
       // whatever the app loads next comes from a version it did not start with.
       if (await detect.isRunning(core.processName(repo))) {
         if (opts.autoClose) {
-          const result = await detect.closeApp(core.processName(repo));
-          if (result.stillRunning) {
-            log(`SKIP ${key}: auto-close could not stop ${core.appName(repo)} before swap`);
-            return { ...base, status: 'failed', reason: `${core.appName(repo)} did not close gracefully — close it manually, then Retry` };
-          }
-          if (result.closed > 0) {
-            opts.markClosed();
-            log(`AUTO-CLOSE ${key}: closed ${result.closed} process(es) before swap`);
-          }
+          const result = await closeForUpdate(repo, key, opts, 'swap');
+          if (result.stillRunning) return { ...base, status: 'failed', reason: result.reason };
         } else {
           log(`SKIP ${key}: ${core.appName(repo)} started during the download`);
           return { ...base, status: 'failed', reason: `${core.appName(repo)} is running — close it, then Retry` };

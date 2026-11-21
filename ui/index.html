@@ -241,6 +241,7 @@
   .ch-bar { display: flex; gap: .55rem; align-items: center; padding-top: .7rem; border-top: 1px solid var(--border); margin-top: .7rem; }
   #chooserStatus { margin-right: auto; min-width: 0; font-size: 12.5px; color: var(--muted); }
   #chooserStatus.bad { color: var(--red); }
+  .force-warn { font-size: .84rem; color: var(--accent); }
   .hint { font-size: .84rem; color: var(--faint); margin: .6rem 0 0; }
   .hint:empty { display: none; }
   /* "Repeat every:" above each cron line: label over each dropdown, one unit active at a time. */
@@ -518,7 +519,12 @@
         <span style="color:var(--muted);font-size:.9rem;min-width:8rem">Update all</span>
         <label class="scan-label"><input type="checkbox" id="autoCloseReopen"> Automatically close apps and re-open when complete</label>
       </div>
-      <p class="hint">Running apps are closed gracefully, then re-opened. Apps that won't close are skipped.</p>
+      <div class="row" id="forceCloseRow" style="margin-top:.35rem">
+        <span style="min-width:8rem"></span>
+        <label class="scan-label" title="Only used with the setting above. An app is always asked to close first; this is for one that stays open. Updates at sign-in and on a schedule follow it too."><input type="checkbox" id="forceClose"> Force close apps that do not close</label>
+        <span class="force-warn">A forced close can lose unsaved work.</span>
+      </div>
+      <p class="hint">Running apps are closed gracefully, then re-opened. Apps that won't close are skipped, unless force close is on.</p>
       <div class="row" style="margin-top:.6rem">
         <span style="color:var(--muted);font-size:.9rem;min-width:8rem">Downloads</span>
         <label class="scan-label"><input type="checkbox" id="downloadLimitEnabled"> Limit each download to</label>
@@ -582,7 +588,7 @@
       </div>
       <p class="hint" id="scheduleInstallPreview" aria-live="polite"></p>
       <p class="hint" id="scheduleInstallApps"></p>
-      <p class="hint">Updates only ticked, already-installed apps, unattended: installers that need permission are skipped and reported. Running apps follow <em>Automatically close apps and re-open when complete</em>; nothing is force-closed.</p>
+      <p class="hint">Updates only ticked, already-installed apps, unattended: installers that need permission are skipped and reported. Running apps follow <em>Automatically close apps and re-open when complete</em>; forced only if <em>Force close</em> is on.</p>
       <div class="row" style="margin-top:.6rem">
         <span style="color:var(--muted);font-size:.9rem;min-width:8rem">Missed runs</span>
         <label class="scan-label"><input type="checkbox" id="scheduleCatchUp"> Run a missed schedule when the computer next starts or wakes</label>
@@ -1771,6 +1777,7 @@ async function load() {
   $('selfCheckOnOpen').checked = !!config.selfCheckOnOpen;
   $('selfAutoUpdate').checked = !!config.selfAutoUpdate;
   $('autoCloseReopen').checked = !!config.autoCloseReopen;
+  syncForceClose();
   $('downloadLimitEnabled').checked = config.downloadLimitEnabled !== false;
   $('downloadLimitMiB').value = config.downloadLimitMiB == null ? 500 : config.downloadLimitMiB;
   $('downloadLimitMiB').disabled = !$('downloadLimitEnabled').checked;
@@ -1877,7 +1884,16 @@ $('selfPreRel').onchange = () => { config.selfUpdatePrerelease = $('selfPreRel')
 $('checkOnOpen').onchange = () => { config.checkOnOpen = $('checkOnOpen').checked; saveConfig().then(() => msg('Saved.', 'ok')); };
 $('selfCheckOnOpen').onchange = () => { config.selfCheckOnOpen = $('selfCheckOnOpen').checked; saveConfig().then(() => msg('Saved.', 'ok')); };
 $('selfAutoUpdate').onchange = () => { config.selfAutoUpdate = $('selfAutoUpdate').checked; renderInstallInfo(); saveConfig().then(() => msg('Saved.', 'ok')); };
-$('autoCloseReopen').onchange = () => { config.autoCloseReopen = $('autoCloseReopen').checked; saveConfig().then(() => msg('Saved.', 'ok')); };
+// Force close only ever applies on top of auto-close, so it is greyed out without it. The saved
+// value is kept either way: switching auto-close back on brings it back as it was.
+function syncForceClose() {
+  const on = !!config.autoCloseReopen;
+  $('forceClose').checked = !!config.forceClose;
+  $('forceClose').disabled = !on;
+  $('forceCloseRow').style.opacity = on ? '' : '.55';
+}
+$('autoCloseReopen').onchange = () => { config.autoCloseReopen = $('autoCloseReopen').checked; syncForceClose(); saveConfig().then(() => msg('Saved.', 'ok')); };
+$('forceClose').onchange = () => { config.forceClose = $('forceClose').checked; saveConfig().then(() => msg('Saved.', 'ok')); };
 $('requireChecksum').onchange = () => { config.requireChecksum = $('requireChecksum').checked; saveConfig().then(() => msg('Saved.', 'ok')); };
 $('typePref').onchange = () => {
   if ($('typePref').value) config.typePreference = $('typePref').value; else delete config.typePreference;

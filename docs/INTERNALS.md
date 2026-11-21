@@ -803,6 +803,17 @@ One line under **Start git-updater when I sign in**: *When it starts at sign-in:
 Not checked on real hardware: the notification buttons on Windows and macOS. The Linux run was
 driven for real (starts with `--auto-start`, quits or stays as the rules say).
 
+### Force close (`forceClose`)
+
+**Settings -> Updating -> Force close apps that do not close**, directly under *Automatically
+close apps and re-open when complete*, off by default, greyed out while that one is off. It only
+ever applies on top of auto-close: `closeForUpdate()` in `src/runner.js` asks the app to close
+first, always, and only if it is still running and `opts.forceClose` is set stops it outright
+(`detect.closeApp(name, { force: true })`), then updates and re-opens it like any closed app. The
+window's update, the scheduled install and the sign-in update all read it from the saved config in
+the main process (`forceClose: autoClose && !!cfg.forceClose`); it is never taken from the window.
+The line next to the box says the cost in plain words: a forced close can lose unsaved work.
+
 ### Auto-update column and the Install schedule
 
 Each app row has an **Auto-update** checkbox (`repo.autoUpdate: true` in `config.json`; unticking
@@ -829,7 +840,7 @@ What the run does, in `backgroundInstall()` in `electron/main.js` (the choices a
   "needs you" and leaves for you to do from the window.
 - **Running apps follow the existing "Automatically close apps and re-open when complete" setting.**
   On: a graceful close, the update, then the app is re-opened (`launchApp`). Off: the app is skipped
-  ("is running") and reported. It never force-closes anything.
+  ("is running") and reported. It force-closes one only when *Force close apps that do not close* is on.
 - **One notification per run**, e.g. "Updated 4 apps: a, b, c and 1 more. 1 needs you: d. Click to
   open git-updater." (none when everything was already current), plus a log line with the same
   counts. The window reloads its list when it receives `schedule:done` for the install kind.

@@ -7,9 +7,10 @@
 //   - only apps ticked in the Auto-update column;
 //   - only apps that are already installed (a schedule never installs a new app);
 //   - portable apps first, installers last (so the simple swaps are done before the heavier ones);
-//   - nothing is force-closed, no installer window or permission prompt is ever opened: an app
-//     that is running follows the "Automatically close apps and re-open" setting, and an installer
-//     that needs administrator permission is reported as "needs you" and left for the window.
+//   - no installer window or permission prompt is ever opened: an installer that needs
+//     administrator permission is reported as "needs you" and left for the window;
+//   - an app that is running follows the "Automatically close apps and re-open" setting, and one
+//     that will not close is force-closed only if "Force close apps that do not close" is on.
 
 const keyOf = (r) => `${r.owner}/${r.repo}#${r.type}`;
 
@@ -37,7 +38,7 @@ function classify(result) {
   // A file has to be chosen by hand (see sources.selectAsset): nothing went wrong, and an
   // unattended run cannot answer it — so "needs you", not "could not be updated".
   if (result.chooseFile || /^needs you/i.test(reason)) return 'needsYou';
-  if (/is running|did not close gracefully/i.test(reason)) return 'running';
+  if (/is running|did not close (gracefully|even when forced)/i.test(reason)) return 'running';
   return 'failed';
 }
 

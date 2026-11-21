@@ -131,3 +131,19 @@ test('Esc and the buttons are wired; adding a portable app with no folder opens 
   assert.match(html, /e\.key === 'Escape' && !\$\('settingsScreen'\)\.hidden/);
   assert.match(html, /showScreen\('settings'\); \$\('portableRoot'\)\.focus\(\)/);
 });
+
+test('force close sits directly after auto-close, warns about unsaved work, and is never taken from the window', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const page = fs.readFileSync(path.join(__dirname, '..', 'ui', 'index.html'), 'utf8');
+  const a = page.indexOf('id="autoCloseReopen"');
+  const b = page.indexOf('id="forceClose"');
+  assert.ok(a > 0 && b > a, 'after auto-close');
+  assert.ok(!/type="checkbox"/.test(page.slice(page.indexOf('>', a), page.lastIndexOf('<input', b))), 'with no other setting between them');
+  const row = page.slice(b, page.indexOf('</div>', b));
+  assert.ok(row.includes('Force close apps that do not close') && row.includes('A forced close can lose unsaved work.'));
+  const main = fs.readFileSync(path.join(__dirname, '..', 'electron', 'main.js'), 'utf8');
+  assert.ok(main.includes('forceClose: !!body.autoClose && !!config.forceClose'), 'the window\'s update follows the saved setting');
+  assert.ok(main.includes('forceClose: autoClose && !!cfg.forceClose'), 'scheduled and sign-in updates follow it too');
+  assert.ok(!/body\.forceClose/.test(main));
+});

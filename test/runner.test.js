@@ -281,6 +281,48 @@ test('runner: app exiting before close does not block update or trigger reopen',
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+test('runner: an app that will not close is skipped, and is force-closed only with the force close setting on', async () => {
+  const dir = tmp();
+  try {
+    // Off (the default): asked once, never forced, and the app is left alone.
+    let asked = [];
+    await withStubs({ running: [true], closeApp: async (_n, o) => { asked.push(!!(o && o.force)); return { closed: 1, stillRunning: true }; } }, async () => {
+      const { results } = await runner.run(configFor(dir), { statePath: path.join(dir, 'state.json'), autoClose: true });
+      assert.equal(results[0].status, 'failed');
+      assert.match(results[0].reason, /did not close gracefully/);
+      assert.deepEqual(asked, [false], 'never forced');
+    });
+    // On: asked first, forced second, then the update runs and the app is marked for re-opening.
+    asked = [];
+    await withStubs({ running: [true, false], closeApp: async (_n, o) => { const force = !!(o && o.force); asked.push(force); return { closed: 1, stillRunning: !force }; } }, async () => {
+      const { results } = await runner.run(configFor(dir), { statePath: path.join(dir, 'state.json'), autoClose: true, forceClose: true });
+      assert.equal(results[0].status, 'updated', results[0].reason);
+      assert.equal(results[0].closed, true);
+      assert.deepEqual(asked, [false, true], 'asked to close before it is forced');
+    });
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('runner: force close never applies to an app that closes when asked, and says so when even force fails', async () => {
+  const dir = tmp();
+  try {
+    let asked = [];
+    await withStubs({ running: [true, false], closeApp: async (_n, o) => { asked.push(!!(o && o.force)); return { closed: 1, stillRunning: false }; } }, async () => {
+      const { results } = await runner.run(configFor(dir), { statePath: path.join(dir, 'state.json'), autoClose: true, forceClose: true });
+      assert.equal(results[0].status, 'updated', results[0].reason);
+      assert.deepEqual(asked, [false]);
+    });
+    const dir2 = tmp();
+    await withStubs({ running: [true], closeApp: async () => ({ closed: 1, stillRunning: true }) }, async () => {
+      const { results } = await runner.run(configFor(dir2), { statePath: path.join(dir2, 'state.json'), autoClose: true, forceClose: true });
+      assert.equal(results[0].status, 'failed');
+      assert.match(results[0].reason, /did not close even when forced/);
+      assert.equal(require('../src/autoupdate').classify(results[0]), 'running', 'a scheduled run reports it as needing you, not as broken');
+    });
+    fs.rmSync(dir2, { recursive: true, force: true });
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 // A .dmg guarded by a click-through licence agreement can't be unpacked unattended.
 // Rather than dead-end, the runner hands the image to macOS (opts.openFile) so its own
 // dialog shows the licence for the user to accept, then they install by hand. The licence

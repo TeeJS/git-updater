@@ -112,6 +112,7 @@ function saveConfigFile(cfg) {
   if (cfg.categoriesEnabled != null) cfg.categoriesEnabled = !!cfg.categoriesEnabled;
   if (cfg.loginAction != null && !autoupdate.LOGIN_ACTIONS.includes(cfg.loginAction)) delete cfg.loginAction;
   if (cfg.loginQuit != null) cfg.loginQuit = !!cfg.loginQuit;
+  if (cfg.forceClose != null) cfg.forceClose = !!cfg.forceClose;
   fs.mkdirSync(path.dirname(CONFIG_PATH), { recursive: true });
   if (fs.existsSync(CONFIG_PATH)) {
     const stamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -292,8 +293,9 @@ async function backgroundSelfUpdate(what = 'scheduled install') {
 // Auto-update column that are already installed, portable apps first. Unattended means it never
 // opens an installer window or a permission prompt (an installer that needs one is reported as
 // "needs you" and left for the window), and a running app follows "Automatically close apps and
-// re-open when complete": on, it is closed gracefully and re-opened; off, it is skipped. Nothing is
-// ever force-closed. The rules are in src/autoupdate.js; the runner records dates like any update.
+// re-open when complete": on, it is closed gracefully and re-opened; off, it is skipped. One that
+// will not close is force-closed only when "Force close apps that do not close" is on too.
+// The rules are in src/autoupdate.js; the runner records dates like any update.
 // what: how this run is named in the log ("scheduled install", or "sign-in update" when it is the
 // one a start at sign-in asked for). -> { summary, stopped }, or null when an update was already running.
 async function backgroundInstall(what = 'scheduled install') {
@@ -318,7 +320,7 @@ async function backgroundInstall(what = 'scheduled install') {
       let result;
       try {
         lock = state.acquireLock();
-        const out = await runner.run(config, { only: key, autoClose, unattended: true });
+        const out = await runner.run(config, { only: key, autoClose, forceClose: autoClose && !!cfg.forceClose, unattended: true });
         result = out.results[0];
       } catch (e) {
         result = { status: 'failed', reason: e && e.message ? e.message : String(e) };
@@ -1946,7 +1948,9 @@ ipcMain.handle('update', async (e, body = {}) => {
     // Stream per-app progress to the renderer as it happens.
     const onProgress = (id, phase, pct) => e.sender.send('update:progress', { id, phase, pct });
     const openFile = (f) => shell.openPath(f); // ShellExecute: an installer's UAC manifest works
-    return await runner.run(config, { only: body.only, force: !!body.force, dryRun: !!body.dryRun, autoClose: !!body.autoClose, onProgress, openFile });
+    // Force close is read from the saved settings here, never taken from the window: it only ever
+    // applies on top of auto-close, to an app that was asked to close and did not.
+    return await runner.run(config, { only: body.only, force: !!body.force, dryRun: !!body.dryRun, autoClose: !!body.autoClose, forceClose: !!body.autoClose && !!config.forceClose, onProgress, openFile });
   } finally {
     state.releaseLock(lock);
     updating = false;

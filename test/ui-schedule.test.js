@@ -63,7 +63,7 @@ test('the Install schedule is off by default and spells out its limits', () => {
   const group = html.slice(html.indexOf('id="sg-schedule"'), html.indexOf('id="sg-background"'));
   assert.match(group, /only ticked, already-installed apps, unattended/);
   assert.match(group, /installers that need permission are skipped and reported/);
-  assert.match(group, /nothing is force-closed/);
+  assert.match(group, /forced only if <em>Force close<\/em> is on/);
   assert.match(group, /Automatically close apps and re-open when complete/, 'a running app follows the existing setting');
   assert.match(group, /id="scheduleInstallApps"/, 'it says how many apps are ticked, so an empty list is never a surprise');
 });

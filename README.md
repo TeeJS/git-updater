@@ -94,12 +94,13 @@ The tarball has no such requirement, which is why it is the recommended Linux do
   updates on a schedule you write cron-style, such as `47 2 * * 2#1` for the first Tuesday of
   each month at 2:47 AM, and tell you with a notification. It never installs anything on its
   own unless you turn on the separate **Install** schedule, and even then it only touches apps
-  you ticked in the **Auto-update** column that are already installed. It never force-closes
-  a running app and never opens an installer window or permission prompt: an installer that
-  needs your permission is skipped and reported as "needs you". *Start at login* can do the
-  same work once at sign-in: **When it starts at sign-in** offers *Just open*, *Check*,
-  *Check and ask me* or *Check and update*, with the same rules, and can quit again when
-  nothing is left for you. It even tells you when
+  you ticked in the **Auto-update** column that are already installed. It never opens an
+  installer window or permission prompt: an installer that needs your permission is skipped
+  and reported as "needs you". A running app is only ever asked to close, unless you turn on
+  **Force close apps that do not close** (off by default; a forced close can lose unsaved
+  work). *Start at login* can do the same work once at sign-in: **When it starts at sign-in**
+  offers *Just open*, *Check*, *Check and ask me* or *Check and update*, with the same rules,
+  and can quit again when nothing is left for you. It even tells you when
   git-updater itself has a new release. Settings has two more switches for that, both off:
   *check for git-updater updates when it opens*, and *auto-update git-updater* (updated by the
   Install schedule like a ticked app, then it restarts, quietly if the window is hidden).
