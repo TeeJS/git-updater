@@ -196,6 +196,24 @@ the thing being replaced.
 Prefer beta builds for a specific app? Tick *include beta (pre-release) versions* when
 adding it.
 
+### Categories (optional)
+
+Want games in `C:\Games` and everything else in `C:\Apps`? Turn on **Settings → Apps and
+display → Group apps into categories**. It is **off by default**, and while it is off nothing
+about the app changes.
+
+- Add a category in Settings with a name and a folder, then use **⋯ → Move to …** on an app.
+  The list groups apps by category; click a header to collapse it.
+- Moving a portable app to another category, or changing a category's folder, moves the app's
+  files too. You are shown exactly which folders will move first. If one cannot be moved (the
+  app is running, the new folder already has files), nothing is changed.
+- Want one app somewhere else entirely? **⋯ → Edit…** and set its **Folder**; leave it empty for
+  the default.
+- Drag apps into your own order within a group (when no column is sorted), and drag category
+  headers to reorder them.
+
+Turning the switch off again never moves a file: apps stay where they are and keep updating.
+
 ## For developers
 
 ```bash

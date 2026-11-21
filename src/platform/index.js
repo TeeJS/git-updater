@@ -13,6 +13,7 @@
 // Asset tables live in ./assets — that module is pure and IO-free so core.js can
 // require it without dragging child_process into the "no IO" half of the engine.
 
+const fs = require('fs');
 const { assetTable } = require('./assets');
 
 const IMPLS = {
@@ -36,6 +37,17 @@ const NOOP = {
 async function extract(archivePath, destDir) {
   const p = impl();
   return p.extract ? p.extract(archivePath, destDir) : false;
+}
+
+// Copy a whole folder, for moving an app to another drive (src/relocate.js), where a
+// rename cannot do it. macOS uses ditto, the same tool that unpacks its archives, because an
+// application bundle only stays launchable if its links, modes, extended attributes and
+// signature all arrive intact. Everywhere else Node's own copy keeps what matters there:
+// links as links, modes and times. Never over an existing folder.
+async function copyTree(src, dest) {
+  const p = impl();
+  if (p.copyTree) return p.copyTree(src, dest);
+  await fs.promises.cp(src, dest, { recursive: true, errorOnExist: true, force: false, verbatimSymlinks: true, preserveTimestamps: true });
 }
 
 // Optional integrity check on an extracted or installed payload. Only macOS defines it,
@@ -75,6 +87,7 @@ module.exports = {
   impl,
   assetTable,
   extract,
+  copyTree,
   verifyPayload,
   launchTargetFor,
   launchApp,

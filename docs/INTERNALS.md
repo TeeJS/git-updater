@@ -27,8 +27,12 @@ the running platform automatically:
 ```jsonc
 {
   "portableRoot": "C:/PortableApps",     // portable apps install to <portableRoot>/<repo>
+  "categories": [                         // optional: your own groups, each with its own folder
+    { "name": "Games", "dir": "C:/Games" }
+  ],
   "repos": [
     { "owner": "ShareX", "repo": "ShareX", "type": "portable" },
+    { "owner": "TeeJS", "repo": "open-quake", "type": "portable", "category": "Games" }, // -> C:/Games/open-quake
     { "owner": "TeeJS", "repo": "tts-stt-windows", "type": "installer" }
   ]
 }
@@ -895,6 +899,88 @@ choices (`filterType`, `filterStatus`) when they change and restores them once a
 the same `booted` guard as the startup sort. The search text always starts empty. Turning the
 checkbox off resets the saved choices to All.
 
+### Categories and app folders
+
+**Settings → Apps and display → "Group apps into categories"** (`config.categoriesEnabled`,
+**off by default**). Off, the window is exactly what it was before the feature existed: no
+headers, nothing draggable, no extra menu items, no Folder field. Ported from
+PlayingKarrde/git-updater (ee988da, and the folder fixes of 473bd94) and rebuilt on our
+structure.
+
+A category is one of the user's own groups in the main list, and it has a folder: a portable
+app in it lives in `<category folder>/<app>` instead of `<portableRoot>/<app>`. Any app can be
+in a category (an installer app, a WinGet or Homebrew app); only a portable one has a folder
+there. An app can also have a folder of its own (`install.dir`, the Folder field), which wins.
+`core.portableDirOf` is the one rule, and `core.validateConfig` fills it in, so the window, the
+scheduled install and the CLI all resolve the same folder.
+
+This is **not** the "category" of Popular apps (`src/catalog.js`, `shortcuts.json`, the
+favorites file), which is the heading an app is listed under in that window. The two never
+meet: these live in `config.json`, are read through `core.findCategory`, and the main window's
+Popular apps tooltip stops using the word while the switch is on.
+
+**The switch only shows or hides screens.** Where an app's files are is decided by
+`config.json` alone, whether the switch is on or off. Turning it off moves nothing and loses
+nothing; turning it on again shows the same categories.
+
+What appears when it is on:
+
+- The list is grouped: apps with no category first, then each category in its saved order,
+  one thin header line each (name, count, folder). A header click collapses the group; which
+  groups are collapsed is kept in the window's `localStorage` (`collapsedGroups`), never in
+  `config.json`, which writes a `.bak` on every save. Collapsing is only visual: the toolbar's
+  buttons and the "Showing 5 of 23" count still include the folded rows.
+- **Sorting, search and filters.** Grouping is applied *after* sorting and filtering
+  (`groupRows(visibleRepos(sortedRepos()))`), so a column sort applies inside each group and a
+  category with no visible app has no header. An app can be dragged to a new place within its
+  group only while no column is sorted, because only then is the order on screen the saved
+  order (`config.repos`). Categories can be dragged among each other at any time. Nothing is
+  draggable while a check or update runs. A header click used to be a one-way door (up, down,
+  up…), so with the switch on a third click on the same column clears the sort.
+- Dragging uses pointer events, not HTML drag-and-drop: the browser hands that to the OS,
+  where it cannot be driven by a test and behaves differently per platform.
+- **⋯ → Move to …** / **Remove from category**, and in **⋯ → Edit…** a category picker and,
+  for a portable app, **Folder** with "in its own subfolder" (ticked by default, so the folder
+  typed works the way a category's folder does). An edit changes the entry in place: position
+  and hand-set overrides are kept. Editing only the category or folder is not re-checked and
+  can be saved while a check runs.
+- Settings lists the categories (Change folder…, Remove, drag to reorder) with a row to add one.
+- Apps added from Add an app, Popular apps or Scan this PC land uncategorised.
+
+**Moving files.** `grouping:change` (`electron/main.js`, "Categories and app folders") is the
+one call that can change where an app lives, accepted from the main window's own page only.
+The window sends what was asked (an app's key, a category's name, a folder); main builds the
+new config from the one on disk, validates the folder (a full path, no control characters),
+and `core.planRelocations` says which folders have to move: an app changing category, a
+category's folder changing, an app's own folder set, changed or cleared. Changing
+`portableRoot` alone still moves nothing, a new app has nothing to move, and an app whose
+type changed is a different entry.
+
+1. If a folder that is really on disk would move, main answers with the list and changes
+   nothing. The window shows exactly that list ("Move quake's folder? from … to …") and only
+   the user's yes sends it back, as a token of those exact paths.
+2. Refused, with nothing changed and a message naming the app and the reason, when: the app
+   is running (`detect.isRunning`, the same check as before an update); an update is running
+   here or from the CLI (the `updating` flag and the state lock are both held for the move);
+   the new place exists and is not empty (an empty folder is fine); the new place is inside
+   the old one; two apps would share a folder or sit one inside the other; the folder is not
+   a full path; the category does not exist; a category that still has apps is removed.
+3. `src/relocate.js` moves them, **all or nothing**: if one cannot move, every one already
+   moved is put back and `config.json` is not saved. Same drive: one rename (with the retry
+   install uses for antivirus locks). Another drive (`EXDEV`): copied with
+   `platform.copyTree` (ditto on macOS, so a bundle keeps its links and signature), checked
+   file by file against the original, a bundle that verified before must verify after, and
+   the original is deleted only after `config.json` is saved.
+4. `config:save` can never change any of this: `core.holdFolders` keeps the categories, each
+   app's category and its own folder as they are on disk, so a stale window (or a
+   hand-edit behind it) cannot leave an app pointing where its files are not.
+
+`state.json` needs no change after a move: an app's record holds its files relative to its
+folder and no folder at all, so the next update lands in the new place and prunes by the same
+manifest. Hand-editing `category` or a category's `dir` in `config.json` moves nothing; an
+unknown category, a duplicate name (names that differ only by case are the same) or a folder that
+is not a full path is a config error.
+
 ### Sort at startup
 
 Clicking a column header saves `config.sortColumn` / `config.sortDirection`, so by default the
@@ -984,6 +1070,7 @@ src/                 the engine (no UI, no shell):
     net.js           ctx.net for providers: HTTPS only, no redirects, size-capped
     github.js gitlab.js gitea.js winget.js brew.js folder.js   one provider per file
   windowstate.js     the main window's remembered size and position: <config dir>/window-state.json
+  relocate.js        moves app folders when a category or folder changes: all or nothing
   log.js             file log -> <config dir>/logs (Settings -> Open log)
   platform/          EVERYTHING OS-specific lives here, behind one interface:
     index.js         dispatch on process.platform; a no-op impl for anything unsupported

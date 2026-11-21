@@ -142,7 +142,7 @@ async function run(config, opts = {}) {
       if (clash) throw new Error(`its portable folder (${repo.install.dir}) is also used by ${clash} — give each its own install.dir in config.json`);
       const result = await handleRepo(repo, id, st, {
         ...opts,
-        portableRoot: config.portableRoot,
+        portableRoot: core.portableRootFor(config, repo), // its category's folder, else portableRoot
         requireChecksum: !!config.requireChecksum,
         maxBytes: core.downloadLimitBytes(config),
         markClosed,

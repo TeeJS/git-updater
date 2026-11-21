@@ -15,7 +15,10 @@ contextBridge.exposeInMainWorld('api', {
   openApp: (appKey) => ipcRenderer.invoke('app:launch', appKey),
   validateRepo: (owner, repo, prerelease) => ipcRenderer.invoke('repo:validate', { owner, repo, prerelease }),
   closeApp: (appKey, force) => ipcRenderer.invoke('app:close', { appKey, force }),
-  pickFolder: () => ipcRenderer.invoke('pick-folder'),
+  pickFolder: (kind, startDir) => ipcRenderer.invoke('pick-folder', kind, startDir),
+  // Categories and app folders: the one call that can change where an app's files live.
+  // `confirmed` is the token main returned with the list of folders it would move.
+  changeGrouping: (change, confirmed) => ipcRenderer.invoke('grouping:change', { change, confirmed }),
   openRelease: (appKey) => ipcRenderer.invoke('release:open', appKey),
   describeSources: () => ipcRenderer.invoke('sources:describe'),
   listProviders: () => ipcRenderer.invoke('sources:providers'),
