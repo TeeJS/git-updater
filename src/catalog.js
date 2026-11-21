@@ -229,7 +229,10 @@ function matchInstalled(installed, trackedRepos, platform) {
 // "Adobe.Acrobat.Reader.64-bit", Homebrew calls HandBrake "handbrake-app". src/shortcuts.json
 // maps the names people use to the place the app really comes from:
 //
-//   { name, category, aliases?, winget?, brew?, repo?, platforms?, detect? }
+//   { name, category, description, aliases?, winget?, brew?, repo?, platforms?, detect? }
+//
+//   description  one line, at most 100 characters, saying what the app is. Every row has
+//                one: it is the tooltip in the Popular apps window.
 //
 //   winget  a WinGet package id   (offered on Windows)
 //   brew    a Homebrew cask token (offered on macOS)
@@ -237,6 +240,11 @@ function matchInstalled(installed, trackedRepos, platform) {
 //   type    "installer" or "portable" — the only form the picker and packs add this app in,
 //           for a release whose other form is a different product (Ghostscript's only zips
 //           are GhostPCL and GhostXPS). Omitted: the user's own preference decides.
+//   also    GitHub owner/repo names that are this SAME app, when one is already in the user's
+//           list — so the picker shows it as "in your list" and does not add it twice. Not a
+//           source: nothing is ever installed from it through this row. Bitwarden is the
+//           case that needed it: its desktop app ships from bitwarden/clients, a repository
+//           that also releases a web vault and a CLI, so it cannot simply be a `repo` here.
 //   detect  { <platform>: name } — what the installed app is inventoried as, for the rare
 //           app its own name cannot find. A packaged (MSIX) Windows app is listed under its
 //           package identity: Windows App is "MicrosoftCorporationII.Windows365".
@@ -266,11 +274,53 @@ const UNLISTED = 'More from GitHub';
 const WINDOWS_ONLY = ['.NET', 'VC++ Redistributables'];
 const isWindowsOnly = (category) => WINDOWS_ONLY.includes(category);
 
+// The user's own apps, from their favorites file (src/favorites.js reads and checks it; the
+// app's main process hands the result here). They join the list after the built-in apps and
+// behave exactly like them — picker, packs, name lookup — except that they are marked
+// `favorite`, and a pack saved inside the app never refers to one by id (see src/packs.js),
+// because another machine may not have the same file.
+let _favorites = { apps: [], pins: [], notes: {} };
+function setFavorites(found) {
+  const notes = found && found.notes && typeof found.notes === 'object' ? found.notes : {};
+  _favorites = { apps: (found && Array.isArray(found.apps) ? found.apps : []), pins: (found && Array.isArray(found.pins) ? found.pins : []), notes };
+  _apps = null;
+}
+// Ids of built-in apps the favorites file lists by name: shown under "My favorites" as well.
+const favoritePins = () => _favorites.pins.filter((id) => builtinApps().some((a) => a.id === id));
+// The user's own one-line description of a pinned built-in app, if they wrote one.
+const favoriteNote = (id) => (typeof _favorites.notes[id] === 'string' ? _favorites.notes[id] : undefined);
+
 let _apps = null;
-// -> [{ id, name, category, listed, aliases, winget?, brew?, repo?, platforms? }], shortcuts first.
-// `listed` is false for a catalog row that has no shortcut: searchable, not in the picker.
+// -> every known app: the built-in ones, then the user's favorites.
 function apps() {
   if (_apps) return _apps;
+  const out = builtinApps().slice();
+  const seenId = new Set(out.map((a) => a.id));
+  for (const f of _favorites.apps) {
+    if (!f || !f.id || seenId.has(f.id)) continue;
+    seenId.add(f.id);
+    out.push({ id: f.id, name: f.name, category: f.category, description: f.description, listed: true, favorite: true, aliases: f.aliases || [], winget: f.winget, brew: f.brew, repo: f.repo, site: f.site, platforms: f.platforms, only: f.type });
+  }
+  _apps = out;
+  return out;
+}
+
+// The built-in app a name means — its name, one of its aliases, or its id — or null. Exact
+// (ignoring case and punctuation) on purpose: this decides that a line in someone's favorites
+// file is THAT app, so a near miss must not count.
+function findBuiltin(name) {
+  const q = squash(name);
+  if (!q) return null;
+  // "owner/repo" names the built-in app that comes from that repository.
+  const repo = String(name).trim().toLowerCase();
+  return builtinApps().find((a) => a.id === q || squash(a.name) === q || a.aliases.some((x) => squash(x) === q) || (a.listed && a.repo && a.repo.toLowerCase() === repo)) || null;
+}
+
+let _builtin = null;
+// -> [{ id, name, category, listed, aliases, winget?, brew?, repo?, platforms? }], shortcuts first.
+// `listed` is false for a catalog row that has no shortcut: searchable, not in the picker.
+function builtinApps() {
+  if (_builtin) return _builtin;
   const byRepo = new Map(CATALOG.map((c) => [c.repo.toLowerCase(), c]));
   const seenRepo = new Set();
   const seenId = new Set();
@@ -283,7 +333,7 @@ function apps() {
     seenId.add(id);
     // Where the GitHub project ships builds: the catalog row's limit, else the shortcut's own
     // `platforms` (Rectangle is a macOS app; its repo must not be offered on Windows).
-    out.push({ id, name: s.name, category: s.category, listed: true, aliases: s.aliases || [], winget: s.winget, brew: s.brew, repo: s.repo, repoPlatforms: (row && row.platforms) || s.platforms, detect: s.detect, only: s.type === 'installer' || s.type === 'portable' ? s.type : undefined });
+    out.push({ id, name: s.name, category: s.category, description: s.description, listed: true, aliases: s.aliases || [], winget: s.winget, brew: s.brew, repo: s.repo, repoPlatforms: (row && row.platforms) || s.platforms, detect: s.detect, only: s.type === 'installer' || s.type === 'portable' ? s.type : undefined, also: Array.isArray(s.also) ? s.also : undefined });
   }
   for (const c of CATALOG) {
     if (seenRepo.has(c.repo.toLowerCase())) continue;
@@ -293,7 +343,7 @@ function apps() {
     seenId.add(id);
     out.push({ id, name: c.name, category: UNLISTED, listed: false, aliases: [], repo: c.repo, repoPlatforms: c.platforms });
   }
-  _apps = out;
+  _builtin = out;
   return out;
 }
 
@@ -304,12 +354,16 @@ function sourcesFor(app, platform) {
   const plat = platform || process.platform;
   const out = [];
   if (isWindowsOnly(app.category) && plat !== 'win32') return out;
+  if (app.platforms && !app.platforms.includes(plat)) return out; // a favorite limited to some systems
   if (app.repo && (!app.repoPlatforms || app.repoPlatforms.includes(plat))) {
     const [owner, repo] = app.repo.split('/');
     out.push({ type: 'github', owner, repo });
   }
   if (app.winget && plat === 'win32') out.push({ type: 'winget', packageId: app.winget });
   if (app.brew && plat === 'darwin') out.push({ type: 'brew', token: app.brew });
+  // A vendor's download folder (favorites only): one address serves every system, and the
+  // file for this machine is chosen from its names when the folder is read.
+  if (app.site) out.push({ type: 'folder', url: app.site });
   return out;
 }
 
@@ -382,4 +436,4 @@ function preferredSource(app, platform, preference) {
   return list[0] || null;
 }
 
-module.exports = { CATALOG, SHORTCUTS, matchInstalled, onPlatform, findInstalled, lookup, sourcesFor, known, popular, apps, appById, detectFor, preferredSource, orderedSources, isWindowsOnly, WINDOWS_ONLY };
+module.exports = { CATALOG, SHORTCUTS, matchInstalled, onPlatform, findInstalled, lookup, sourcesFor, known, popular, apps, builtinApps, findBuiltin, setFavorites, favoritePins, favoriteNote, appById, detectFor, preferredSource, orderedSources, isWindowsOnly, WINDOWS_ONLY };

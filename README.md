@@ -98,6 +98,63 @@ The tarball has no such requirement, which is why it is the recommended Linux do
   *check for git-updater updates when it opens*, and *auto-update git-updater* (updated by the
   Install schedule like a ticked app, then it restarts, quietly if the window is hidden).
 
+## Favorites
+
+Your own apps and packs, added to the Popular apps window beside the built-in list, from one
+file you write by hand: `favorites.yaml`, in the same folder as your settings.
+
+| | |
+|---|---|
+| Windows | `%APPDATA%\git-updater\favorites.yaml` |
+| macOS | `~/Library/Application Support/git-updater/favorites.yaml` |
+| Linux | `~/.config/git-updater/favorites.yaml` |
+
+**Settings → Edit favorites file** (or **My favorites…** in Popular apps) opens it in your
+editor. The first time, it is created with commented examples, so the file explains itself.
+git-updater only reads this file, so you can copy it to another computer or keep it in a
+synced folder.
+
+```yaml
+apps:
+  - VLC media player              # an app already in Popular apps: pinned to "My favorites"
+  - sharkdp/fd                    # any GitHub project, as owner/repo
+  - name: My Tool                 # anything else: a name and at least one source
+    category: My tools            # optional; "My favorites" when left out
+    description: Syncs my notes   # optional; one line, shown when you hover over the app
+    repo: someone/my-tool         # GitHub
+    winget: Vendor.MyTool         # Windows
+    brew: my-tool                 # macOS
+    site: https://example.org/downloads/my-tool/    # a vendor's download folder
+
+packs:
+  - name: Work laptop
+    description: What goes on every work computer
+    apps: [VLC media player, 7-Zip, My Tool, sharkdp/fd]
+```
+
+| Field | Meaning |
+|---|---|
+| `name` | What the app is called. Required unless `repo` is given. |
+| `category` | The heading it appears under. An existing one is joined; a new one is added. |
+| `description` | One line, up to 100 characters, shown when you hover over the app. Every built-in app has one; on a pinned app (`- name: 7-Zip` with a `description`) yours replaces it under My favorites. |
+| `repo`, `winget`, `brew`, `site` | Where it comes from. At least one. The app is offered wherever one of them applies. |
+| `aliases` | Other names that find it when typed into Add an app. |
+| `platforms` | Limit it to some of `windows`, `mac`, `linux`. |
+| `type` | `installer` or `portable`, when only one makes sense. Otherwise your setting decides. |
+
+- A pack names each app the way it is named in the file or in Popular apps, or as `owner/repo`.
+- A favorite is not added to your list by itself: tick it in Popular apps, or add a pack.
+  Either way you review where every file comes from first.
+- A row can name an app and its sources, nothing else: no install switches, paths or commands.
+- An entry that cannot be used is skipped, and Popular apps says which one and why.
+- JSON is accepted too.
+- **Private GitHub repositories work**, as favorites or added any other way, when the GitHub
+  token in Settings can read them: create it with those repositories selected and *Contents*
+  set to *Read-only*. The token is only ever sent to `api.github.com`.
+
+Two ways to skip the typing: **Save as pack…** in Popular apps saves the apps you have ticked,
+and **Copy as favorite** in an app's ⋯ menu copies the ready-made line for it.
+
 ## On macOS
 
 **Only notarized apps will run.** git-updater will install any app you point it at, but

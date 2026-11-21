@@ -23,7 +23,7 @@
   input[type=text] { background: #0d1117; color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: .42rem .65rem; font: 13.5px var(--sans); }
   input[type=text]:focus { outline: none; border-color: var(--accent); }
   input[type=checkbox] { width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; flex: none; }
-  #filter { margin-left: auto; width: 15rem; }
+  #filter { margin-left: auto; width: 13rem; }
   #status { min-height: 1.2rem; color: var(--muted); margin: .5rem 0 .2rem; font-size: 13px; }
   #status.bad { color: var(--red); } #status.ok { color: var(--green); }
   .body { flex: 1; overflow-y: auto; border-top: 1px solid var(--border); padding-top: .7rem; }
@@ -74,6 +74,13 @@
   button.danger { color: var(--red); }
   .bar { display: flex; gap: .55rem; align-items: center; padding-top: .7rem; border-top: 1px solid var(--border); }
   .bar .count { margin-right: auto; color: var(--muted); font-size: 13px; }
+  /* What the favorites file could not use: one quiet line, the reasons a click away. */
+  #favNote { margin: 0 0 .5rem; font-size: 12.5px; color: var(--accent); }
+  #favNote summary { cursor: pointer; }
+  #favNote ul { margin: .3rem 0 0; padding-left: 1.2rem; color: var(--muted); }
+  #favNote li { margin: .1rem 0; overflow-wrap: anywhere; }
+  .packform { display: inline-flex; gap: .4rem; align-items: center; }
+  .packform input { width: 13rem; }
   .hidden { display: none !important; }
 </style>
 </head>
@@ -85,8 +92,10 @@
     <button type="button" data-tab="packs">Packs</button>
   </div>
   <input type="text" id="filter" placeholder="Filter…" aria-label="Filter apps">
+  <button type="button" class="act small" id="favEdit" title="Open your favorites file: your own apps and packs, added to this window">My favorites…</button>
 </div>
 <div id="status">Loading…</div>
+<details id="favNote" class="hidden"><summary></summary><ul></ul></details>
 
 <div class="body">
   <div id="viewApps"></div>
@@ -96,6 +105,12 @@
 
 <div class="bar">
   <span class="count" id="count"></span>
+  <button class="act hidden" id="savePack" title="Save the ticked apps as a pack you can add again later, or export">Save as pack…</button>
+  <span class="packform hidden" id="packForm">
+    <input type="text" id="packName" placeholder="Name for the pack" maxlength="80" aria-label="Name for the pack">
+    <button class="act" id="packSave">Save</button>
+    <button class="act" id="packCancel">Cancel</button>
+  </span>
   <button class="act hidden" id="back">Back</button>
   <button class="act" id="close">Close</button>
   <button class="act primary" id="go" disabled>Review and add</button>
@@ -144,14 +159,21 @@ function renderApps() {
       list.sort((x, y) => x.name.localeCompare(y.name, undefined, { numeric: true, sensitivity: 'base' }));
       for (const a of list) {
         const row = el('label', 'item' + (a.tracked ? ' tracked' : ''));
-        const cb = el('input'); cb.type = 'checkbox';
+        const cb = el('input'); cb.type = 'checkbox'; cb.dataset.app = a.id;
         cb.checked = a.tracked || picked.has(a.id); cb.disabled = a.tracked;
-        cb.onchange = () => { cb.checked ? picked.add(a.id) : picked.delete(a.id); sync(); };
+        cb.onchange = () => {
+          cb.checked ? picked.add(a.id) : picked.delete(a.id);
+          // An app pinned to My favorites has a second row in its own category: keep them in step.
+          for (const other of box.querySelectorAll('input[type=checkbox]')) if (other !== cb && other.dataset.app === a.id) other.checked = cb.checked;
+          sync();
+        };
         row.appendChild(cb);
         row.appendChild(el('span', 'nm', a.name));
         // Where it can come from on this computer — shown before anything is picked.
         row.appendChild(el('span', 'src', a.tracked ? 'in your list' : a.sources.join(' · ')));
-        row.title = a.tracked ? `${a.name} is already in your list` : `${a.name} — available from ${a.sources.join(', ')}`;
+        const where = a.tracked ? `${a.name} is already in your list` : `${a.name} — available from ${a.sources.join(', ')}`;
+        // What the app is leads the tooltip: the built-in line, or the user's own for a favorite.
+        row.title = a.description ? `${a.description}\n${where}` : where;
         sec.appendChild(row);
       }
       grid.appendChild(sec);
@@ -242,7 +264,10 @@ async function loadPacks() {
   const { builtin, mine } = await window.api.packsList();
   const card = (p) => {
     const c = el('div', 'pack');
-    const h = el('h3', null, p.name); if (p.builtin) h.appendChild(el('span', 'badge', 'Built-in')); c.appendChild(h);
+    const h = el('h3', null, p.name);
+    if (p.builtin) h.appendChild(el('span', 'badge', 'Built-in'));
+    if (p.fromFile) { const b = el('span', 'badge blue', favFile); b.title = `Written in your ${favFile} — edit it there`; h.appendChild(b); }
+    c.appendChild(h);
     if (p.description) c.appendChild(el('p', null, p.description));
     c.appendChild(el('p', 'apps', `${p.available} of ${p.count} available on this computer: ${p.apps.join(', ')}`));
     const acts = el('div', 'acts');
@@ -251,7 +276,7 @@ async function loadPacks() {
     const ex = el('button', 'act small', 'Export…');
     ex.onclick = async () => { try { const r = await window.api.packsExport(p.id); if (r.saved) status(`Exported to ${r.path}.`, 'ok'); } catch (e) { status(clean(e), 'bad'); } };
     acts.append(go, ex);
-    if (!p.builtin) {
+    if (!p.builtin && !p.fromFile) {
       const del = el('button', 'act small danger', 'Delete');
       del.onclick = async () => { if (!confirm(`Delete the pack "${p.name}"? Apps already added stay in your list.`)) return; await window.api.packsDelete(p.id); loadPacks(); };
       acts.appendChild(del);
@@ -300,6 +325,10 @@ function sync() {
     $('count').textContent = '';
     $('go').classList.add('hidden');
   }
+  // "Save as pack…" needs ticked apps, so it shows only on the list with a selection.
+  const canPack = !reviewing && tab === 'apps' && picked.size > 0;
+  if (!canPack) $('packForm').classList.add('hidden');
+  $('savePack').classList.toggle('hidden', !canPack || !$('packForm').classList.contains('hidden'));
 }
 $('go').onclick = () => {
   if (!$('viewReview').classList.contains('hidden')) return addChosen();
@@ -307,6 +336,57 @@ $('go').onclick = () => {
 };
 $('back').onclick = () => { plan = null; chosen.clear(); showView(planFrom === 'packs' ? 'viewPacks' : 'viewApps'); status(''); sync(); };
 $('close').onclick = () => window.close();
+
+// --- favorites: the user's own apps and packs, from a file they edit -------------------
+let favFile = 'favorites.yaml';
+// Anything the file listed that could not be used, said once, with the reasons a click away.
+async function loadFavNote() {
+  try {
+    const f = await window.api.favoritesStatus();
+    favFile = f.file || favFile;
+    const note = $('favNote');
+    note.classList.toggle('hidden', !f.problems.length);
+    note.querySelector('summary').textContent = `${favFile}: ${f.problems.length} thing${f.problems.length === 1 ? '' : 's'} could not be used`;
+    const ul = note.querySelector('ul'); ul.innerHTML = '';
+    for (const p of f.problems) ul.appendChild(el('li', null, p));
+  } catch {} // an older main process without favorites: nothing to say
+}
+$('favEdit').onclick = async () => {
+  try {
+    const r = await window.api.favoritesOpen();
+    status(`${r.created ? 'Created' : 'Opened'} ${r.path}${r.revealed ? ' — no program is set up to open it, so it is shown in its folder' : ''}. Save your changes, then come back to this window.`, 'ok');
+  } catch (e) { status(clean(e), 'bad'); }
+};
+// Coming back from the editor: read the file again, so a saved change is simply there.
+let refreshing = false;
+window.addEventListener('focus', async () => {
+  if (refreshing || !$('viewReview').classList.contains('hidden')) return;
+  refreshing = true;
+  try {
+    await loadFavNote();
+    if (tab === 'packs') await loadPacks();
+    else {
+      apps = await window.api.popularList();
+      for (const id of [...picked]) if (!apps.some((a) => a.id === id && !a.tracked)) picked.delete(id);
+      renderApps();
+    }
+    sync();
+  } catch {} finally { refreshing = false; }
+});
+
+// --- save the ticked apps as a pack -------------------------------------------------------
+$('savePack').onclick = () => { $('packForm').classList.remove('hidden'); sync(); $('packName').focus(); };
+$('packCancel').onclick = () => { $('packForm').classList.add('hidden'); $('packName').value = ''; sync(); };
+$('packName').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('packSave').click(); else if (e.key === 'Escape') $('packCancel').click(); });
+$('packSave').onclick = async () => {
+  const name = $('packName').value.trim();
+  if (!name) { status('Give the pack a name first.', 'bad'); $('packName').focus(); return; }
+  try {
+    const p = await window.api.packsSave(name, 'Picked in Popular apps.', [...picked]);
+    status(`Saved "${p.name}" with ${p.count} app${p.count === 1 ? '' : 's'}. It is under Packs, where you can add it again or export it.`, 'ok');
+    $('packCancel').click();
+  } catch (e) { status(clean(e), 'bad'); }
+};
 $('filter').oninput = renderApps;
 async function setTab(next) {
   tab = next;
@@ -320,7 +400,7 @@ async function setTab(next) {
   sync();
 }
 $('tabs').querySelectorAll('button').forEach((b) => (b.onclick = () => setTab(b.dataset.tab)));
-setTab(new URLSearchParams(location.search).get('tab') === 'packs' ? 'packs' : 'apps');
+loadFavNote().then(() => setTab(new URLSearchParams(location.search).get('tab') === 'packs' ? 'packs' : 'apps'));
 </script>
 </body>
 </html>
