@@ -439,3 +439,55 @@ test('LICENCE_AGREEMENT: tells the user what to do, and does not offer to do it 
   assert.match(mac.LICENCE_AGREEMENT, /open the image yourself/);
   assert.match(mac.LICENCE_AGREEMENT, /install the app by hand/);
 });
+
+// --- a shortcut that leads out of the image is never payload -----------------------------------
+//
+// Found on a real Mac: Blender's disk image names its /Applications shortcut with a single
+// space. Only the name "Applications" was skipped, ditto follows a link it is handed, and the
+// whole of /Applications (21 GB, 229,015 files) was copied into the portable folder.
+
+test('dmg: a top-level link that leaves the image is not copied, whatever it is called', async () => {
+  const dest = tmp();
+  const outside = tmp();
+  fs.writeFileSync(path.join(outside, 'Someone Elses.app'), 'not ours');
+  try {
+    await withStub(
+      (cmd, args) => {
+        if (cmd === 'hdiutil' && args[0] === 'attach') {
+          const mnt = args[args.indexOf('-mountpoint') + 1];
+          fs.writeFileSync(path.join(mnt, 'Blender.app'), 'payload');
+          fs.symlinkSync(outside, path.join(mnt, ' ')); // the drag-and-drop shortcut
+          fs.symlinkSync('/nowhere/at/all', path.join(mnt, 'Dangling'));
+          fs.symlinkSync('Blender.app', path.join(mnt, 'Alias.app')); // stays inside the image
+        }
+        return { code: 0, out: '', timedOut: false };
+      },
+      async (calls) => {
+        await mac.extractDmg('/x/Blender.dmg', dest);
+        const copied = calls.filter((c) => c.cmd === 'ditto').map((c) => path.basename(c.args[c.args.length - 1]));
+        assert.deepEqual(copied.sort(), ['Alias.app', 'Blender.app']);
+      }
+    );
+  } finally {
+    fs.rmSync(dest, { recursive: true, force: true });
+    fs.rmSync(outside, { recursive: true, force: true });
+  }
+});
+
+test('leavesImage: judged by where a link goes, not by its name', () => {
+  const mnt = tmp();
+  const outside = tmp();
+  try {
+    fs.mkdirSync(path.join(mnt, 'App.app'));
+    fs.symlinkSync(outside, path.join(mnt, ' '));
+    fs.symlinkSync('App.app', path.join(mnt, 'Inside'));
+    fs.symlinkSync('/nowhere/at/all', path.join(mnt, 'Dangling'));
+    assert.equal(mac.leavesImage(mnt, 'App.app'), false, 'a real folder is payload');
+    assert.equal(mac.leavesImage(mnt, ' '), true);
+    assert.equal(mac.leavesImage(mnt, 'Inside'), false);
+    assert.equal(mac.leavesImage(mnt, 'Dangling'), true, 'nothing to copy');
+  } finally {
+    fs.rmSync(mnt, { recursive: true, force: true });
+    fs.rmSync(outside, { recursive: true, force: true });
+  }
+});

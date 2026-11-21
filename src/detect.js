@@ -11,6 +11,7 @@
 const fs = require('fs');
 const platform = require('./platform');
 const { cmpVersion } = require('./core');
+const catalog = require('./catalog');
 
 const norm = (s) => String(s || '').toLowerCase().replace(/\.(exe|app)$/, '').replace(/[^a-z0-9]/g, '');
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -90,6 +91,31 @@ function nameMatches(name, needle, plat) {
   return needleInName || tokenRuns(needle).has(n);
 }
 
+// Words that mark an installed name as something that travels WITH an app, not the app:
+// "Claude Code URL Handler" is not Claude Code, "Microsoft Edge Update" is not Edge, and
+// git-updater is not Git. When the longer of two loosely matching names carries one of these
+// beyond what the shorter one says, they are two different things.
+const COMPANION = new Set(['handler', 'helper', 'uninstaller', 'uninstall', 'updater', 'update']);
+
+function companionOnly(name, needle) {
+  const a = tokens(name);
+  const b = tokens(needle);
+  const [long, short] = a.length >= b.length ? [a, b] : [b, a];
+  const said = new Set(short);
+  return long.some((t) => COMPANION.has(t) && !said.has(t));
+}
+
+// Is the inventory row called `name` the app an entry calls `needle`? nameMatches is the
+// lexical half. The other half is what the lexical rule cannot see: a helper that carries the
+// app's name, and an installed name that is a DIFFERENT known app outright ("Claude" for the
+// entry claude-code) — see ownedByAnother in src/catalog.js. An exact match skips both: an
+// entry always matches its own name.
+function sameApp(name, needle, plat) {
+  if (!nameMatches(name, needle, plat)) return false;
+  if (norm(name) === norm(needle)) return true;
+  return !companionOnly(name, needle) && !catalog.ownedByAnother(name, needle);
+}
+
 let cache = null; // cleared after installs so fresh versions show
 function clearCache() {
   cache = null;
@@ -114,7 +140,7 @@ async function allInstalled() {
 const sameIdentity = (name, needle) => String(name || '').toLowerCase() === String(needle || '').trim().toLowerCase();
 
 async function matchEntries(needle) {
-  return (await allInstalled()).filter((e) => (e.packaged ? sameIdentity(e.name, needle) : nameMatches(e.name, needle)));
+  return (await allInstalled()).filter((e) => (e.packaged ? sameIdentity(e.name, needle) : sameApp(e.name, needle)));
 }
 
 // Best version for an app whose inventory name matches `needle`. An app can have
@@ -169,7 +195,12 @@ async function launchTarget(needle) {
 // is truncated by the kernel at 15 characters, which chops a longer name mid-token and
 // no token rule can bridge that. A 15-character prefix of the needle is accepted as the
 // truncation it is.
+//
+// A process is also refused when its name is a different known app outright: the process
+// "Claude" is the desktop app, and an entry named claude-code must never close it. The
+// helper-word rule above is NOT applied here — "Claude Helper" really is part of Claude.
 function procMatches(procName, needle) {
+  if (norm(procName) !== norm(needle) && catalog.ownedByAnother(procName, needle)) return false;
   if (nameMatches(procName, needle)) return true;
   const pn = norm(procName);
   const t = norm(needle);
@@ -227,6 +258,8 @@ function osRelease() {
 
 module.exports = {
   nameMatches,
+  sameApp,
+  procMatches,
   osRelease,
   installedVersion,
   installedDate,

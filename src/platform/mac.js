@@ -268,7 +268,26 @@ const PKG_IN_DMG =
   'this disk image contains an installer package (.pkg) rather than an application, ' +
   'which git-updater cannot install on macOS — install it by hand from the disk image';
 
-// Mount a .dmg, copy its payload out, unmount. The /Applications symlink that disk
+// Is this top-level entry of a mounted image a link that leads OUT of the image? A disk image
+// carries a shortcut to /Applications so the app can be dragged onto it, and it is not always
+// named "Applications": Blender names it with a single space so only the icon shows. ditto
+// follows a link it is handed, so that one entry copied the whole of /Applications — 21 GB,
+// 229,015 files — into the portable folder beside the app, and would have again on every
+// update. Judged by where the link goes, not by what it is called. A link that goes nowhere
+// has nothing to copy either.
+function leavesImage(mnt, name) {
+  const p = path.join(mnt, name);
+  try {
+    if (!fs.lstatSync(p).isSymbolicLink()) return false;
+    const root = fs.realpathSync(mnt);
+    const target = fs.realpathSync(p);
+    return !(target === root || target.startsWith(root + path.sep));
+  } catch {
+    return true;
+  }
+}
+
+// Mount a .dmg, copy its payload out, unmount. The /Applications shortcut that disk
 // images conventionally carry is skipped: it is a drag-and-drop affordance, not payload.
 async function extractDmg(dmgPath, destDir) {
   const mnt = fs.mkdtempSync(path.join(os.tmpdir(), 'git-updater-dmg-'));
@@ -303,7 +322,7 @@ async function extractDmg(dmgPath, destDir) {
     } catch {
       throw new Error('the disk image mounted but could not be read');
     }
-    const payload = names.filter((n) => !n.startsWith('.') && n !== 'Applications');
+    const payload = names.filter((n) => !n.startsWith('.') && n !== 'Applications' && !leavesImage(mnt, n));
     // A disk image whose payload is an installer package, not an application. Copying it
     // "succeeds" and leaves a .pkg sitting in the portable folder doing nothing, while
     // the row reports the update applied. The asset picker cannot see this — it only saw
@@ -424,6 +443,7 @@ module.exports = {
   scanAppBundles,
   bundleVersion,
   extractDmg,
+  leavesImage,
   mountFailure,
   PKG_IN_DMG,
   LICENCE_AGREEMENT,

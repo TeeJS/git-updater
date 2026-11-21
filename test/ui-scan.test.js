@@ -248,3 +248,10 @@ test('the Popular apps window opens straight on the review when it is given scan
   assert.doesNotMatch(preloadJs, /scanAdd|scan:add/, 'the old add-without-review path is gone');
   assert.doesNotMatch(mainJs, /'scan:add'/);
 });
+
+test('scan: the Claude Code URL handler is not Claude Code', () => {
+  const catalog = require('../src/catalog');
+  const found = (names, plat) => catalog.scanInstalled(names.map((n) => ({ DisplayName: n, DisplayVersion: '1.0' })), plat).map((r) => r.name);
+  assert.deepEqual(found(['Claude Code URL Handler'], 'win32'), []);
+  assert.deepEqual(found(['Claude Code'], 'win32'), ['Claude Code']);
+});

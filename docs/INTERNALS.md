@@ -198,6 +198,15 @@ categories are Windows runtimes: the picker shows them under "Windows only" and 
 offered on macOS or Linux. A `CATALOG` row with no shortcut is not in the picker, but is still
 found by name from the Add box.
 
+The list also keeps one known app from being read as another. An entry is matched to the
+installed-app inventory loosely ("Brave" is `brave-browser`), so the entry `claude-code`
+matched the installed desktop app "Claude" and showed its 6.x as the installed version of a
+2.x tool. `ownedByAnother` refuses a loose match when the installed name is exactly one known
+app and the entry's name means a different one; an entry the list does not know keeps the
+loose match. The same check stops "close the app" from closing a different app. Separately,
+`sameApp` in `src/detect.js` refuses a row whose extra word marks a companion (`handler`,
+`helper`, `uninstaller`, `updater`, `update`): "Claude Code URL Handler" is not Claude Code.
+
 **Favorites** (`src/favorites.js`): `<config dir>/favorites.yaml` holds the user's own apps and
 packs. The main process re-reads it whenever its size or modified time changes
 (`loadFavorites` in `electron/main.js`), hands the apps to `catalog.setFavorites`, and keeps
@@ -294,6 +303,14 @@ Four real vendor images all had the same root layout — one `.app`, the `/Appli
 drag symlink, and dotfiles. A disk image whose payload is a `.pkg` is refused with advice
 to switch the entry to Installer, because copying it would leave a package sitting in the
 portable folder doing nothing while the row reported success.
+
+The drag symlink is skipped by **where it leads, not by its name**. Blender names it with a
+single space so only the icon shows; the skip used to look for the name `Applications`, and
+`ditto` follows a link it is handed, so that image copied the whole of `/Applications`
+(21 GB, 229,015 files on the machine that found it) into the portable folder beside the app.
+Any top-level link that resolves outside the mounted image, or nowhere, is not payload
+(`leavesImage`). A copy made before this fix is listed in that app's manifest, so the next
+update of the app drops it as a stale shipped file.
 
 ### Two guards that exist because the failures are silent
 
