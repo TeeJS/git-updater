@@ -72,6 +72,26 @@ test('installerCmd: override args', () => {
   });
 });
 
+test('installerCmd: a verbatim switch string stays one untouched argument', () => {
+  // The VC++ 2005 redistributable: an IExpress wrapper whose switch carries a second, quoted
+  // command line. Split on spaces it would mean something else.
+  const vc2005 = '/Q /C:"msiexec /i ""vcredist.msi"" /quiet /norestart"';
+  assert.deepEqual(core.installerCmd('exe', 'C:\\Stage Dir\\vcredist_x64.EXE', undefined, vc2005), {
+    exe: 'C:\\Stage Dir\\vcredist_x64.EXE', args: [vc2005], verbatim: true,
+  });
+  assert.deepEqual(core.installerCmd('nsis', 'S.exe', undefined, ' /S /PARAM1="/norestart" '), { exe: 'S.exe', args: ['/S /PARAM1="/norestart"'], verbatim: true });
+  // An MSI is run by msiexec, so the package path is quoted into the line.
+  assert.deepEqual(core.installerCmd('msi', 'C:\\Stage Dir\\P.msi', undefined, '/qn PROP="a b"'), {
+    exe: 'msiexec', args: ['/i "C:\\Stage Dir\\P.msi" /qn PROP="a b"'], verbatim: true,
+  });
+  // The user's own pinned switches (an argv array) still win.
+  assert.deepEqual(core.installerCmd('nsis', 'S.exe', ['/S', '/D=C:\\X'], '/S /x="y z"'), { exe: 'S.exe', args: ['/S', '/D=C:\\X'] });
+  // No verbatim form outside the Windows installer kinds, and never an empty one.
+  assert.throws(() => core.installerCmd('pkg', 'P.pkg', undefined, '-x "y z"'), /cannot take a verbatim switch string/);
+  assert.deepEqual(core.installerCmd('nsis', 'S.exe', undefined, '   '), { exe: 'S.exe', args: ['/S'] });
+  assert.throws(() => core.installerCmd('exe', 'C:\\a"b.exe', undefined, '/S "x y"'), /cannot be quoted safely/);
+});
+
 test('installerCmd: unknown kind throws', () => {
   assert.throws(() => core.installerCmd('wix', 'x.exe'), /unknown installer kind/);
 });

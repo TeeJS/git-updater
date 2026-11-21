@@ -242,17 +242,19 @@ const INSTALLER_SWITCHES = {
   msi: {
     cmd: (file) => ['msiexec', ['/i', file, '/qn', '/norestart']],
     override: (file, args) => ['/i', file, ...args],
+    raw: (file, line) => `/i "${file}" ${line}`,
   },
-  nsis: { cmd: (file) => [file, ['/S']], override: (file, args) => args },
+  nsis: { cmd: (file) => [file, ['/S']], override: (file, args) => args, raw: (file, line) => line },
   inno: {
     cmd: (file) => [file, ['/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART']],
     override: (file, args) => args,
+    raw: (file, line) => line,
   },
   // A vendor executable built with no installer framework git-updater recognises. It has
   // NO default switches: it runs only with switches a listing declared for this exact
   // file, or ones the user pinned in config.json — never a guess. installerCmd refuses it
   // outright when there are none.
-  exe: { cmd: (file) => [file, null], override: (file, args) => args },
+  exe: { cmd: (file) => [file, null], override: (file, args) => args, raw: (file, line) => line },
   // macOS — installer(8) writes into /Library and needs root, so this only succeeds
   // when git-updater itself is running elevated; otherwise the caller falls back to
   // opening the .pkg in Installer.app, which prompts for authorization normally.
@@ -272,7 +274,15 @@ const INSTALLER_SWITCHES = {
 };
 
 // Returns { exe, args } to spawn. Per-repo install.args overrides the switches.
-function installerCmd(kind, file, argsOverride) {
+// `rawSwitches` is the verbatim form: a switch string a listing declared that cannot be split
+// into separate arguments without changing its meaning — it quotes a value, or nests a second
+// command line, as the VC++ 2005 redistributable does:
+//     /Q /C:"msiexec /i ""vcredist.msi"" /quiet /norestart"
+// It comes back as ONE argument with `verbatim: true`, and the caller must then start the
+// process with the arguments passed through untouched (no re-quoting) and the program path
+// quoted. Windows only: the kinds that have a `raw` form are the Windows ones. An argv array
+// (the user's own pinned switches, or a listing's plain ones) always wins over it.
+function installerCmd(kind, file, argsOverride, rawSwitches) {
   const spec = INSTALLER_SWITCHES[kind];
   if (!spec) {
     throw new Error(`unknown installer kind "${kind}" (known: ${Object.keys(INSTALLER_SWITCHES).join(', ')})`);
@@ -280,6 +290,11 @@ function installerCmd(kind, file, argsOverride) {
   const [exe, defaultArgs] = spec.cmd(file);
   if (Array.isArray(argsOverride) && argsOverride.length) {
     return { exe, args: spec.override(file, argsOverride) };
+  }
+  if (typeof rawSwitches === 'string' && rawSwitches.trim()) {
+    if (!spec.raw) throw new Error(`installer kind "${kind}" cannot take a verbatim switch string`);
+    if (/"/.test(file)) throw new Error('the installer path cannot be quoted safely');
+    return { exe, args: [spec.raw(file, rawSwitches.trim())], verbatim: true };
   }
   if (!defaultArgs) throw new Error(`installer kind "${kind}" has no silent switches of its own — it needs explicit ones`);
   return { exe, args: defaultArgs };

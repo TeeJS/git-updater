@@ -547,3 +547,57 @@ test('swapDir: carry-over never writes inside a bundle, even with no previous ma
     fs.rmSync(base, { recursive: true, force: true });
   }
 });
+
+// --- installers: verbatim switches, and a setup program delivered inside a zip ---------------
+
+test('installInstaller: a verbatim switch string is passed through untouched, with the program path quoted', () => {
+  const calls = [];
+  const spawnSync = (exe, args, options) => { calls.push({ exe, args, options }); return { status: 0 }; };
+  const vc2005 = '/Q /C:"msiexec /i ""vcredist.msi"" /quiet /norestart"';
+  const file = 'C:\\Users\\A B\\staging\\vcredist_x64.EXE';
+  const r = install.installInstaller(file, { kind: 'exe', rawArgs: vc2005 }, { spawnSync });
+  assert.equal(r.status, 0);
+  assert.equal(calls[0].exe, file);
+  assert.deepEqual(calls[0].args, [vc2005], 'one argument, exactly as the listing wrote it');
+  assert.equal(calls[0].options.windowsVerbatimArguments, true, 'Node must not re-quote it');
+  assert.equal(calls[0].options.argv0, `"${file}"`, 'so the path is quoted here: the installer reads its own command line');
+  assert.equal(calls[0].options.shell, undefined, 'never through a shell');
+
+  // Ordinary switches are unchanged: an argv array, quoted by Node as before.
+  install.installInstaller('S.exe', { kind: 'nsis', args: ['/S', '--updated'] }, { spawnSync });
+  assert.deepEqual(calls[1].args, ['/S', '--updated']);
+  assert.equal(calls[1].options.windowsVerbatimArguments, undefined);
+  assert.equal(calls[1].options.argv0, undefined);
+
+  // The user's pinned switches beat a listing's verbatim string.
+  install.installInstaller('S.exe', { kind: 'nsis', args: ['/S'], rawArgs: '/S /x="y z"' }, { spawnSync });
+  assert.deepEqual(calls[2].args, ['/S']);
+  assert.equal(calls[2].options.windowsVerbatimArguments, undefined);
+
+  assert.match(install.installInstaller(file, { kind: 'exe', rawArgs: vc2005 }, { dryRun: true }).command, /vcredist_x64\.EXE \/Q \/C:"msiexec/);
+});
+
+test('extractNestedInstaller: takes out exactly the named setup program, by its base name', () => {
+  const dir = tmp();
+  const zip = new AdmZip();
+  zip.addFile('CuteWriter.exe', Buffer.from('setup-bytes'));
+  zip.addFile('readme.txt', Buffer.from('hello'));
+  zip.addFile('sub/Other Setup.msi', Buffer.from('msi-bytes'));
+  zip.addFile('sub/script.cmd', Buffer.from('echo'));
+  const zipPath = path.join(dir, 'CuteWriter.zip');
+  zip.writeZip(zipPath);
+
+  const out = install.extractNestedInstaller(zipPath, 'CuteWriter.exe', dir);
+  assert.equal(out, path.join(dir, 'CuteWriter.exe'));
+  assert.equal(fs.readFileSync(out, 'utf8'), 'setup-bytes');
+  assert.ok(!fs.existsSync(path.join(dir, 'readme.txt')), 'nothing else is unpacked');
+
+  // Windows separators and letter case in the listing still find the entry; it lands flat.
+  const nested = install.extractNestedInstaller(zipPath, 'SUB\\other setup.msi', dir);
+  assert.equal(nested, path.join(dir, 'Other Setup.msi'));
+  assert.equal(fs.readFileSync(nested, 'utf8'), 'msi-bytes');
+
+  assert.throws(() => install.extractNestedInstaller(zipPath, 'missing.exe', dir), /does not contain the installer it names/);
+  assert.throws(() => install.extractNestedInstaller(zipPath, '../CuteWriter.exe', dir), /does not contain the installer it names/, 'a path is matched, never resolved');
+  assert.throws(() => install.extractNestedInstaller(zipPath, 'sub/script.cmd', dir), /unsafe name/, 'only an .exe or .msi is a setup program');
+});

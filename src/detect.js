@@ -107,8 +107,14 @@ async function allInstalled() {
   return cache;
 }
 
+// A packaged (MSIX) app is inventoried under its package IDENTITY — "MicrosoftCorporationII.
+// Windows365" for Windows App — a machine identifier with hundreds of system packages beside
+// it. Like a Linux package name, it is never matched loosely: only a needle that IS that
+// identity matches, which is what an entry's `detect` field carries for such an app.
+const sameIdentity = (name, needle) => String(name || '').toLowerCase() === String(needle || '').trim().toLowerCase();
+
 async function matchEntries(needle) {
-  return (await allInstalled()).filter((e) => nameMatches(e.name, needle));
+  return (await allInstalled()).filter((e) => (e.packaged ? sameIdentity(e.name, needle) : nameMatches(e.name, needle)));
 }
 
 // Best version for an app whose inventory name matches `needle`. An app can have

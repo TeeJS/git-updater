@@ -16,7 +16,9 @@ const INDEX_MAX_AGE = 6 * 60 * 60 * 1000;
 const MANIFEST_LIMIT = 1024 * 1024;
 const ID_SEGMENT = /^[a-z0-9_+-]+$/i;
 const SHA256 = /^[a-f0-9]{64}$/i;
-const KIND = new Map([['msi', 'msi'], ['wix', 'msi'], ['nullsoft', 'nsis'], ['inno', 'inno'], ['exe', 'exe'], ['burn', 'exe']]);
+// msix/appx: a packaged app. It has no silent switches of any kind — Windows installs it through
+// its own App Installer window — so the runner opens it there rather than running it.
+const KIND = new Map([['msi', 'msi'], ['wix', 'msi'], ['nullsoft', 'nsis'], ['inno', 'inno'], ['exe', 'exe'], ['burn', 'exe'], ['msix', 'msix'], ['appx', 'msix']]);
 const ARCH = new Map([['x86', 'ia32'], ['x64', 'x64'], ['arm64', 'arm64'], ['neutral', 'universal']]);
 const indexDownloads = new Map();
 
@@ -226,18 +228,60 @@ function manifestReference(db, id, version) {
   return { url: CDN + segments.map(encodeURIComponent).join('/'), sha256: Buffer.from(row.hash).toString('hex') };
 }
 
+// A Burn bundle (WiX's bootstrapper: the VC++ 2015+ redistributables, among others) that declares
+// no switches is not a guess the way a bare vendor .exe is: every Burn bundle takes the same
+// standard switches, and these are the ones WinGet itself runs for the type when a manifest
+// declares none. Anything the manifest does declare still wins.
+const BURN_SILENT = '/quiet /norestart';
+
+// How a manifest's switch string reaches the installer. Nothing here ever goes through a shell.
+//
+// WORDS — the usual case: every space-separated piece is one plain switch (/S, -q, --silent,
+// /mergetasks=!runcode, REBOOT=ReallySuppress). The string becomes an argv array.
+//
+// RAW — the string quotes a value or nests a second command line, e.g. the VC++ 2005
+// redistributable's  /Q /C:"msiexec /i ""vcredist.msi"" /quiet /norestart"  or OpenOffice's
+// /PARAM1="/norestart". Splitting that on spaces would change what it means, so it is handed
+// to the installer exactly as written (see installerCmd's verbatim form in src/core.js),
+// which is also what WinGet does with it. It must still be plain printable text with balanced
+// quotes, and carry none of WinGet's unfilled placeholders (<INSTALLPATH>, <LOGPATH>).
+//
+// Anything else is refused: the app is then installed from its own window, not unattended.
+const WORD = /^(?:(?:\/|--?)[a-z0-9][a-z0-9_./=:+,!-]*|[a-z_][a-z0-9_]*=[a-z0-9_./:+,!-]+)$/i;
+const RAW = /^[\x20-\x7e]+$/;
+const RAW_REFUSED = /[<>|&^%`]/;
+
+function switchForm(text) {
+  const words = text.split(/\s+/);
+  if (words.every((word) => WORD.test(word))) return { words };
+  if (text.length <= 512 && RAW.test(text) && !RAW_REFUSED.test(text) && (text.match(/"/g) || []).length % 2 === 0) return { raw: text };
+  return null;
+}
+
+// -> { installArgs | installArgsRaw, upgradeArgs? | upgradeArgsRaw? } | { unsupported } | {}
+// `Upgrade` switches are WinGet's: they are added to the install switches when a version of the
+// app is already on the machine (the runner decides that), never on a first install.
 function installerArguments(info, kind) {
   const switches = info.InstallerSwitches || {};
-  const silent = switches.Silent || switches.SilentWithProgress;
+  const text = (value) => (typeof value === 'string' ? value.trim() : '');
+  const burn = info.InstallerType === 'burn' || (info.InstallerType === 'zip' && info.NestedInstallerType === 'burn');
+  const silent = text(switches.Silent) || text(switches.SilentWithProgress) || (burn ? BURN_SILENT : '');
+  const custom = text(switches.Custom);
+  const upgrade = text(switches.Upgrade);
   if (kind === 'exe' && !silent) return { unsupported: 'WinGet did not declare silent switches for this executable' };
-  if (!silent && !switches.Custom) return {};
+  if (!silent && !custom && !upgrade) return {};
   const defaults = silent ? [] : installerCmd(kind, '').args;
   const defaultSwitches = kind === 'msi' ? defaults.slice(2) : defaults;
-  const words = [silent || defaultSwitches.join(' '), switches.Custom].filter(Boolean).join(' ').trim().split(/\s+/);
-  if (!words.every((word) => /^(?:[/-][a-z0-9][a-z0-9_./=:+,-]*|[a-z_][a-z0-9_]*=[a-z0-9_./:+,-]+)$/i.test(word))) {
-    return { unsupported: 'WinGet installer switches require manual setup' };
+  const base = [silent || defaultSwitches.join(' '), custom].filter(Boolean).join(' ').trim();
+  const out = {};
+  for (const [key, line] of [['install', base], ['upgrade', upgrade && `${base} ${upgrade}`]]) {
+    if (!line) continue;
+    const form = switchForm(line);
+    if (!form) return { unsupported: 'WinGet installer switches require manual setup' };
+    if (form.words) out[`${key}Args`] = form.words;
+    else out[`${key}ArgsRaw`] = form.raw;
   }
-  return { installArgs: words };
+  return out;
 }
 
 function dependencies(value) {
@@ -255,7 +299,18 @@ function installerAsset(installer, common) {
   info.InstallerSwitches = { ...common.InstallerSwitches, ...installer.InstallerSwitches };
   const type = info.InstallerType === 'portable' || (info.InstallerType === 'zip' && info.NestedInstallerType === 'portable')
     ? 'portable' : 'installer';
-  const kind = type === 'portable' && info.InstallerType === 'zip' ? 'zip' : KIND.get(info.InstallerType);
+  // An installer delivered inside a zip (CutePDF Writer): the zip is what is downloaded and
+  // checksummed, and the one setup program it names is what is run. Exactly one, by a plain
+  // relative path — anything else is not a shape git-updater unpacks.
+  const wrapped = type === 'installer' && info.InstallerType === 'zip';
+  const nestedFiles = Array.isArray(info.NestedInstallerFiles) ? info.NestedInstallerFiles : [];
+  const nestedPath = wrapped && nestedFiles.length === 1 && typeof nestedFiles[0]?.RelativeFilePath === 'string'
+    ? nestedFiles[0].RelativeFilePath.replace(/\\/g, '/') : undefined;
+  const nested = nestedPath && /^[a-z0-9][a-z0-9 ._()+-]*(?:\/[a-z0-9][a-z0-9 ._()+-]*)*\.(?:exe|msi)$/i.test(nestedPath) && !/(?:^|\/)\.\.?(?:\/|$)/.test(nestedPath)
+    ? nestedPath : undefined;
+  const kind = type === 'portable' && info.InstallerType === 'zip' ? 'zip'
+    : wrapped ? (nested ? KIND.get(info.NestedInstallerType) : undefined)
+      : KIND.get(info.InstallerType);
   const arch = ARCH.get(info.Architecture);
   const digest = typeof info.InstallerSha256 === 'string' && SHA256.test(info.InstallerSha256) ? `sha256:${info.InstallerSha256.toLowerCase()}` : undefined;
   if (info.InstallerSha256 !== undefined && !digest) throw new Error('WinGet published an invalid installer SHA-256');
@@ -266,7 +321,7 @@ function installerAsset(installer, common) {
     name = decodeURIComponent(downloadUrl.pathname.split('/').at(-1));
   } catch {}
   const safeName = name && !/[\\/:*?"<>|\u0000-\u001f]|[. ]$|^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(name);
-  const args = kind && type === 'installer' ? installerArguments(info, kind) : {};
+  const args = kind && kind !== 'msix' && type === 'installer' ? installerArguments(info, kind) : {};
   const locale = info.InstallerLocale;
   const asset = {
     name: safeName ? name : `${info.InstallerType || 'Unknown'} ${info.Architecture || ''}`.trim(),
@@ -276,14 +331,15 @@ function installerAsset(installer, common) {
     locale: typeof locale === 'string' && /^[a-z0-9]+(?:-[a-z0-9]+)*$/i.test(locale) ? locale : undefined,
     requires: dependencies(info.Dependencies), productCode: info.ProductCode,
     upgradeBehavior: ['install', 'uninstallPrevious', 'deny'].includes(info.UpgradeBehavior) ? info.UpgradeBehavior : undefined,
+    ...(wrapped && nested && kind ? { nested } : {}),
     ...args,
   };
-  if (!kind) asset.unsupported = `WinGet installer type ${info.InstallerType || 'unknown'} is unsupported`;
+  if (!kind) asset.unsupported = `WinGet installer type ${wrapped && info.NestedInstallerType ? `zip (${info.NestedInstallerType})` : info.InstallerType || 'unknown'} is unsupported`;
   else if (!arch) asset.unsupported = `WinGet architecture ${info.Architecture || 'unknown'} is unsupported`;
   else if (!safeName || downloadUrl.protocol !== 'https:' || downloadUrl.username || downloadUrl.password) asset.unsupported = 'WinGet did not publish a usable HTTPS download';
   else if (info.InstallModes?.length && !info.InstallModes.some((mode) => mode === 'silent' || mode === 'silentWithProgress')) {
     asset.unsupported = 'WinGet installer does not support unattended installation';
-  } else if (info.InstallerSwitches.Upgrade) asset.unsupported = 'WinGet declares upgrade switches that require manual setup';
+  }
   return asset;
 }
 

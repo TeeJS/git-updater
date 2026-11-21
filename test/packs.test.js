@@ -58,6 +58,93 @@ test('shortcuts: sources are offered per platform, first-party first', () => {
   assert.ok(catalog.popular('win32').some((a) => a.id === 'googlechrome'));
 });
 
+test('the picker lists only apps given a category; other known GitHub projects stay searchable', () => {
+  for (const plat of ['win32', 'darwin', 'linux']) {
+    const picker = catalog.popular(plat);
+    assert.ok(picker.length, plat);
+    assert.ok(picker.every((a) => a.listed), `${plat}: every picker row has a shortcut`);
+    assert.ok(!picker.some((a) => a.category === 'More from GitHub'), `${plat}: no catch-all category`);
+  }
+  // A scannable project with no shortcut row: not in the picker, still found by name.
+  assert.ok(!catalog.popular('win32').some((a) => a.id === 'lazygit'));
+  assert.deepEqual(catalog.lookup('lazygit', 'win32')[0].source, { type: 'github', owner: 'jesseduffield', repo: 'lazygit' });
+  assert.ok(catalog.appById('lazygit'), 'and a saved pack that names it still resolves');
+  // One that was popular enough to be given a category sits there, on every platform it ships for.
+  for (const plat of ['win32', 'darwin', 'linux']) {
+    assert.equal(catalog.popular(plat).find((a) => a.id === 'cherrystudio').category, 'AI', plat);
+  }
+});
+
+test('folding a GitHub project into a category does not change its id', () => {
+  // Saved packs name apps by id. These were catalog-only rows before they were given a category.
+  for (const id of ['claudecode', 'openaicodex', 'opencode', 'comfyui', 'gpt4all', 'anythingllm', 'cherrystudio', 'goose', 'upscayl',
+    'ytdlp', 'scrcpy', 'stirlingpdf', 'ventoy', 'appflowy', 'affine', 'tabby', 'godot', 'neovim', 'zed', 'deno', 'bun', 'uv',
+    'dbeaver', 'alacritty', 'nvmforwindows', 'nvda', 'winmerge', 'openshell', 'drawiodesktop']) {
+    const app = catalog.appById(id);
+    assert.ok(app && app.listed && app.repo, id);
+  }
+  const ids = catalog.apps().map((a) => a.id);
+  assert.equal(new Set(ids).size, ids.length, 'ids are unique');
+});
+
+test('Windows runtimes (.NET, VC++) are offered on Windows only', () => {
+  const win = catalog.popular('win32').filter((a) => catalog.isWindowsOnly(a.category));
+  assert.deepEqual([...new Set(win.map((a) => a.category))].sort(), ['.NET', 'VC++ Redistributables']);
+  assert.ok(win.some((a) => a.name === 'VC++ 2015+ Redistributable (x64)'));
+  assert.ok(win.some((a) => a.name === '.NET Desktop Runtime 8'));
+  for (const plat of ['darwin', 'linux']) {
+    assert.ok(!catalog.popular(plat).some((a) => catalog.isWindowsOnly(a.category)), `${plat}: not in the picker`);
+    assert.deepEqual(catalog.lookup('vc redist x64 2015', plat), [], `${plat}: not found by name either`);
+    assert.deepEqual(catalog.lookup('.NET Desktop Runtime 8', plat), []);
+  }
+  // Not just because these rows happen to name only WinGet: the category itself is the limit.
+  assert.deepEqual(catalog.sourcesFor({ category: '.NET', repo: 'dotnet/runtime', brew: 'dotnet' }, 'darwin'), []);
+  assert.deepEqual(catalog.sourcesFor({ category: '.NET', repo: 'dotnet/runtime' }, 'win32').map((s) => s.type), ['github']);
+  // Java is a runtime too, but it exists everywhere, so it is an ordinary category.
+  assert.ok(catalog.popular('darwin').some((a) => a.category === 'Java'));
+});
+
+test('the ArtCraft suite: every storytold program that publishes releases is in the picker on every platform', () => {
+  const suite = ['artcraft', 'artcraftlauncher', 'photocraft', 'lightcraft', 'vectorcraft', 'designcraft', 'figcraft', 'anicraft', 'texturecraft',
+    'materialcraft', 'cadcraft', 'filmcraft', 'effectcraft', 'soundcraft', 'pdfcraft', 'wordcraft', 'gridcraft', 'deckcraft', 'craftanything'];
+  for (const plat of ['win32', 'darwin', 'linux']) {
+    const listed = catalog.popular(plat).filter((a) => a.category === 'ArtCraft suite').map((a) => a.id).sort();
+    assert.deepEqual(listed, [...suite].sort(), plat);
+  }
+  for (const id of suite) {
+    const app = catalog.appById(id);
+    assert.match(app.repo, /^storytold\//, id);
+    assert.equal(catalog.sourcesFor(app, 'linux')[0].type, 'github', 'the project\'s own releases come first');
+  }
+});
+
+test('a curated app can be limited to one form, and only to a real one', () => {
+  // Ghostscript's release has no portable Ghostscript: its only zips are GhostPCL and GhostXPS.
+  const gs = catalog.appById('ghostscript');
+  assert.equal(gs.only, 'installer');
+  assert.deepEqual(catalog.sourcesFor(gs, 'win32'), [{ type: 'github', owner: 'ArtifexSoftware', repo: 'ghostpdl-downloads' }]);
+  assert.deepEqual(catalog.sourcesFor(gs, 'darwin'), [], 'the release has Windows installers only');
+  assert.equal(catalog.appById('vlcmediaplayer').only, undefined, 'most apps leave it to the user\'s preference');
+  for (const s of catalog.SHORTCUTS) if (s.type !== undefined) assert.ok(['installer', 'portable'].includes(s.type), s.name);
+});
+
+test('an app its name cannot find carries the inventory name to look for, per platform', () => {
+  // Windows App is a packaged (MSIX) app: Windows lists it under its package identity.
+  const winget = { type: 'winget', packageId: 'Microsoft.WindowsApp' };
+  assert.equal(catalog.detectFor(winget, 'win32'), 'MicrosoftCorporationII.Windows365');
+  assert.equal(catalog.detectFor({ type: 'winget', packageId: 'microsoft.windowsapp' }, 'win32'), 'MicrosoftCorporationII.Windows365');
+  assert.equal(catalog.detectFor({ type: 'brew', token: 'windows-app' }, 'darwin'), undefined, 'on a Mac its own name finds it');
+  assert.equal(catalog.detectFor(winget, 'darwin'), undefined);
+  assert.equal(catalog.detectFor({ type: 'winget', packageId: 'VideoLAN.VLC' }, 'win32'), undefined, 'most apps declare none');
+  assert.equal(catalog.detectFor(null, 'win32'), undefined);
+  for (const s of catalog.SHORTCUTS) {
+    if (!s.detect) continue;
+    for (const [plat, name] of Object.entries(s.detect)) {
+      assert.ok(['win32', 'darwin', 'linux'].includes(plat) && typeof name === 'string' && name.trim(), s.name);
+    }
+  }
+});
+
 test('lookup: the names people type reach the right identity', () => {
   const first = (q, plat) => catalog.lookup(q, plat)[0];
   assert.deepEqual(first('vs code', 'darwin').source, { type: 'brew', token: 'visual-studio-code' });

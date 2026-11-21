@@ -414,6 +414,24 @@ function detectInstallerKind(filePath) {
 
 // --- installer --------------------------------------------------------------
 
+// A setup program delivered inside a zip: take out the ONE file the listing names and return
+// where it was put. The name is a relative path from a remote listing, so it is matched
+// against the archive's own entries (never joined into a path), and the file is written
+// under its base name directly inside `intoDir`.
+const NESTED_MAX_BYTES = 2 * 1024 * 1024 * 1024;
+function extractNestedInstaller(zipPath, relativePath, intoDir) {
+  const want = String(relativePath || '').replace(/\\/g, '/').toLowerCase();
+  const entry = new AdmZip(zipPath).getEntries().find((e) => !e.isDirectory && e.entryName.replace(/\\/g, '/').toLowerCase() === want);
+  if (!entry) throw new Error(`the download does not contain the installer it names (${relativePath})`);
+  if (entry.header.size > NESTED_MAX_BYTES) throw new Error('the installer inside the download is too large');
+  const base = path.basename(entry.entryName.replace(/\\/g, '/'));
+  if (!/^[^\\/:*?"<>|\u0000-\u001f]+\.(exe|msi)$/i.test(base) || /^\.+$/.test(base)) throw new Error('the installer inside the download has an unsafe name');
+  const out = path.join(intoDir, base);
+  if (path.dirname(path.resolve(out)) !== path.resolve(intoDir)) throw new Error('the installer inside the download has an unsafe name');
+  fs.writeFileSync(out, entry.getData());
+  return out;
+}
+
 // Windows installer exit codes. 3010 (reboot required) counts as success.
 const WIN_INSTALLER_CODES = {
   1602: 'installer was cancelled',
@@ -424,16 +442,20 @@ const WIN_INSTALLER_CODES = {
 };
 
 function installInstaller(filePath, install, opts = {}) {
-  const { exe, args } = installerCmd(install.kind, filePath, install.args);
+  const { exe, args, verbatim } = installerCmd(install.kind, filePath, install.args, install.rawArgs);
   const command = [exe, ...args].join(' ');
   if (opts.dryRun) return { command, dryRun: true };
   log(`  installer (${install.kind}): ${command}`);
-  // Launch the installer directly (no PowerShell). A requireAdministrator installer that
-  // can't elevate from a non-elevated parent fails here; surface a clear message instead.
-  const r = spawnSync(exe, args, {
+  // Launch the installer directly (no PowerShell, no shell). A requireAdministrator installer
+  // that can't elevate from a non-elevated parent fails here; surface a clear message instead.
+  const r = (opts.spawnSync || spawnSync)(exe, args, {
     windowsHide: true,
     timeout: opts.timeout || 10 * 60 * 1000,
     stdio: 'ignore',
+    // A verbatim switch string must arrive exactly as the listing wrote it, so Node must not
+    // re-quote it. Node then leaves the program path unquoted as well, and these installers
+    // read their own command line — so the path is quoted here, as argv[0].
+    ...(verbatim ? { windowsVerbatimArguments: true, argv0: `"${exe}"` } : {}),
   });
   if (r.error) {
     if (r.error.code === 'EACCES' || r.error.code === 'EPERM' || r.error.errno === -4092) {
@@ -473,6 +495,7 @@ function installInstaller(filePath, install, opts = {}) {
 module.exports = {
   installPortable,
   installInstaller,
+  extractNestedInstaller,
   detectInstallerKind,
   extractArchive,
   swapDir,

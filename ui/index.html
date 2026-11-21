@@ -17,7 +17,7 @@
   }
   * { box-sizing: border-box; }
   body {
-    margin: 0; padding: 1.6rem 1.25rem 3rem; color: var(--text); font-family: var(--sans);
+    margin: 0; padding: 1rem 1.25rem 3rem; color: var(--text); font-family: var(--sans);
     font-size: 15px; line-height: 1.5; background: var(--bg);
     background-image:
       radial-gradient(900px 500px at 85% -10%, rgba(227,161,60,.10), transparent 60%),
@@ -25,14 +25,13 @@
     background-attachment: fixed;
   }
   .wrap { max-width: 900px; margin: 0 auto; }
-  header { display: flex; align-items: center; gap: .7rem; margin-bottom: .25rem; }
+  header { display: flex; align-items: center; gap: .7rem; margin-bottom: .8rem; }
   .logo { width: 28px; height: 28px; flex: none; display: grid; place-items: center; }
   .logo img { width: 100%; height: 100%; object-fit: contain; display: block; }
   h1 { font-family: var(--mono); font-weight: 600; font-size: 1.3rem; margin: 0; }
   h1 .g { color: var(--accent); }
   .ver { font-family: var(--mono); font-size: .8rem; color: var(--muted); align-self: flex-end; padding-bottom: .12rem; }
   .ver:empty { display: none; }
-  .tagline { color: var(--muted); margin: 0 0 1.1rem; font-size: .92rem; }
   .panel { background: linear-gradient(180deg, var(--panel), var(--panel-2));
            border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px;
            margin-bottom: 1rem; box-shadow: 0 8px 24px -18px #000; }
@@ -71,8 +70,20 @@
     .add-row button.primary { flex: 1; }
   }
 
-  .toolbar { display: flex; align-items: center; gap: .55rem; margin-bottom: .7rem; }
-  .toolbar .count { color: var(--muted); font-size: .92rem; margin-right: auto; font-weight: 600; }
+  .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: .55rem; margin-bottom: .7rem; }
+  .toolbar > button { flex: none; white-space: nowrap; }
+  .toolbar > #openAddWindow { margin-left: auto; }
+  /* The status line ("Check complete.") and the update count share the toolbar's left side, so
+     no line of the window is spent on a message. A long message wraps here, beside the buttons. */
+  .toolbar-status { flex: 1 1 9rem; min-width: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: .1rem .8rem; }
+  .toolbar .count { color: var(--muted); font-size: .92rem; font-weight: 600; white-space: nowrap; }
+  #msgHome { min-width: 0; }
+  #msgHome #msg { min-height: 0; margin: 0; overflow-wrap: anywhere; }
+  #msgHome #msg:empty { display: none; }
+  /* Only a long message costs a row: it takes the full width, and the count and the buttons
+     share the line under it. */
+  .toolbar:has(#msg.long) .toolbar-status { display: contents; }
+  .toolbar:has(#msg.long) #msgHome { flex-basis: 100%; }
   [hidden] { display: none !important; }
   /* Search + filters above the list. */
   .findbar { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .65rem; margin-bottom: .7rem; }
@@ -219,15 +230,18 @@
   .screen-title { font-size: 1.15rem; }
   .settings-group { margin-bottom: .9rem; }
   .settings-group > .sec-h { margin-bottom: .7rem; }
-  #selfup { display: none; align-items: center; gap: .6rem; margin: 0 0 .8rem; padding: .5rem .7rem;
-            font-size: .85rem; color: var(--accent); background: rgba(227,161,60,.1);
-            border: 1px solid rgba(227,161,60,.35); border-radius: 8px; }
-  #selfup.show { display: flex; }
-  #selfupText { flex: 1; }
-  #selfupDismiss { background: none; border: none; color: inherit; opacity: .6; cursor: pointer;
-                   font-size: 1rem; line-height: 1; padding: 0 .2rem; }
-  #selfupDismiss:hover { opacity: 1; }
-  #selfupDismiss:disabled { opacity: .25; cursor: default; }
+  /* git-updater's own update status, in the header right after the version: "up to date", or
+     the new version with its button. It never takes a line of its own. */
+  #selfup { display: none; align-items: center; gap: .45rem; align-self: flex-end; padding-bottom: .12rem;
+            font: 600 .8rem var(--sans); color: var(--accent); white-space: nowrap; }
+  #selfup.show { display: inline-flex; }
+  #selfupBtn { padding: .1rem .5rem; font-size: .75rem; }
+  #selfupText:empty { display: none; }
+  /* On a narrow window "up to date" shrinks to a tick, so the header's buttons stay on its line. */
+  @media (max-width: 820px) {
+    #selfup.current #selfupText { display: none; }
+    #selfup.current::after { content: '✓'; }
+  }
 </style>
 </head>
 <body>
@@ -237,6 +251,7 @@
     <span class="logo" aria-hidden="true"><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAAA/CAYAAABQHc7KAAAUSUlEQVRo3o2be5AdVZ3HP9++PZkZQjLkSYC8SCaPSWCCEIFICIEgJGipbFBE192VWstdy9paBWoflru6iiVYriXUslu1hVuupWKgXFEE5BEeEUhAIBCSTMiDhISEvN+Z5+3f/nH6cU7fngmdmtx7u0+f83v/vr/f6Ralo3dFO3EMiYEAgzaS5GKMBYgOYAwoxhACJDCTGUgYQPpd5bmx7C65XyLCMAwMkyBJ7yruldxvMwsnk3lfza1MXeKgGV2SViNeJbHDhogj6O03Wj67NZzF/9H3UDsG1Bw5o4XdiOkWM/sQxllIUSqUwQ8rzW6llWyI+2RuoD7YLeG9ATMJ4hiwzmAFCQ8q0t4kvdi0fHMq10wVBn0PTQfEsL5eBpqHLRb6JrAIiFPZW5kolUm0ErEeRbIPykghMWdc1UMlJ13DG5QzpYI4swRsDdJ3T7W2PNbS3WsyiN/Ygb7b5wb1PdQOGL0D9ai5VvsrwZ1CE5DM463CprPzFozxPwlpaxRCTnzKiEqSazCpTNuiIE6F9fgjCyKEOGTGtxPTfVHEABJNy99G3SvaqUVQ6zHqzbpVZv8OtCFZaO5l5yxO53Rjmc96mnOqH9qcPfOQQtepVn8g/gqSwisZ6WanEP+cDGu5R/29Vk+MeFjkBictulpwJ6a21LawKpV7axdu4HThzLKReklOCJERDUp4LkKSweJIlSAqrplKs+ehmTOAf1Vvz3aJh5uHRcSJuz5axjeBCbjoXMFxKHTzzL6KCf9cNnLXIXHoZGa+/nzKx7a1GpNHW7jeoEchHQWhoESzcm0aZqMkvmnwp4F+ey9OY85yjCuHWk6D2XDu8AHzGc8CQ4K+Otz9KLywBWpROlkpwg0kxiVT4cefgzOGldwoY1gec6nv5eKTsqwaiscPLSYDuwT0hVoy8P04saRN6BZQ7BHu85QKThWOrCIgybc0VEziRiYGx3vE8W4jrjVGVjOoJ3CsO3MBn40KK/SI9MnxBRukrdIYYZ8eUO2nsaT5GBdllm/ZZX+hUNUNxJg8hnKmKmIBoQL9aC4V8S+fJ2AqZC6TcWXCqDABQ4UnOCuYLUsWxsBCoK3RIDNqfX/0UhYVCwcSLolUavCeKrDYIGuzqolD4WQAwoGNimk99yy4PANpcQR0IkUltXiqKAkkKjM/aGLzQ13DMHkMKfunDJdlEiiCY/FRgonlH8LSvyEPl7A0NwLGhZOUzLmKN1/yQywUYIiS1ZTjm5U92fsZBuDBoGFGcxoUyu5RFb/QmAiIKyO7L3HzVjBTGn2tMkCVpCc1nvN5NJ95s9JVj5zT1xLy6iPltJfvkzwfURw1RB0p5Ms84nwezCo8LR1QDkZOcJzuyBkNVD7IfWalMRbYps+m7zXyeJOwODCJ0yA/TzWV+LMM6zM6lfuuH8EGqy7KC1M2HBov+PekNuVN74cOf1UzS4OfNLgl58JRaSr5AC6VbiF3/1roKfmIar6HMpTAIEpgV7KwkDLKBglBFwEBcSCWTGzl3KqyCgrmVWk1IvL7FUBNEEVF3eDrqwxpIxm1KMTkZl6NENDkU1EUUvmMHtCqQIaKc98+nVaCtJgXBCHuST8Pn4LdR8J03DcAJ3qsWmB5WWWc6oMNe+SgcFrsmBnnnAVjhnuJoLxwzlnYTPIBXZAb02txyIkCA8jr4UHcI+wCuCOKoGsPfOMhONmrHOGZwaleI5LfRvGaHzgL2bbf+MrPlHtlYtDaJL59o3HNbKgHIKmCNh8Gm18wigx0+rEhyv3biwNlo2iApznxmUwtvylJYP5U8bF54ngPHD3l/o51w0AyqPrzo57A8W44lt53vFss64SPTIcksQY6TpddgmLTPGWn16KCy2p4WwZc8iJamZ0ocpVec2x86Srj2rmeYYUy9nlIi+sQO2RWc80c+JvFRkuTUauJmop0W0CMwdJluWS3wjSc4Cw6HZTL4bhfuHiLS6IWiXoCW/aJB16Gbfth1HDjtuuNOec6rTbqeugjMdFxLtx2fcKYEfDOgYhfrBab94m6iThSINiC0BIICcBqGOCFFCOGblha6UcqjChFFYdOitffhSffEqu3ij1HjatnizuXw7TxcPtS4x8eFAeOZ/cQ+lfFymYwbgTcsQxmnA0HT4i7HxUrNxoT2uCy6eKjc+HiKS4wIiNJwv5B0HTBD4gKWKv9y82j/1owcUgNKStWoBZB74Doej9ixZ8i7n0KfvkSvLkTTva6hbYfcP5+6fnG+eNES5NYvc1ZQgYnCnjgf3OfLU3ia9fDDZ1urXufEr95zZBcXNm4G1ZugBc2w77jMLxZtJ0BzbGvqkDvJVnnCfJgjJWaHRVKyU7tOSLWvCNWboTXtsPB485zI0FcC3Ptr9bA5NHi8wuMm+aLbfvh5y/hNVAHN7abLzWWX+JMbcUr4oE1GciCWhpI+urGW7vE+vfgF6uND00RS+bAZdOMc0biGtp+qsx9H5+ADApbYRoNtb3TfN3Ei1uM+5+Hrfvc5VoUVsf+ZkNPP9y3UkwcA1fPNv72GrH9AKzaZNQiVRk+iYmrO+DLixNaYljZJe5bCb0DjVW4TESRm2X/MXhiHWzdC/U6fOpiiAMIb4MVkl4brLLacsz39LtAcdOH4fLp8NR6eGydy/c9/Y64chKJIth/HO76vZgwMqHjXLh9mdh9RGzdZ06T3pJJImadY9x2nTH2TAeG7npUHDhuxA09CJc36gm0NInOSbDsQmPJHJg0Wpzqg/660dpkeXUcGEIumAwKD3JI0NsPP3oCdhwUH5sHC6Ybty6CGy+GF7aI360Vf3rHONaTAgtBgjP1UcPF1LFG34BIEuiYYHz9OvGNX4uj3S4HW9pvHDPCuH2pMfNsZwn1RMyaAIdOwpGTKUSOHM5IzGhrhfnTxCfmGVfMgLZW2H0UVrwiHn8Tzh8Pt18PLU0pRCmXO1ks6n+o/SUSLsfb3vFN+edrIu76PXT3Q3NstI93ufmjc2DWOS7YrX0Xfvua8fzb4sAJbPxItHi2+Pi8hAvONVqaRJLFEoP7V8GPn3Sp08xojuGOG+DzlxXYMJIz/Q17Ih55A57ZCO8fddlh0UzjEx+CeZPBEnjrPfjDerFqE+w4aAzURXMT3LHM+MICy3tMpW6SkLrUv2L6S6DLfVcQIorgxc1wxwqXwtJuFUnKybgR4tJpsPRC47JpMKJVbNkr1u0yu3Aimj7OiCOH3srpqLtPfOd34v9edb8/v8C4Y6kxrNaIQKPIWcO2/bBul9kFE9H5Y2HfMfHHzfDEW+LNnXD0lBXpORX0mBFw92eMhe0JSdq2LixBMtik/hXTXwQtQAX0r0Ww44D4+gNi3S5XyYW439LqTLQ2wYwJcHUHXNNhzJwgmmIjqafQ1Tc5K7S756i47QFX9Hz/poSxZ1q+N54JyreGKBIne8Ub7xpPrHfM7zrktF0r8GwQKOom5p4HP7rFmDrGwh0nt/e3Sf0PTn8RcwLIzP94D3z7txGPrG1kPsyS7luW38eeKS6Zanz0AocBxo8wFxMqGkJRJLbshabImDImZD4TQE1uQ2XHQbFqs3h6A2zYDSe6SbVd0FR1GI7pGzrhW5+CkS1eLeQaaJuKjpAVhK3dKVZvdecSio6ODxXcLU4cmQYOnjAeX+f8depYuHImLJkDHefA8OYCrZo562gfn65h8kzejTt0Qry2A57aAGu2ifePOkHXIst3lqo64H6FmaTI+JVtsHaHsXh2agVei74hBkiiZ0Bs3G089qZ4tgt2HXaRN5IatgqgbBGOpMzc2lqhcxIs6TCumAnnnZXGBs8qolSb3f1iyz7x7CbZMxvR5r3Q3ZddL3FajaLTlApxzZgyFq7pENddYMwcD81x4hcPMhTGAF+7UQT1RLx7EFZuFI97eb9WUUJV4KcceCXmNHfeKFjQDks64KLJxshmN37vcWdxT2+UQ5gnyBFm4NtDMJ11jEa0QOdkWHYhLJzpUKFzQyvTKFMuABaUnwdQ6ojZMzGHTok12+CRN5xJHTlVauAyNLGZPw4kouMc43vLjc5JbvQf1ovvPCz2HoM4Mr9+b+w4edLOtC0Z55wlFs6ApZ3GvEkwsiWzslBiHn8yaVPsd1cskHhqyom77awzYOmF4tq58NYuePQNeKYL3jvkujSRSh5p4YJZDLl8msvPnZOwxNxTR9fNNRtWgx/+ATa/j2ph56qBeYMUBRqzJorrLhDXznGRPhNYXoKXmC+1UlH/g+0vYrYg6DJ6q2bh4mSvuH+VmDzW7IoZ0rgRjvmnN8Bj61zM6OlzrlN2jwRoqsEnLoK/u9YYdaZLYVPGYgN1acdBbMYE2LpP+sGj8Pym0Iiy+RLDzNCoM+HSafDxeXDZdGN4s9i+H1Z2OXq/eIVRE42EyGvdOwvoiitAYtB1LSRq9mwX6tqDzh9nLJolrp0Dn7kU/my+i9S/fwNWb7H0IQjnHonBqOHwpauMP78cjnbDnb9zYv3WJ029A+IHj5rmTYZbrzTu+gz810pXAXb3u8A7kDjXOH+8WNIBSzthxng313ObXHp8fTvsOQLL5llecldpPFCyqwVUHdH8wRFG3vkxtu5zFeFDr8Dc84wlc2HRLPG9m2DbPnj8TZe+dhzE2sej25cZV82E1VvhnifFK+8Yy+dnNCQcOgH3Pglb9oq/vx5uX5owbZz4j5XiRC/Mm4Qt65QWzoQzhom3dhl3PyZe2gLvHjT68moxS5FhfVcyAs8cUOzLqeiiVLZc07ioPDqf6IWXtsDL24yfPAcfngbXzYW/WAi3fES8ut2Ycy42oU389/Pop6vgwAkPrqb/RZHL2Y+96dppX7tefPpS6DgPuvvMpp8t9h2D37xqerYLNu+Fkz0F9I2jIv8P0eArSuLct2Sxz11Dosgjmbe7nwIJpa207NHJ948aD7/mtD9tvFg021gyx+jpF/+4Qlq5wTIgYwN1b5Mt6wOl1d6mPfBPD8Kti8SSudim99H/rIK1O+HwCeXpMYoKbnK60/aqtx9Xzbx3xMGACt7z6+X86xfWVkDXgcThha498KvVqKlmudalAmrIR1Te9yiCI6fEvU/B/76ADp2EgbqLBYHlNOwpETZAzT18K59eecvhoFBc2mMq8V7C5168sCpxpke2LXasO/s9iOCCSF0gJ8kVOVkVWovKt4faCB6azE82tJAyDoLJYn+2rNSR+T6l6gkrCCkf4bMBoUzNfNH77lUMkt+uVra1dbreeqEkBWe9DlTRGVaEJcIsJcbfnghJDycLN0iGjDxDHOEeRXkeb2emLMhBu9dDr1V1W5yp2lJpV7YGBznnI0YbUjMaYhbfUjxYOpS2VXVKXmR1sDYwqPRH2B+UReVnA8zr05ePvIJT6S8noPq+sEtfIVbLgqLP3dACzf5l4spqjaRkTVbhwYXPG1FjnZnepDDoDYth/hRj9HCHs5MkoCf4KoIHVIY4/GqpYKXMqs9w7s1eRnDp1RVZC2e4jFFmunEd0iBo1lvYRBiMXBpx55qb4LZl4mMXGU+sh+c2RezY7zYoIlUbeRB4BtFkFrSs8WZCJwt3/ZLEnR99JlwyFa6da1w+DcaPKNHhmX4gFffRGxNpp3LsoFK+93zRYFgt4aJJ0DlJfOEj8NJW46n18PoOOOTV8BWZbRARKCeouCcMwUbx4kTmgsObYeYEuGqWsWiWqwtamix4ikQhCQE7KnaK9sRIr2H2OYxa7sKlOr4wHVf6KoIJbQnLL4YbLoTNe8Vzm8SzXUbWxZHSvfeiC5vtSHu2meAFkYqg6uyvXnfV5NSxsKDdWDxbdE40zmq1vOCqe1M1iDtDhp7bpNS8HpMkfzRjH3CumYoYWJqp4fGBBOq42HDhROOCifC5y8UbO2HlRliz1dh1yCHDbOcofb+qaKSIktsVcbyeuG7v+JFuF/jq2fDh840JI10PMjHLe36ZIQUtrUB9hWhTaxRwGHg6TurJW1EUrUK6uQyJwIItw/z5gBIIrCdOV6POgGtmG1fOFLuPwMvbxMoNxtqdaZvLclRY7pOkTDtNtbW6KvOq2XBFu5gyxmiJ07aWpeNCR2psyVE0bYuSJkiBL5v0chzVar2gn2C2FNEmZFla8aduKC2sbLqu/VQ3iEiYNEpMmW98fJ7Ytl/88W3juU3Qtds9RJV4m/n1BDXHbqfpyplw5SyYdTac2ezWcq206mpvsN8BnA97fUJ0Y9wfkRyP0+c9nomwBxBfzt20JNXCI0s1mPnR3vJeSmJGAgyrwZxz3ZMin71MrN8NT61Ho4a7YFCLsE9eDBNHiYsmG6OHp36dhJoOGcujWUOAG7RCCaCsHgY9YoD6H5qBuY7plAj7JbAgfwHgg0Lcgp5BCCjIj+S22nsHoDl9cSKLEUmShYJUvH4JEVpzuKj3M1deQ5/HhX/D1gE3AxslEe0/fJjYvcy0w0xfxVhL6f2X8nf/qY7qBB9GUsvARxqtZUZLbMULYun5Is+HD30GT6RW51h3pqJUyD0tQsjeBr4aRWz8t3uO0teX7kedeqCdvmgYw60HkzqFfohYgucJQSspx0zFinmNXbaMwY7TIF5fAFVT+gnEIyt8XtndkOnrReC2SFrdV3eAovXmrcUSPSva2UUrU6NuTNE4jK9g9kVhUwpTs9Qy/cKj4SNQ0GDM2QcbetqUnFUZCgcoU7/BHqSfmXFPFPFe30BCrQbNN21tmJ4Tv5xGa3MTSWLEE44w8P5ZHWA3Cq4DZgBtmDXlChdYMnhjpKxpf8e3AW8VMXYIyZQkkBdmGbYzkAYwjiG2mvE02K/7mvRmUx9Wi0Rff51W7wXqBsrtP6Fv7EzMXCempoQBopHCpgJTSZJRQC3vaaUb72nUNPd+tZXeJs07VGRJmCgL6EWBmscKojwWmnvX0j02nG7zFPOk3hlFbiJRRzpCYu9apO1NSf3wADWS1E5qJ3dS+8vegN//B5i1yRIMTFdaAAAAAElFTkSuQmCC" alt="" width="28" height="28"></span>
     <h1><span class="g">git</span>-updater</h1>
     <span id="headerVersion" class="ver" title="This version of git-updater"></span>
+    <span id="selfup" role="status"><span id="selfupText"></span><button type="button" id="selfupBtn" class="primary"></button></span>
     <div class="top-actions">
       <button type="button" id="scanPc" title="Find apps already installed on this PC that git-updater can keep up to date">Scan this PC</button>
       <button type="button" id="packsBtn" title="Add a named set of apps in one go">Packs</button>
@@ -244,9 +259,6 @@
       <button type="button" id="openSettings" class="ghost settings-btn" title="Open Settings"><span aria-hidden="true">⚙</span> Settings</button>
     </div>
   </header>
-  <p class="tagline">Installs and updates your apps straight from their own sources.</p>
-  <div id="msgHome"><div id="msg"></div></div>
-  <div id="selfup"><span id="selfupText"></span><button id="selfupBtn" class="primary"></button><button id="selfupDismiss" title="Dismiss">&times;</button></div>
 
   <div class="panel">
     <div class="findbar" role="search">
@@ -281,7 +293,10 @@
     </div>
     <div class="filtered" id="filtered" hidden><span id="filteredText"></span><button type="button" class="linklike" id="filterClear">Clear</button></div>
     <div class="toolbar">
-      <span class="count"><button type="button" class="linklike" id="count" title="Show only the apps with an update" hidden></button></span>
+      <div class="toolbar-status">
+        <div id="msgHome"><div id="msg" role="status"></div></div>
+        <span class="count"><button type="button" class="linklike" id="count" title="Show only the apps with an update" hidden></button></span>
+      </div>
       <button id="openAddWindow" type="button">Add an app</button>
       <button id="checkAll">Check all</button>
       <button id="updateSel" disabled>Update selected</button>
@@ -564,7 +579,9 @@ let displayOrder = null; // preserve row positions while a check or update is ru
 
 const $ = (id) => document.getElementById(id);
 const keyOf = (r) => `${r.owner}/${r.repo}#${r.type}`;
-const msg = (t, cls) => { const m = $('msg'); m.textContent = t || ''; m.className = cls || ''; };
+// A long message (a file's full address, a rate-limit explanation) is marked so the toolbar can
+// give it a row of its own instead of wrapping it into a narrow column beside the buttons.
+const msg = (t, cls) => { const m = $('msg'); m.textContent = t || ''; m.className = [cls, String(t || '').length > 70 ? 'long' : ''].filter(Boolean).join(' '); };
 const clean = (e) => String(e && e.message ? e.message : e).replace(/^Error:\s*/, '');
 const selectedType = () => $('newType').querySelector('button.active').dataset.type;
 $('newType').querySelectorAll('button').forEach((b) =>
@@ -1552,7 +1569,7 @@ async function runBatch(keys, force, autoClose = false) {
 
 window.api.onProgress(({ id, phase, pct }) => {
   if (id === 'self') {
-    $('selfupText').textContent = `git-updater — ${statusView({ ph: phase, pct }).text}`;
+    $('selfupText').textContent = statusView({ ph: phase, pct }).text;
     return;
   }
   if (!st[id]) return;
@@ -1578,58 +1595,52 @@ $('browseAll').onclick = () => window.api.openPopular();
 $('packsBtn').onclick = () => window.api.openPopular('packs');
 window.api.onConfigChanged(() => load()); // scan window added apps -> refresh the list
 
-// git-updater's own update — piggybacks on Check all (no startup network calls).
-let selfupDismissed = false;
+// git-updater's own update — piggybacks on Check all (no startup network calls). The result
+// shows in the header, right after the version: "up to date", or the new version and its button.
 async function selfCheck() {
-  if (selfupDismissed) return;
   try {
     const u = await window.api.selfUpdateCheck();
+    const btn = $('selfupBtn');
     if (!u) {
-      // Up to date: confirm it, the same way each app shows its own "Up to date" status,
-      // instead of the banner silently staying hidden.
-      const v = await window.api.getVersion().catch(() => null);
-      $('selfupText').textContent = v ? `git-updater ${v} is up to date.` : 'git-updater is up to date.';
-      $('selfupBtn').style.display = 'none';
-      $('selfupDismiss').disabled = false;
-      $('selfup').classList.add('show');
+      // Up to date: confirm it, the same way each app shows its own "Up to date" status.
+      $('selfupText').textContent = 'up to date';
+      btn.style.display = 'none';
+      $('selfup').title = 'git-updater is up to date';
+      $('selfup').classList.add('show', 'current');
       return;
     }
-    $('selfupText').textContent = `git-updater ${u.version} is available.`;
-    const btn = $('selfupBtn');
-    btn.style.display = ''; // a prior "up to date" render may have hidden it
-    // canApply is false on macOS, where a running .app bundle cannot be replaced in
-    // place. The new version is still reported; the button just sends the user to the
-    // release page to download it instead of applying it here.
+    $('selfup').title = '';
+    $('selfup').classList.remove('current');
+    // An update: the button alone says it ("Update to 0.3.1"), which keeps the header on one line.
+    // canApply is false where a running copy cannot be replaced in place; the new version is
+    // still reported, and the button sends the user to the release page to download it instead.
     const applies = u.canApply !== false;
-    btn.textContent = applies ? 'Update' : 'Download';
+    $('selfupText').textContent = '';
+    btn.style.display = '';
+    btn.textContent = `${applies ? 'Update to' : 'Download'} ${u.version}`;
+    btn.title = `git-updater ${u.version} is available`;
     btn.disabled = false;
     btn.onclick = applies
       ? () => applySelfUpdate(u.version)
       : () => window.api.selfUpdateOpenRelease();
-    $('selfupDismiss').disabled = false;
     $('selfup').classList.add('show');
   } catch {} // never let the self-check disturb the app check
 }
 
 async function applySelfUpdate(version) {
   const btn = $('selfupBtn');
-  btn.disabled = true;
-  $('selfupDismiss').disabled = true; // no dismissing mid-update
+  btn.style.display = 'none'; // the progress text takes its place
   try {
-    $('selfupText').textContent = `Downloading git-updater ${version}…`;
+    $('selfupText').textContent = `downloading ${version}…`;
     const r = await window.api.selfUpdateApply();
-    if (r && r.relaunching) $('selfupText').textContent = `Restarting into ${r.version}…`;
+    if (r && r.relaunching) $('selfupText').textContent = `restarting into ${r.version}…`;
   } catch (e) {
-    $('selfupText').textContent = clean(e);
-    btn.disabled = false;
-    $('selfupDismiss').disabled = false;
+    // The reason goes to the status line, which has room for it; the header offers it again.
+    $('selfupText').textContent = '';
+    btn.style.display = '';
+    msg(`git-updater could not update itself — ${clean(e)}`, 'bad');
   }
 }
-
-$('selfupDismiss').onclick = () => {
-  selfupDismissed = true;
-  $('selfup').classList.remove('show');
-};
 
 // With a search or filter active these act on the rows on screen only (see targetKeys()).
 $('checkAll').onclick = () => { if (!filtersActive(filter)) selfCheck(); checkApps(targetKeys()); };
