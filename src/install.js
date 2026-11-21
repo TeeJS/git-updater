@@ -500,6 +500,7 @@ module.exports = {
   extractArchive,
   swapDir,
   renameWithRetry,
+  OLD_SUFFIX,
   // exported for tests
   restoreZipModes,
   BUNDLE_DIR,

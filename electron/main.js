@@ -26,6 +26,7 @@ const background = require('../src/background');
 const cron = require('../src/cron');
 const schedule = require('../src/schedule');
 const autoupdate = require('../src/autoupdate');
+const relocate = require('../src/relocate');
 const { log, LOG_FILE } = require('../src/log');
 
 // macOS self-updates in place via Squirrel.Mac (electron/macupdate.js), not the launcher model
@@ -56,9 +57,10 @@ function dirHasFiles(dir) {
     return false;
   }
 }
+// Its own folder, else its category's, else the portable apps folder: the same rule the
+// engine resolves by (core.validateConfig), so the window never looks in another place.
 function portableDir(cfg, r) {
-  if (r.install && r.install.dir) return r.install.dir;
-  return cfg.portableRoot ? `${cfg.portableRoot.replace(/[\\/]+$/, '')}/${core.folderName(r)}` : null;
+  return core.portableDirOf(cfg, r);
 }
 
 // Config lives with state in git-updater's own config dir — never the launch cwd.
@@ -107,6 +109,11 @@ function saveConfigFile(cfg) {
   }
   if (cfg.typePreference != null && cfg.typePreference !== 'portable' && cfg.typePreference !== 'installer') delete cfg.typePreference;
   if (cfg.requireChecksum != null) cfg.requireChecksum = !!cfg.requireChecksum;
+  if (cfg.categoriesEnabled != null) cfg.categoriesEnabled = !!cfg.categoriesEnabled;
+  if (cfg.loginAction != null && !autoupdate.LOGIN_ACTIONS.includes(cfg.loginAction)) delete cfg.loginAction;
+  if (cfg.loginQuit != null) cfg.loginQuit = !!cfg.loginQuit;
+  if (cfg.forceClose != null) cfg.forceClose = !!cfg.forceClose;
+  if (cfg.compactView != null) cfg.compactView = !!cfg.compactView;
   fs.mkdirSync(path.dirname(CONFIG_PATH), { recursive: true });
   if (fs.existsSync(CONFIG_PATH)) {
     const stamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -144,17 +151,27 @@ function clearToken() {
   try { fs.rmSync(TOKEN_PATH, { force: true }); } catch {}
 }
 
+// The main window's size, position and maximized state are remembered between runs, in their own
+// file next to config.json (which writes a .bak on every save and would collect one per resize).
+// The rules are in src/windowstate.js: what is saved, and when a saved position is not used.
+const windowstate = require('../src/windowstate');
+const WINDOW_STATE_PATH = path.join(DATA_DIR, windowstate.FILE_NAME);
+
 let win;
 let pendingCheck = false; // "Check now" from the tray arrived before the window finished loading
 // opts.minimized: a login start with no tray icon opens minimized to the taskbar, so it is visible.
 function createWindow(opts = {}) {
-  // Tall enough for the whole UI without scrolling, capped at the screen's work area.
+  // First run: tall enough for the whole UI without scrolling, capped at the screen's work area.
   const wa = screen.getPrimaryDisplay().workAreaSize;
-  win = new BrowserWindow({
+  const min = { minWidth: 720, minHeight: 480 }; // the list has an Auto-update column now; below 720 the app name would have no room
+  const saved = windowstate.fit(windowstate.read(WINDOW_STATE_PATH), screen.getAllDisplays().map((d) => d.workArea), { ...min, primary: screen.getPrimaryDisplay().workArea });
+  const bounds = saved ? saved.bounds : {
     width: Math.min(920, wa.width), // wide enough for the Type column to show next to Auto-update (it hides below ~890)
     height: Math.min(1000, wa.height),
-    minWidth: 720, // the list has an Auto-update column now; below this the app name would have no room
-    minHeight: 480,
+  };
+  win = new BrowserWindow({
+    ...bounds,
+    ...min,
     backgroundColor: '#0d1117',
     autoHideMenuBar: true,
     show: !opts.minimized,
@@ -166,6 +183,14 @@ function createWindow(opts = {}) {
       nodeIntegration: false,
     },
   });
+  // Before the close handler below, so the state is written while the window is still on screen:
+  // hiding to the tray is a close too, and so is the close that Quit in the tray menu causes.
+  windowstate.track(win, { file: WINDOW_STATE_PATH, asked: bounds, log });
+  // maximize() also shows the window, so a minimized login start waits until it is about to be shown anyway.
+  if (saved && saved.maximized) {
+    if (opts.minimized) win.once('ready-to-show', () => win.maximize());
+    else win.maximize();
+  }
   if (opts.minimized) win.once('ready-to-show', () => { win.showInactive(); win.minimize(); });
   // With "keep running" on, closing the window hides it to the tray instead of quitting; Quit in the
   // tray menu, Cmd+Q and a system shutdown are really quitting and are never intercepted.
@@ -235,23 +260,32 @@ async function backgroundCheck() {
   if (updates) notify(`${updates} update${updates > 1 ? 's' : ''} available. Click to open git-updater.`);
   else if (results.length && failed === results.length) notify(`The scheduled check could not finish: ${results[0].reason || 'see the log'}`);
   if (win && !win.isDestroyed()) win.webContents.send('schedule:done');
+  return { total: results.length, updates, failed };
 }
 
 // "Auto-update git-updater" (Settings -> Updating) is the same as ticking an app in the list: the
 // scheduled install updates git-updater itself too. If the window is not on screen (hidden in the
 // tray, or minimized) the app comes back the same way, quietly, and says so in a notification.
-async function backgroundSelfUpdate() {
-  if (!app.isPackaged) { log('scheduled install: git-updater itself is not updated in a development run'); return; }
+async function backgroundSelfUpdate(what = 'scheduled install') {
+  if (!app.isPackaged) { log(`${what}: git-updater itself is not updated in a development run`); return; }
   try {
     const found = await checkSelfUpdate();
-    if (!found) { log('scheduled install: git-updater is up to date'); return; }
+    if (!found) { log(`${what}: git-updater is up to date`); return; }
+    if (found.canApply === false) {
+      // Only an AppImage in a folder this user cannot write (say /opt, put there by root) gets here. There is
+      // nothing to apply, so it is reported as a version to download, the way the window's button does it,
+      // instead of failing with the same error on every scheduled run.
+      log(`${what}: git-updater ${found.version} is available, but its AppImage cannot be replaced where it is`);
+      notify(`git-updater ${found.version} is available. It cannot replace its own file where it is installed; press Check all, then Download.`);
+      return;
+    }
     const onScreen = !!(win && !win.isDestroyed() && win.isVisible() && !win.isMinimized());
-    log(`scheduled install: updating git-updater to ${found.version}${onScreen ? '' : ' (restarting quietly)'}`);
+    log(`${what}: updating git-updater to ${found.version}${onScreen ? '' : ' (restarting quietly)'}`);
     const send = (phase, pct) => { if (win && !win.isDestroyed()) win.webContents.send('update:progress', { id: 'self', phase, pct }); };
     await performSelfUpdate({ onProgress: send, quiet: !onScreen });
   } catch (e) {
     const why = e && e.message ? e.message : String(e);
-    log(`scheduled install: git-updater could not update itself: ${why}`);
+    log(`${what}: git-updater could not update itself: ${why}`);
     notify(`git-updater could not update itself: ${why}`);
   }
 }
@@ -260,22 +294,26 @@ async function backgroundSelfUpdate() {
 // Auto-update column that are already installed, portable apps first. Unattended means it never
 // opens an installer window or a permission prompt (an installer that needs one is reported as
 // "needs you" and left for the window), and a running app follows "Automatically close apps and
-// re-open when complete": on, it is closed gracefully and re-opened; off, it is skipped. Nothing is
-// ever force-closed. The rules are in src/autoupdate.js; the runner records dates like any update.
-async function backgroundInstall() {
-  if (updating) return; // an update started from the window is running; the scheduler tries again next tick
+// re-open when complete": on, it is closed gracefully and re-opened; off, it is skipped. One that
+// will not close is force-closed only when "Force close apps that do not close" is on too.
+// The rules are in src/autoupdate.js; the runner records dates like any update.
+// what: how this run is named in the log ("scheduled install", or "sign-in update" when it is the
+// one a start at sign-in asked for). -> { summary, stopped }, or null when an update was already running.
+async function backgroundInstall(what = 'scheduled install') {
+  if (updating) return null; // an update started from the window is running; the scheduler tries again next tick
   updating = true;
   const entries = [];
+  let summary = null;
+  let stopped = false; // GitHub said stop: git-updater itself is left for the next run too
   try {
     const cfg = readConfig();
     const config = core.validateConfig(cfg);
     const installed = await computeInstalled(cfg);
     const { targets, skipped } = autoupdate.pickTargets(config.repos, installed);
-    for (const s of skipped) log(`scheduled install: skipping ${s.name} (${s.why})`);
-    if (!targets.length) log('scheduled install: no ticked apps that are installed');
-    else log(`scheduled install: ${targets.map((r) => core.displayId(r)).join(', ')}`);
+    for (const s of skipped) log(`${what}: skipping ${s.name} (${s.why})`);
+    if (!targets.length) log(`${what}: no ticked apps that are installed`);
+    else log(`${what}: ${targets.map((r) => core.displayId(r)).join(', ')}`);
     const autoClose = !!cfg.autoCloseReopen;
-    let stopped = false; // GitHub said stop: git-updater itself is left for the next run too
     for (const r of targets) {
       const key = autoupdate.keyOf(r);
       const name = core.displayId(r); // owner/repo for GitHub, the app's name for any other source
@@ -283,7 +321,7 @@ async function backgroundInstall() {
       let result;
       try {
         lock = state.acquireLock();
-        const out = await runner.run(config, { only: key, autoClose, unattended: true });
+        const out = await runner.run(config, { only: key, autoClose, forceClose: autoClose && !!cfg.forceClose, unattended: true });
         result = out.results[0];
       } catch (e) {
         result = { status: 'failed', reason: e && e.message ? e.message : String(e) };
@@ -292,23 +330,118 @@ async function backgroundInstall() {
       }
       entries.push({ name, result });
       if (result && result.closed && autoClose) {
-        try { await launchApp(key); log(`scheduled install: re-opened ${name}`); } catch (e) { log(`scheduled install: could not re-open ${name}: ${e && e.message ? e.message : e}`); }
+        try { await launchApp(key); log(`${what}: re-opened ${name}`); } catch (e) { log(`${what}: could not re-open ${name}: ${e && e.message ? e.message : e}`); }
       }
-      if (result && result.stopRun) { log('scheduled install: stopping (GitHub rate limit or a rejected token)'); stopped = true; break; }
+      if (result && result.stopRun) { log(`${what}: stopping (GitHub rate limit or a rejected token)`); stopped = true; break; }
     }
     if (entries.length) {
-      const s = autoupdate.summarize(entries);
-      log(`scheduled install: updated ${s.updated.length}, already current ${s.current}, need you ${s.needsYou.length + s.running.length}, failed ${s.failed.length}`);
-      for (const x of s.needsYou) log(`scheduled install: ${x.name} needs you: ${x.reason}`);
-      for (const x of s.failed) log(`scheduled install: ${x.name} failed: ${x.reason}`);
+      const s = (summary = autoupdate.summarize(entries));
+      log(`${what}: updated ${s.updated.length}, already current ${s.current}, need you ${s.needsYou.length + s.running.length}, failed ${s.failed.length}`);
+      for (const x of s.needsYou) log(`${what}: ${x.name} needs you: ${x.reason}`);
+      for (const x of s.failed) log(`${what}: ${x.name} failed: ${x.reason}`);
       const text = autoupdate.summaryText(s);
       if (text) notify(text);
     }
     // git-updater itself comes last, because applying its update restarts this process.
-    if (cfg.selfAutoUpdate && !stopped) await backgroundSelfUpdate();
+    if (cfg.selfAutoUpdate && !stopped) await backgroundSelfUpdate(what);
   } finally {
     updating = false;
     if (win && !win.isDestroyed()) win.webContents.send('schedule:done', { kind: 'install' });
+  }
+  return { summary, stopped };
+}
+
+// --- at sign-in (Settings -> Background -> "When it starts at sign-in") -----------------
+// A start at sign-in can do more than open: check, check and ask, or check and update. It runs
+// once, in this process, from the lifecycle block at the bottom of this file, and only when this
+// start really was the sign-in one. The rules are the scheduled install's (src/autoupdate.js):
+// only apps ticked in the Auto-update column that are already installed, and an installer that
+// needs permission is reported as "needs you" and left for the window.
+
+// Which of the apps a sign-in update would touch have an update. -> their names.
+async function signInUpdates() {
+  const cfg = readConfig();
+  const config = core.validateConfig(cfg);
+  const { targets } = autoupdate.pickTargets(config.repos, await computeInstalled(cfg));
+  const names = [];
+  for (const r of targets) {
+    const out = await runner.run(config, { mode: 'check', only: autoupdate.keyOf(r) });
+    const res = out.results[0];
+    if (res && res.status === 'updated') names.push(core.displayId(r)); // in a check, "updated" means an update is there
+    if (res && res.stopRun) break;
+  }
+  return names;
+}
+
+// One notification with two buttons. -> true (Update), false (Not now, or it was dismissed), or
+// null when the user clicked the notification itself: the window opens and the choice is theirs there.
+// Notification buttons exist on Windows and macOS only; elsewhere the same question is a small box.
+let asking = null; // kept so the notification is not collected while it waits for an answer
+function askToUpdate(names) {
+  const body = autoupdate.askText(names);
+  const box = () => dialog.showMessageBox({ type: 'question', title: 'git-updater', message: body, buttons: ['Update', 'Not now'], defaultId: 1, cancelId: 1, noLink: true })
+    .then((r) => r.response === 0);
+  if (process.platform === 'linux' || !Notification.isSupported()) return box();
+  return new Promise((resolve) => {
+    let done = false;
+    const end = (answer) => { if (!done) { done = true; asking = null; resolve(answer); } };
+    try {
+      const n = new Notification({ title: 'git-updater', body, actions: [{ type: 'button', text: 'Update' }, { type: 'button', text: 'Not now' }] });
+      n.on('action', (details, index) => end((typeof index === 'number' ? index : details && details.actionIndex) === 0));
+      n.on('click', () => { showWindow(); end(null); });
+      n.on('close', () => end(false));
+      n.on('failed', (_e, error) => { log(`sign-in: the notification could not be shown: ${error}`); end(null); });
+      asking = n;
+      n.show();
+    } catch (e) {
+      log(`sign-in: the notification could not be shown: ${e && e.message ? e.message : e}`);
+      end(null);
+    }
+  });
+}
+
+// A computer that has just signed in is often not on the network yet. Wait up to a minute for it
+// rather than report every app as failed.
+async function waitForNetwork() {
+  for (let i = 0; i < 30 && !net.isOnline(); i++) await new Promise((r) => setTimeout(r, 2000));
+}
+
+async function signInRun() {
+  const action = autoupdate.loginAction(readConfig());
+  if (action === 'open') return;
+  log(`sign-in: ${action === 'check' ? 'checking' : action === 'ask' ? 'checking, and asking before updating' : 'checking and updating'}`);
+  let clean = false; // finished, and nothing is left that needs the user
+  try {
+    await waitForNetwork();
+    if (action === 'check') {
+      const found = await backgroundCheck();
+      clean = found.updates === 0 && found.failed === 0;
+    } else {
+      let go = true;
+      if (action === 'ask') {
+        const names = await signInUpdates();
+        if (!names.length) { log('sign-in: nothing to update'); go = false; clean = true; }
+        else {
+          const answer = await askToUpdate(names);
+          log(`sign-in: ${names.length} to update; answer: ${answer === true ? 'Update' : answer === false ? 'Not now' : 'opened the window'}`);
+          go = answer === true;
+          clean = answer === false;
+        }
+      }
+      if (go) {
+        const out = await backgroundInstall('sign-in update');
+        clean = !!out && !out.stopped && !autoupdate.needsUser(out.summary);
+      }
+    }
+  } catch (e) {
+    const why = e && e.message ? e.message : String(e);
+    log(`sign-in: could not finish: ${why}`);
+    notify(`git-updater could not finish its sign-in check: ${why}`);
+  }
+  const inUse = !!(win && !win.isDestroyed() && win.isVisible() && !win.isMinimized());
+  if (autoupdate.quitAfterLogin(readConfig(), clean, inUse)) {
+    log('sign-in: finished with nothing left for you; quitting');
+    app.quit();
   }
 }
 
@@ -505,6 +638,24 @@ ipcMain.handle('config:save', (_e, cfg) => {
       if (!v.ok) throw new Error(`${k} schedule: ${v.error}`);
     }
   }
+  // A download choice (the per-app "asset" override) that is new or edited must be one the
+  // engine can read: a glob, or a /regular expression/ that compiles. Checked only when it
+  // changed, for the same reason as the schedules: a bad value already in a hand-edited
+  // config.json must not block saving every other setting. That one is handled where it is
+  // used instead — its row fails alone and offers Choose… to replace it.
+  const savedChoice = new Map((Array.isArray(previous.repos) ? previous.repos : []).map((r) => [`${r.owner}/${r.repo}#${r.type}`, r.asset]));
+  (cfg && Array.isArray(cfg.repos) ? cfg.repos : []).forEach((r, i) => {
+    if (!r || r.asset == null || savedChoice.get(`${r.owner}/${r.repo}#${r.type}`) === r.asset) return;
+    try {
+      core.compilePattern(r.asset);
+    } catch (err) {
+      throw new Error(`app ${i + 1}: its download choice ("asset") is not valid — ${err.message}`);
+    }
+  });
+  // Where apps live (the categories, each app's category and its own folder) is never
+  // taken from a window's copy of the config: those change only through grouping:change,
+  // which moves the files in the same step. See core.holdFolders.
+  core.holdFolders(previous, cfg);
   const wasStartAtLogin = !!previous.startAtLogin;
   const wantsStartAtLogin = !!(cfg && cfg.startAtLogin);
   // The system's login list is written first, so a refusal (a development run, a system that
@@ -654,6 +805,7 @@ ipcMain.handle('sources:describe', () => {
         name: core.appName(r),
         fileHost: rec.fileHost || null,
         checksum: rec.checksum || null,
+        canChoose: sources.canChooseFile(r), // whether the row offers "Choose download…"
       };
     } catch (e) {
       out[key] = { type: 'unknown', label: 'Unknown source', host: '', ref: '', name: core.appName(r), error: e.message };
@@ -667,7 +819,16 @@ ipcMain.handle('asset:preview', async (_e, appKey) => {
   const repo = findEntry(appKey);
   const ctx = sources.makeCtx();
   const rel = await sources.getLatestRelease(repo, ctx);
-  const asset = sources.selectAsset(repo, rel, await hostInfo(repo));
+  let asset;
+  try {
+    asset = sources.selectAsset(repo, rel, await hostInfo(repo));
+  } catch (e) {
+    // An error keeps only its message across the bridge, so "this needs a choice" is an
+    // answer, not a rejection — the row can then offer Choose… exactly as it does after a
+    // Check, instead of the preview being the one place that shows a dead-end error.
+    if (e.chooseFile) return { tag: rel.tag_name, needsChoice: true, reason: e.chooseWhy };
+    throw e;
+  }
   const sum = await sources.resolveChecksum(repo, rel, asset, ctx);
   return {
     tag: rel.tag_name,
@@ -677,8 +838,85 @@ ipcMain.handle('asset:preview', async (_e, appKey) => {
     listedBy: rel.provenance.listedBy,
     checksum: sum.state,
     requires: asset.requires || null,
+    chosen: !!repo.asset, // the user's saved choice picked this file, not the automatic pick
   };
 });
+
+// --- Choose download ------------------------------------------------------------
+// ⋯ → "Choose download…" on a row: pick by hand which file of the latest release an app
+// uses, when the automatic pick is wrong or there is none. It gives the per-app `asset`
+// override a UI; before this the only way to set one was to hand-edit config.json.
+//
+// Two calls, both accepted from the main window's own page only:
+//   asset:choices  lists the latest release's files ranked for this machine. Main KEEPS
+//                  that listing.
+//   asset:choose   takes a position in the kept listing — never a file name, a pattern or
+//                  an address from the renderer — and saves that file's override.
+// What gets saved is built and proven main-side (sources.fileChoices), so the most a
+// misbehaving page could do is pick another of the files this app's own source lists.
+let fileList = null; // the listing last handed out: { id, key, rel, files }
+let nextFileListId = 0;
+
+function requireChooser(e) {
+  if (!fromWindow(e, win, mainPage)) throw new Error('only the main window can choose a download');
+}
+
+ipcMain.handle('asset:choices', async (e, appKey) => {
+  requireChooser(e);
+  if (typeof appKey !== 'string') throw new Error('app not found');
+  const entry = findEntry(appKey);
+  sources.requireFileList(entry); // refused before any request is made
+  const id = ++nextFileListId;
+  const rel = await sources.getLatestRelease(entry, sources.makeCtx());
+  const listing = sources.fileChoices(entry, rel, await hostInfo(entry));
+  // A slow answer to an earlier request must not replace the listing of a later one.
+  if (!fileList || id > fileList.id) fileList = { id, key: appKey, rel, files: listing.files };
+  return {
+    listId: id,
+    name: core.displayId(entry),
+    type: entry.type,
+    system: listing.system,
+    version: listing.version,
+    saved: listing.saved,
+    tie: listing.tie,
+    hasAuto: !!listing.auto,
+    hasCurrent: !!listing.current,
+    // The override each file would be saved as stays here; the window has no use for it.
+    files: listing.files.map((f, index) => ({ index, name: f.name, size: f.size, note: f.note, tone: f.tone, choosable: f.choosable, auto: f.auto, current: f.current })),
+  };
+});
+
+// choice: { listId, index }. index null means "go back to the automatic pick".
+ipcMain.handle('asset:choose', (e, choice) => {
+  requireChooser(e);
+  const { listId, index } = choice || {};
+  const held = fileList;
+  if (!held || listId !== held.id) throw new Error('that list of files is no longer current — open Choose download again');
+  const automatic = index === null;
+  const file = automatic ? null : Number.isSafeInteger(index) && index >= 0 ? held.files[index] : undefined;
+  if (file === undefined) throw new Error('that file is not in the list');
+  const cfg = readConfig();
+  const entry = (cfg.repos || []).find((x) => `${x.owner}/${x.repo}#${x.type}` === held.key);
+  if (!entry) throw new Error('app not found');
+  sources.requireFileList(entry);
+  if (automatic) {
+    delete entry.asset;
+  } else {
+    if (!file.choosable) throw new Error(file.note);
+    // Proven once more against the entry as it is on disk NOW: the override must select
+    // this file and only this file — no match, or more than one, is refused here rather
+    // than saved and discovered at the next Check.
+    let got = null;
+    try { got = sources.selectAsset({ ...entry, asset: file.pattern }, held.rel).name; } catch {}
+    if (got !== file.name) throw new Error('that file can no longer be chosen — open Choose download again');
+    entry.asset = file.pattern;
+  }
+  saveConfigFile(cfg);
+  fileList = null; // one listing, one choice — nothing left to replay
+  log(automatic ? `download choice cleared for ${held.key}` : `download choice for ${held.key}: ${file.name} (saved as ${file.pattern})`);
+  return { file: file ? file.name : null };
+});
+// --- end of Choose download ---
 
 // The source types this build knows, for the Settings "preferred sources" list. A
 // provider that cannot work here (wrong OS, missing runtime support) is listed as such.
@@ -936,7 +1174,7 @@ function addSourceItems(items) {
   // Blender from Homebrew when Blender from its vendor folder is already tracked.
   const folderOf = (e) => {
     if (e.type !== 'portable') return null;
-    const dir = (e.install && e.install.dir) || (cfg.portableRoot ? core.resolvePortableDir(cfg.portableRoot, core.folderName(e)) : null);
+    const dir = core.portableDirOf(cfg, e); // an app already in a category is in that category's folder
     return dir ? path.resolve(String(dir)).toLowerCase() : null;
   };
   const folders = new Map();
@@ -1327,7 +1565,7 @@ ipcMain.handle('app:edit', (_e, { appKey, type, prerelease }) => {
   if (type !== r.type && cfg.repos.some((x) => x !== r && x.owner === r.owner && x.repo === r.repo && x.type === type)) {
     throw new Error(`${core.displayId(r)} is already tracked as ${type}`);
   }
-  if (type === 'portable' && !cfg.portableRoot && !(r.install && r.install.dir)) throw new Error('set the portable apps folder first (Settings)');
+  if (type === 'portable' && !core.portableDirOf(cfg, r)) throw new Error('set the portable apps folder first (Settings)');
   // install.dir is kept when switching to Installer so switching back keeps the folder.
   r.type = type;
   if (prerelease) r.prerelease = true;
@@ -1335,6 +1573,246 @@ ipcMain.handle('app:edit', (_e, { appKey, type, prerelease }) => {
   saveConfigFile(cfg);
   return { key: `${r.owner}/${r.repo}#${type}` };
 });
+// --- Categories and app folders ---------------------------------------------------
+// Settings → "Group apps into categories" (config.categoriesEnabled, off by default). A
+// category here is one of the user's own groups in the main list, and it has a folder: its
+// portable apps live in <that folder>/<app>. An app can also be given a folder of its own
+// (Edit → Folder), which wins over its category. These are NOT the sections of Popular
+// apps, which src/catalog.js and the favorites file also call a category; nothing below
+// reads or writes those.
+//
+// grouping:change is the ONE call that can change where an app's files live, and it is
+// accepted from the main window's own page only. The window says what the user asked for
+// (an app's key, a category's name, a folder); the new config is built here, from the one
+// on disk. Then core.planRelocations says which folders have to move, and they are moved
+// in the same step (src/relocate.js): if any one cannot, every move is put back and
+// config.json is not saved, so it never points where an app is not. config:save cannot
+// change any of this (core.holdFolders), and the switch only shows or hides the screens:
+// folders are resolved from config.json the same way whether it is on or off.
+//
+//   request  { change, confirmed? }
+//   answer   { needsConfirm: true, moves: [{ name, from, to }], token }
+//              Folders would move, and the user has not agreed to exactly this list yet.
+//              Nothing is changed. Asking again with confirmed: token carries it out.
+//            { ok: true, text, key?, moved: [{ name, from, to }], notes: [] }
+//
+//   change   { op: 'add-category', name, dir }
+//            { op: 'set-category-folder', name, dir }       moves that category's apps
+//            { op: 'remove-category', name }                only when no app is in it
+//            { op: 'order-categories', names: [...] }
+//            { op: 'move-app', key, category }              category null = out of its category
+//            { op: 'edit-app', key, type, prerelease, category, folder?, retarget? }
+//                the Edit form. folder '' = the default place; retarget { owner, repo }
+//                points a GitHub app at another repository (a different app: nothing moves).
+const keyOfEntry = (r) => `${r.owner}/${r.repo}#${r.type}`;
+const MAX_CATEGORIES = 100;
+
+function requireGrouping(e) {
+  if (!fromWindow(e, win, mainPage)) throw new Error('Only the main window can change categories and app folders.');
+}
+
+// A folder the window asks for is a path on the user's disk. It must be a plain, full
+// path: a relative one would be resolved against wherever git-updater was started from.
+function cleanFolder(dir, what) {
+  const d = typeof dir === 'string' ? dir.trim() : '';
+  if (!d) throw new Error(`Choose a folder for ${what}.`);
+  if (d.length > 1024 || /[\u0000-\u001f]/.test(d)) throw new Error(`That folder cannot be used for ${what}.`);
+  if (!path.isAbsolute(d)) throw new Error(`The folder for ${what} must be a full path, like ${process.platform === 'win32' ? 'C:\\Games' : '/home/me/Games'}.`);
+  return d;
+}
+function cleanCategoryName(name) {
+  const n = typeof name === 'string' ? name.trim().replace(/\s+/g, ' ') : '';
+  if (!n) throw new Error('Give the category a name.');
+  if (n.length > 40 || /[\u0000-\u001f]/.test(n)) throw new Error('A category name can be up to 40 characters.');
+  return n;
+}
+
+// Applies one change to cfg (a copy of the config on disk). -> { text, key? }
+function applyGroupingChange(cfg, change) {
+  const c = change && typeof change === 'object' ? change : {};
+  if (!Array.isArray(cfg.repos)) cfg.repos = [];
+  const list = Array.isArray(cfg.categories) ? cfg.categories : [];
+  const find = (name) => core.findCategory(cfg, name);
+  const need = (name) => {
+    const hit = typeof name === 'string' ? find(name) : null;
+    if (!hit) throw new Error('That category is not in your list any more.');
+    return hit;
+  };
+  const entry = (key) => {
+    const r = typeof key === 'string' ? cfg.repos.find((x) => x && keyOfEntry(x) === key) : null;
+    if (!r) throw new Error('That app is not in your list any more.');
+    return r;
+  };
+  const setCategory = (r, name) => {
+    if (name == null || name === '') delete r.category;
+    else r.category = need(name).name;
+  };
+  switch (c.op) {
+    case 'add-category': {
+      const name = cleanCategoryName(c.name);
+      if (find(name)) throw new Error(`There is already a category called ${find(name).name}.`);
+      if (list.length >= MAX_CATEGORIES) throw new Error(`There can be up to ${MAX_CATEGORIES} categories.`);
+      cfg.categories = [...list, { name, dir: cleanFolder(c.dir, name) }];
+      return { text: `Added ${name}.` };
+    }
+    case 'set-category-folder': {
+      const cat = need(c.name);
+      cat.dir = cleanFolder(c.dir, cat.name);
+      return { text: `${cat.name} now uses ${cat.dir}.` };
+    }
+    case 'remove-category': {
+      const cat = need(c.name);
+      const n = cfg.repos.filter((r) => r && find(r.category) === cat).length;
+      if (n) throw new Error(`${cat.name} still has ${n} app${n === 1 ? '' : 's'} in it. Move ${n === 1 ? 'it' : 'them'} to another category first.`);
+      cfg.categories = list.filter((x) => x !== cat);
+      if (!cfg.categories.length) delete cfg.categories;
+      return { text: `Removed ${cat.name}.` };
+    }
+    case 'order-categories': {
+      if (!Array.isArray(c.names) || c.names.length > MAX_CATEGORIES) throw new Error('That order cannot be saved.');
+      const first = [];
+      for (const name of c.names) {
+        const cat = typeof name === 'string' ? find(name) : null;
+        if (cat && !first.includes(cat)) first.push(cat);
+      }
+      // A category the window did not name (added since it last looked) keeps its place at the end.
+      if (list.length) cfg.categories = [...first, ...list.filter((x) => !first.includes(x))];
+      return { text: '' };
+    }
+    case 'move-app': {
+      const r = entry(c.key);
+      setCategory(r, c.category);
+      const name = core.appName(r);
+      return { text: r.category ? `${name} is now in ${r.category}.` : `${name} is no longer in a category.` };
+    }
+    case 'edit-app': {
+      let r = entry(c.key);
+      if (c.type !== 'portable' && c.type !== 'installer') throw new Error('The type must be Portable or Installer.');
+      if (c.retarget != null) {
+        const { owner, repo } = c.retarget;
+        if (r.source) throw new Error('Only an app from GitHub can be pointed at another address.');
+        // A GitHub owner has no dot in it, which is what keeps it out of the "source.<type>"
+        // keys of every other kind of source.
+        if (typeof owner !== 'string' || typeof repo !== 'string' || !/^[A-Za-z0-9-]{1,39}$/.test(owner) || !/^[A-Za-z0-9._-]{1,100}$/.test(repo)) {
+          throw new Error('That is not a GitHub owner/repo.');
+        }
+        if (owner !== r.owner || repo !== r.repo) {
+          // Another repository is another app: its overrides (download choice, installer
+          // switches) are not carried over, as before. What IS kept is its place in the
+          // list, its category and its Auto-update tick.
+          const next = { owner, repo, type: r.type };
+          if (r.autoUpdate) next.autoUpdate = true;
+          if (r.category != null) next.category = r.category;
+          cfg.repos[cfg.repos.indexOf(r)] = next;
+          r = next;
+        }
+      }
+      if (cfg.repos.some((x) => x && x !== r && x.owner === r.owner && x.repo === r.repo && x.type === c.type)) {
+        throw new Error(`${core.displayId(r)} is already in your list as ${c.type === 'portable' ? 'Portable' : 'Installer'}.`);
+      }
+      // install.dir is kept when switching to Installer so switching back keeps the folder.
+      r.type = c.type;
+      if (c.prerelease === true) r.prerelease = true;
+      else delete r.prerelease;
+      setCategory(r, c.category);
+      if (c.type === 'portable' && c.folder !== undefined) {
+        if (c.folder === '' || c.folder === null) {
+          if (r.install) {
+            delete r.install.dir;
+            if (!Object.keys(r.install).length) delete r.install;
+          }
+        } else {
+          r.install = { ...(r.install || {}), dir: cleanFolder(c.folder, core.appName(r)) };
+        }
+      }
+      if (r.type === 'portable' && !core.portableDirOf(cfg, r)) throw new Error('Set the portable apps folder first (Settings).');
+      return { text: 'Saved.', key: keyOfEntry(r) };
+    }
+    default:
+      throw new Error('That change is not one git-updater knows.');
+  }
+}
+
+// Two apps must never share a folder, or sit one inside the other: installing either swaps
+// its whole folder, and would take the other with it. The runner refuses to touch such a
+// pair afterwards; refusing to create one is kinder. Only the apps this change gives a new
+// place are checked, so a list that already had such a pair can still be edited.
+function refuseSharedFolder(cfg, changed) {
+  const fold = (p) => (process.platform === 'linux' ? p : p.toLowerCase());
+  const placed = cfg.repos
+    .filter((r) => r && r.type === 'portable' && core.portableDirOf(cfg, r))
+    .map((r) => ({ r, key: keyOfEntry(r), dir: core.portableDirOf(cfg, r), at: fold(path.resolve(String(core.portableDirOf(cfg, r)))) }));
+  for (const a of placed) {
+    if (!changed.has(a.key)) continue;
+    for (const b of placed) {
+      if (a === b) continue;
+      const name = core.appName(a.r);
+      const other = core.appName(b.r);
+      if (a.at === b.at) throw new Error(`${name} and ${other} would share the folder ${a.dir}. Give each its own folder.`);
+      if (b.at.startsWith(a.at + path.sep)) throw new Error(`${other} is in ${b.dir}, which is inside ${a.dir}, so ${name} cannot use that folder itself. Put ${name} in a subfolder, or pick another folder.`);
+      if (a.at.startsWith(b.at + path.sep)) throw new Error(`${a.dir} is inside ${other}'s folder (${b.dir}). Pick another folder for ${name}.`);
+    }
+  }
+}
+
+ipcMain.handle('grouping:change', async (e, request) => {
+  requireGrouping(e);
+  const { change, confirmed } = request && typeof request === 'object' ? request : {};
+  const saved = readConfig();
+  if (!Array.isArray(saved.repos)) saved.repos = [];
+  const next = JSON.parse(JSON.stringify(saved));
+  const did = applyGroupingChange(next, change);
+  core.validateCategories(next);
+  const had = new Set(saved.repos.filter(Boolean).map(keyOfEntry));
+  const planned = core.planRelocations(saved, next).map((m) => {
+    const r = next.repos.find((x) => keyOfEntry(x) === m.key);
+    return { ...m, name: core.appName(r), process: core.processName(r) };
+  });
+  refuseSharedFolder(next, new Set([...planned.map((m) => m.key), ...(did.key && !had.has(did.key) ? [did.key] : [])]));
+  // Only folders that are really on disk count: an app that is not installed yet has
+  // nothing to move, and simply installs in its new place. A new place that is taken is
+  // refused here, before the user is asked anything.
+  const real = relocate.inspect(planned).filter((m) => m.action === 'move');
+  // An update that is running worked out each app's folder when it started. Changing where
+  // an app belongs under it, even an app with nothing on disk yet, would leave config.json
+  // naming one folder and the update filling another.
+  if (planned.length && updating) throw new Error(`An update is running. Wait for it to finish, then try again. ${relocate.NOTHING}`);
+  if (!real.length) {
+    saveConfigFile(next);
+    log(`grouping: ${String(change && change.op)}${did.key ? ` ${did.key}` : ''}${did.text ? `: ${did.text}` : ''}`);
+    return { ok: true, text: did.text, key: did.key, moved: [], notes: [] };
+  }
+  const token = JSON.stringify(real.map((m) => [m.fromPath, m.toPath]));
+  if (confirmed !== token) return { needsConfirm: true, token, moves: real.map(({ name, from, to }) => ({ name, from, to })) };
+
+  if (updating) throw new Error(`An update is running. Wait for it to finish, then try again. ${relocate.NOTHING}`);
+  updating = true; // an update must not start on a folder that is half way to its new place
+  let lock = null;
+  try {
+    lock = state.acquireLock(); // nor one started from the command line
+    // A running app is refused rather than half-moved. On macOS and Linux the rename would
+    // SUCCEED under a running app (see the swap in src/runner.js), leaving it executing
+    // from a folder that is gone.
+    for (const m of real) {
+      if (await detect.isRunning(m.process)) throw new Error(`${m.name} is running. Close it, then try again. ${relocate.NOTHING}`);
+    }
+    const job = await relocate.run(real);
+    try {
+      saveConfigFile(next);
+    } catch (err) {
+      const stuck = job.undo();
+      throw new Error(`Your settings could not be saved (${err.message}), so ${stuck.length ? `the folders were being put back, but ${stuck.map((m) => `${m.name} is still in ${m.to}`).join(' and ')}. Move ${stuck.length === 1 ? 'it' : 'them'} back by hand.` : `every folder was put back. ${relocate.NOTHING}`}`);
+    }
+    const notes = job.commit();
+    log(`grouping: ${String(change && change.op)}${did.key ? ` ${did.key}` : ''}${did.text ? `: ${did.text}` : ''} Moved ${job.moved.map((m) => `${m.name} to ${m.to}`).join(', ')}.`);
+    return { ok: true, text: did.text, key: did.key, moved: job.moved.map(({ name, from, to }) => ({ name, from, to })), notes };
+  } finally {
+    state.releaseLock(lock);
+    updating = false;
+  }
+});
+// --- end of Categories and app folders ---
+
 // --- Self-update (portable, run-as-is) ----------------------------------------
 // Checked only when the user runs "Check all" — no network at startup, same as
 // tracked apps. Compares the latest release tag with the running version; on Update,
@@ -1399,9 +1877,21 @@ ipcMain.handle('token:clear', () => {
   return { ok: true };
 });
 
-ipcMain.handle('pick-folder', async () => {
+// kind: which folder is being picked ('category' or 'app'; anything else is the portable
+// apps folder, as it always was). The title is chosen here, never sent by the window.
+// startDir: where the dialog opens. A folder that does not exist yet opens at its nearest
+// existing parent rather than wherever the dialog was last used.
+const PICK_TITLES = { category: 'Select the folder for this category', app: 'Select the folder for this app' };
+ipcMain.handle('pick-folder', async (_e, kind, startDir) => {
+  let defaultPath;
+  if (typeof startDir === 'string' && startDir.trim() && startDir.length <= 1024 && path.isAbsolute(startDir.trim())) {
+    let d = path.resolve(startDir.trim());
+    while (!fs.existsSync(d) && path.dirname(d) !== d) d = path.dirname(d);
+    if (fs.existsSync(d)) defaultPath = d;
+  }
   const r = await dialog.showOpenDialog(win, {
-    title: 'Select the portable apps folder',
+    title: (typeof kind === 'string' && Object.hasOwn(PICK_TITLES, kind) && PICK_TITLES[kind]) || 'Select the portable apps folder',
+    ...(defaultPath ? { defaultPath } : {}),
     properties: ['openDirectory', 'createDirectory'],
   });
   return { path: r.canceled || !r.filePaths.length ? '' : r.filePaths[0] };
@@ -1428,7 +1918,10 @@ function applyRetypes(results) {
     entry.type = to;
     // Portable needs a folder to unpack into. Installer does not, but the folder is kept
     // rather than dropped so switching back by hand does not lose the chosen location.
-    if (to === 'portable') entry.install = { ...(entry.install || {}), dir: r.retyped.dir };
+    // An app in a category whose folder is just the category's default is not given a
+    // folder of its own, so it keeps following its category if that changes later.
+    const follows = !!core.findCategory(cfg, entry.category) && core.normDir(r.retyped.dir) === core.normDir(core.defaultPortableDir(cfg, entry) || '');
+    if (to === 'portable' && !follows) entry.install = { ...(entry.install || {}), dir: r.retyped.dir };
     hits[to].push(`${owner}/${repo}`);
   }
   if (!hits.portable.length && !hits.installer.length) return;
@@ -1456,7 +1949,9 @@ ipcMain.handle('update', async (e, body = {}) => {
     // Stream per-app progress to the renderer as it happens.
     const onProgress = (id, phase, pct) => e.sender.send('update:progress', { id, phase, pct });
     const openFile = (f) => shell.openPath(f); // ShellExecute: an installer's UAC manifest works
-    return await runner.run(config, { only: body.only, force: !!body.force, dryRun: !!body.dryRun, autoClose: !!body.autoClose, onProgress, openFile });
+    // Force close is read from the saved settings here, never taken from the window: it only ever
+    // applies on top of auto-close, to an app that was asked to close and did not.
+    return await runner.run(config, { only: body.only, force: !!body.force, dryRun: !!body.dryRun, autoClose: !!body.autoClose, forceClose: !!body.autoClose && !!config.forceClose, onProgress, openFile });
   } finally {
     state.releaseLock(lock);
     updating = false;
@@ -1465,6 +1960,8 @@ ipcMain.handle('update', async (e, body = {}) => {
 
 // Downloads+verifies+extracts the new build into ROOT\app-<version>\ (nothing running is
 // touched), then restarts through the launcher, which hands off to it once this process is gone.
+// Run from an AppImage there is no such folder: prepareUpdate replaces the image file and
+// relaunchViaLauncher starts that same file again (both decide from $APPIMAGE; see src/selfupdate.js).
 // Shared by the window's Update button and the scheduled install; the caller owns the `updating` flag.
 // `quiet` (a scheduled run with no window on screen) is kept in the apply marker, so the new process
 // starts hidden or minimized the way this one is instead of putting a window up.
@@ -1602,10 +2099,14 @@ function resolveRedirects(url, { checkHop, maxHops, headers, firstHopOnly }) {
         ? `git-updater updated to v${app.getVersion()}.`
         : `git-updater tried to update to v${quietRestart.expectVersion} but is still v${app.getVersion()}. See the log.`);
     }
-    const loginLaunch = !!quietRestart || background.isLoginLaunch(process.argv, { macWasOpenedAtLogin: IS_MAC && app.getLoginItemSettings().wasOpenedAtLogin });
+    const signedIn = background.isLoginLaunch(process.argv, { macWasOpenedAtLogin: IS_MAC && app.getLoginItemSettings().wasOpenedAtLogin });
+    const loginLaunch = !!quietRestart || signedIn;
     const mode = background.startupWindow(readConfig(), loginLaunch, process.platform);
     if (mode === 'hidden') log('started at login: hidden in the tray');
     else createWindow({ minimized: mode === 'minimized' });
+    // What "When it starts at sign-in" asks for. Not after a quiet restart: that one is this
+    // same sign-in run's own self-update coming back, or a scheduled one, and must not start again.
+    if (signedIn && !quietRestart) signInRun();
   });
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) showWindow();

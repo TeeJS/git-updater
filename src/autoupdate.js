@@ -7,9 +7,10 @@
 //   - only apps ticked in the Auto-update column;
 //   - only apps that are already installed (a schedule never installs a new app);
 //   - portable apps first, installers last (so the simple swaps are done before the heavier ones);
-//   - nothing is force-closed, no installer window or permission prompt is ever opened: an app
-//     that is running follows the "Automatically close apps and re-open" setting, and an installer
-//     that needs administrator permission is reported as "needs you" and left for the window.
+//   - no installer window or permission prompt is ever opened: an installer that needs
+//     administrator permission is reported as "needs you" and left for the window;
+//   - an app that is running follows the "Automatically close apps and re-open" setting, and one
+//     that will not close is force-closed only if "Force close apps that do not close" is on.
 
 const keyOf = (r) => `${r.owner}/${r.repo}#${r.type}`;
 
@@ -34,8 +35,10 @@ function classify(result) {
   if (result.status === 'updated') return 'updated';
   if (result.status === 'current') return 'current';
   const reason = String(result.reason || '');
-  if (/^needs you/i.test(reason)) return 'needsYou';
-  if (/is running|did not close gracefully/i.test(reason)) return 'running';
+  // A file has to be chosen by hand (see sources.selectAsset): nothing went wrong, and an
+  // unattended run cannot answer it — so "needs you", not "could not be updated".
+  if (result.chooseFile || /^needs you/i.test(reason)) return 'needsYou';
+  if (/is running|did not close (gracefully|even when forced)/i.test(reason)) return 'running';
   return 'failed';
 }
 
@@ -67,4 +70,36 @@ function summaryText(s) {
   return parts.length ? `${parts.join(' ')} Click to open git-updater.` : null;
 }
 
-module.exports = { keyOf, pickTargets, classify, summarize, summaryText };
+// --- at sign-in (Settings -> Background -> "When it starts at sign-in") -----------------
+// What a start at sign-in does, beyond opening:
+//   'open'    nothing more (the default, and what every install did before this existed)
+//   'check'   the same check as the schedule's: every app, and a notification if any has an update
+//   'ask'     checks the apps the scheduled install would touch, and asks once before updating them
+//   'update'  updates those apps without asking
+// 'ask' and 'update' follow every rule at the top of this file. Nothing here runs unless
+// "Start git-updater when I sign in" is on and this start really was the sign-in one.
+const LOGIN_ACTIONS = ['open', 'check', 'ask', 'update'];
+function loginAction(cfg) {
+  if (!cfg || !cfg.startAtLogin) return 'open';
+  return LOGIN_ACTIONS.includes(cfg.loginAction) && cfg.loginAction !== 'open' ? cfg.loginAction : 'open';
+}
+
+// Does anything in a finished install run still wait for the user?
+function needsUser(s) {
+  return !!s && (s.needsYou.length > 0 || s.running.length > 0 || s.failed.length > 0);
+}
+
+// "then quit when finished": only after a sign-in run that left nothing for the user, never
+// with "Keep running in the tray" on (staying is that setting's whole point), and never
+// once the user has brought the window up, because then they are using it.
+//   clean: the run finished and nothing needs the user.  windowInUse: on screen, not minimized.
+function quitAfterLogin(cfg, clean, windowInUse) {
+  return loginAction(cfg) !== 'open' && !!cfg.loginQuit && !cfg.keepRunning && !!clean && !windowInUse;
+}
+
+// The one question 'ask' puts to the user. names: the apps with an update.
+function askText(names) {
+  return `${names.length} ${plural(names.length, 'update is', 'updates are')} ready: ${list(names)}.`;
+}
+
+module.exports = { keyOf, pickTargets, classify, summarize, summaryText, LOGIN_ACTIONS, loginAction, needsUser, quitAfterLogin, askText };

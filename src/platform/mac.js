@@ -218,6 +218,17 @@ async function ditto(src, dest) {
   );
 }
 
+// A whole app folder copied to another drive (see copyTree in ./index.js). Its own call
+// rather than ditto() above: that one's ten minutes and its "disk image" wording are for
+// unpacking a download, and an app folder being moved can be tens of gigabytes.
+const MOVE_TIMEOUT = 6 * 60 * 60 * 1000;
+async function copyTree(src, dest) {
+  const r = await exec.runStatus('ditto', [src, dest], { timeout: MOVE_TIMEOUT });
+  if (r.code === 0) return;
+  if (r.timedOut) throw new Error('the copy took too long and was stopped');
+  throw new Error(stderrReason(r, 'ditto') || `ditto exit ${r.code === null ? 'n/a' : r.code}`);
+}
+
 // Why a mount failed, in hdiutil's OWN words. The previous message asserted a licence
 // agreement for EVERY non-zero exit, and measured on real hardware that is usually wrong:
 // a file that is not a disk image at all, and a transient "Resource temporarily
@@ -435,6 +446,7 @@ module.exports = {
   runningProcesses,
   killProcess,
   extract,
+  copyTree,
   // exported for tests
   parseSystemProfiler,
   parseInfoPlistXml,

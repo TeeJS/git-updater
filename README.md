@@ -67,7 +67,9 @@ The tarball has no such requirement, which is why it is the recommended Linux do
 - **Updates on your terms.** Per-app Check/Update buttons, or *Check all* / *Update all*
   batches with live progress (Downloading 42% → Verifying → Installing). Each row has an
   overflow menu: Edit, Force reinstall, Close app & update, View source, Preview selected
-  file, Open folder, Stop tracking.
+  file, Choose download…, Open folder, Stop tracking. *Choose download…* lists the latest
+  release's files with why each does or does not suit this computer, and remembers your pick
+  for later versions; a row that cannot pick a file by itself offers **Choose…** in place.
 - **Scan this PC** (Windows and macOS; top right, next to *Packs*). Lists the programs you
   already have that git-updater recognizes — every app in Popular apps, whichever source it
   comes from, plus a catalog of 120+ GitHub-released tools — and takes the ones you tick to
@@ -92,9 +94,13 @@ The tarball has no such requirement, which is why it is the recommended Linux do
   updates on a schedule you write cron-style, such as `47 2 * * 2#1` for the first Tuesday of
   each month at 2:47 AM, and tell you with a notification. It never installs anything on its
   own unless you turn on the separate **Install** schedule, and even then it only touches apps
-  you ticked in the **Auto-update** column that are already installed. It never force-closes
-  a running app and never opens an installer window or permission prompt: an installer that
-  needs your permission is skipped and reported as "needs you". It even tells you when
+  you ticked in the **Auto-update** column that are already installed. It never opens an
+  installer window or permission prompt: an installer that needs your permission is skipped
+  and reported as "needs you". A running app is only ever asked to close, unless you turn on
+  **Force close apps that do not close** (off by default; a forced close can lose unsaved
+  work). *Start at login* can do the same work once at sign-in: **When it starts at sign-in**
+  offers *Just open*, *Check*, *Check and ask me* or *Check and update*, with the same rules,
+  and can quit again when nothing is left for you. It even tells you when
   git-updater itself has a new release. Settings has two more switches for that, both off:
   *check for git-updater updates when it opens*, and *auto-update git-updater* (updated by the
   Install schedule like a ticked app, then it restarts, quietly if the window is hidden).
@@ -175,7 +181,9 @@ signature no longer verifies, git-updater puts the previous version back rather 
 leaving you with the damaged one.
 
 **git-updater updates itself in place on Windows and Linux**, where the new version is
-installed in its own folder and the launcher switches to it on next start. On macOS it
+installed in its own folder and the launcher switches to it on next start. Run from the
+AppImage, it replaces the AppImage file itself (same name, same place) and starts it again;
+if that file is in a folder you cannot write to, it offers the download instead. On macOS it
 tells you a new version exists and sends you to the release page instead: an app bundle is
 the unit macOS launches, so there is nowhere to put a launcher that is not itself inside
 the thing being replaced.
@@ -192,6 +200,31 @@ the thing being replaced.
 Prefer beta builds for a specific app? Tick *include beta (pre-release) versions* when
 adding it.
 
+### Compact view (optional)
+
+Lots of apps? Tick **Compact** in the header. Each app becomes one line (status dot, name,
+current → available version, its button), and the lines flow into as many columns as the
+window is wide enough for. The source and type are in the name's tooltip and the **⋯** menu,
+which also has the auto-update switch. Untick it to get the full list back.
+
+### Categories (optional)
+
+Want games in `C:\Games` and everything else in `C:\Apps`? Turn on **Settings → Apps and
+display → Group apps into categories**. It is **off by default**, and while it is off nothing
+about the app changes.
+
+- Add a category in Settings with a name and a folder, then use **⋯ → Move to …** on an app.
+  The list groups apps by category; click a header to collapse it.
+- Moving a portable app to another category, or changing a category's folder, moves the app's
+  files too. You are shown exactly which folders will move first. If one cannot be moved (the
+  app is running, the new folder already has files), nothing is changed.
+- Want one app somewhere else entirely? **⋯ → Edit…** and set its **Folder**; leave it empty for
+  the default.
+- Drag apps into your own order within a group (when no column is sorted), and drag category
+  headers to reorder them.
+
+Turning the switch off again never moves a file: apps stay where they are and keep updating.
+
 ## For developers
 
 ```bash
@@ -205,7 +238,7 @@ npm run dist               # build the portable zips (signed when the machine ha
 There's also a headless CLI (`node bin/watch.js check|update`) for scripting. Config lives in
 git-updater's own folder — `%APPDATA%\git-updater\` on Windows, `~/Library/Application
 Support/git-updater/` on macOS, `~/.config/git-updater/` on Linux. Per-app overrides (asset
-patterns, custom install dirs, installer switches), architecture notes, and design details
+patterns — also settable from a row's *Choose download…* — custom install dirs, installer switches), architecture notes, and design details
 are in **[docs/INTERNALS.md](docs/INTERNALS.md)**.
 
 ## License
