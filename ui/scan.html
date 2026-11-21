@@ -17,7 +17,7 @@
          display: flex; flex-direction: column; height: 100vh; }
   h1 { font: 600 1rem var(--mono); margin: 0 0 .6rem; }
   .list { flex: 1; overflow-y: auto; margin-top: .6rem; border-top: 1px solid var(--border); }
-  .row { display: grid; grid-template-columns: 26px minmax(0,1fr) 90px minmax(0,1.2fr) 128px; column-gap: 10px;
+  .row { display: grid; grid-template-columns: 26px minmax(0,1.4fr) 90px minmax(0,1fr); column-gap: 10px;
          align-items: center; padding: .42rem 0; border-bottom: 1px solid var(--border); }
   .row > * { min-width: 0; }
   input[type=checkbox] { width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; }
@@ -47,13 +47,13 @@
   </label>
   <span class="count" id="count"></span>
   <button class="act" id="close">Close</button>
-  <button class="act primary" id="add" disabled>Add selected</button>
+  <button class="act primary" id="add" disabled>Review and add</button>
 </div>
 
 <script>
 const $ = (id) => document.getElementById(id);
 let installedRows = null; // cached scan result
-const selected = new Map(); // repo -> chosen type
+const selected = new Set(); // ids of the apps ticked to add
 
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
 
@@ -68,22 +68,21 @@ function render() {
     const cbWrap = el('span');
     if (r.tracked) cbWrap.appendChild(el('span', 'ok', '✓'));
     else {
-      const cb = el('input'); cb.type = 'checkbox'; cb.checked = selected.has(r.repo);
-      cb.onchange = () => { cb.checked ? selected.set(r.repo, r.type) : selected.delete(r.repo); sync(); };
+      const cb = el('input'); cb.type = 'checkbox'; cb.checked = selected.has(r.id);
+      cb.onchange = () => { cb.checked ? selected.add(r.id) : selected.delete(r.id); sync(); };
       cbWrap.appendChild(cb);
     }
     row.appendChild(cbWrap);
 
-    const app = el('span', 'app', r.name); app.title = r.displayName || r.name;
+    // The installed name is shown when it differs: it is what was matched to this app.
+    const app = el('span', 'app', r.name);
+    app.title = [r.description, r.displayName && r.displayName !== r.name ? `Installed as “${r.displayName}”` : ''].filter(Boolean).join('\n') || r.name;
     row.appendChild(app);
     row.appendChild(el('span', 'ver', r.version || '—'));
-    const repo = el('span', 'repo', r.repo + (r.tracked ? '  (tracked)' : '')); repo.title = r.repo;
-    row.appendChild(repo);
-
-    // Type: an app found installed is tracked as Installer.
-    const typeWrap = el('span');
-    if (!r.tracked) typeWrap.appendChild(el('span', 'ver', 'Installer'));
-    row.appendChild(typeWrap);
+    // Where it would be kept up to date from. The review step shows the exact file.
+    const from = el('span', 'repo', r.tracked ? 'in your list' : r.sources.join(' · '));
+    from.title = r.tracked ? `${r.name} is already in your list` : `Available from ${r.sources.join(', ')}`;
+    row.appendChild(from);
     list.appendChild(row);
   }
   sync();
@@ -93,31 +92,33 @@ function sync() {
   const addable = rowsFor().filter((r) => !r.tracked);
   $('count').textContent = `${selected.size} selected`;
   $('add').disabled = selected.size === 0;
-  $('selAll').checked = addable.length > 0 && addable.every((r) => selected.has(r.repo));
+  $('selAll').checked = addable.length > 0 && addable.every((r) => selected.has(r.id));
 }
 
 $('selAll').onchange = (e) => {
   for (const r of rowsFor()) {
     if (r.tracked) continue;
-    e.target.checked ? selected.set(r.repo, r.type) : selected.delete(r.repo);
+    e.target.checked ? selected.add(r.id) : selected.delete(r.id);
   }
   render();
 };
 
 async function load() {
-  $('status').textContent = 'Loading…';
+  $('status').textContent = 'Scanning…';
   try {
-    if (!installedRows) installedRows = (await window.api.scanRun()).map((r) => ({ ...r, type: 'installer' }));
+    if (!installedRows) installedRows = await window.api.scanRun();
     const n = installedRows.length, add = installedRows.filter((r) => !r.tracked).length;
-    $('status').textContent = n ? `Found ${n} known installed app${n > 1 ? 's' : ''}; ${add} not yet tracked.` : 'No known apps found on this PC.';
+    $('status').textContent = n ? `Found ${n} known installed app${n > 1 ? 's' : ''}; ${add} not yet in your list.` : 'No known apps found on this PC.';
     render();
   } catch (e) { $('status').textContent = String(e.message || e); }
 }
 
+// Nothing is added from here: the ticked apps go to the review step, which shows where every
+// file would come from, and this window closes.
 $('add').onclick = async () => {
   $('add').disabled = true;
   try {
-    await window.api.scanAdd([...selected.entries()].map(([repo, type]) => ({ repo, type })));
+    await window.api.scanReview([...selected]);
   } catch (e) { $('status').textContent = String(e.message || e); $('add').disabled = false; }
 };
 $('close').onclick = () => window.close();
