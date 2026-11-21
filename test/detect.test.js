@@ -106,3 +106,69 @@ test('a packaged app matches only a needle that is its package identity', async 
     detect.clearCache();
   }
 });
+
+// --- one known app is never read as another ---------------------------------------------------
+//
+// Found on a real Mac: the entry anthropics/claude-code showed "Current 6.28899.2, Available
+// 2.1.330". 6.28899.2 is the Claude DESKTOP app. Its installed name, "Claude", is one word of
+// "claude-code", which the loose rule accepts — it has to, for Brave and brave-browser.
+
+test('sameApp: an installed name that is a different known app is not a match', () => {
+  const { sameApp } = require('../src/detect');
+  assert.ok(nameMatches('Claude', 'claude-code', 'darwin'), 'the lexical rule alone still says yes');
+  assert.equal(sameApp('Claude', 'claude-code', 'darwin'), false, 'Claude is the desktop app, not Claude Code');
+  assert.equal(sameApp('Claude.app', 'Claude Code', 'darwin'), false);
+  assert.equal(sameApp('Claude Code', 'Claude', 'win32'), false, 'and not the other way round');
+  assert.equal(sameApp('XnView MP', 'XnView', 'win32'), false);
+  // Each app still matches itself, by any of its own names.
+  assert.ok(sameApp('Claude', 'Claude', 'darwin'));
+  assert.ok(sameApp('Claude.app', 'claude', 'darwin'));
+  assert.ok(sameApp('Claude Code', 'claude-code', 'win32'));
+  assert.ok(sameApp('Brave', 'brave-browser', 'win32'), 'the repository is one of Brave\'s own names');
+  assert.ok(sameApp('Obsidian', 'obsidian-releases', 'darwin'));
+  assert.ok(sameApp('Mozilla Firefox', 'firefox', 'win32'));
+});
+
+test('sameApp: an entry the list has never heard of keeps the loose match', () => {
+  const { sameApp } = require('../src/detect');
+  assert.ok(sameApp('OBS Studio', 'obs-studio-portable', 'darwin'), 'nothing says this is not OBS Studio');
+  assert.ok(sameApp('Python 3.14.2 (64-bit)', 'Python 3.14', 'win32'), 'a release-line row owns no bare name');
+});
+
+test('sameApp: a helper that carries the app\'s name is not the app', () => {
+  const { sameApp } = require('../src/detect');
+  assert.equal(sameApp('Claude Code URL Handler', 'claude-code', 'darwin'), false);
+  assert.equal(sameApp('Microsoft Edge Update', 'edge', 'win32'), false);
+  assert.equal(sameApp('git-updater', 'git', 'darwin'), false, 'git-updater is not Git');
+  assert.equal(sameApp('Git', 'git-updater', 'darwin'), false, 'and Git is not git-updater');
+  // The word is fine when both names say it.
+  assert.ok(sameApp('git-updater', 'git-updater', 'darwin'));
+  assert.ok(sameApp('Revo Uninstaller Pro', 'Revo Uninstaller', 'win32'));
+});
+
+test('installedVersion: the Claude desktop app is not the installed version of Claude Code', async () => {
+  const detect = require('../src/detect');
+  const platform = require('../src/platform');
+  const real = platform.installedApps;
+  platform.installedApps = async () => [
+    { name: 'Claude', version: '6.28899.2', flavor: 'app', path: '/Applications/Claude.app' },
+    { name: 'Claude Code URL Handler', version: '1.0', flavor: 'app' },
+  ];
+  detect.clearCache();
+  try {
+    assert.equal(await detect.installedVersion('claude-code'), null, 'neither row is Claude Code');
+    assert.equal(await detect.installedVersion('Claude'), '6.28899.2');
+    assert.equal(await detect.launchTarget('claude-code'), null, 'so Open App cannot open the wrong one either');
+  } finally {
+    platform.installedApps = real;
+    detect.clearCache();
+  }
+});
+
+test('procMatches: closing one app never closes a different known app', () => {
+  const { procMatches } = require('../src/detect');
+  assert.equal(procMatches('Claude', 'claude-code'), false, 'the desktop app keeps running');
+  assert.ok(procMatches('Claude', 'Claude'));
+  assert.ok(procMatches('Claude Helper', 'Claude'), 'its helper processes are still part of it');
+  assert.ok(procMatches('obs', 'obs-studio'));
+});

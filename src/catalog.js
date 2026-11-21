@@ -57,7 +57,7 @@ const CATALOG = [
   { name: 'PeaZip', repo: 'peazip/PeaZip', match: /PeaZip/i, linux: ['peazip', 'PeaZip'] },
   // AI tools
   { name: 'OpenCode', repo: 'anomalyco/opencode', match: /^OpenCode\b/i },
-  { name: 'Claude Code', repo: 'anthropics/claude-code', match: /^Claude Code\b/i },
+  { name: 'Claude Code', repo: 'anthropics/claude-code', match: /^Claude Code(?! URL Handler)\b/i },
   { name: 'Ollama', repo: 'ollama/ollama', match: /^Ollama\b/i, linux: ['ollama'] },
   { name: 'ComfyUI', repo: 'Comfy-Org/ComfyUI', match: /ComfyUI/i },
   { name: 'CC Switch', repo: 'farion1231/cc-switch', match: /CC.?Switch/i },
@@ -296,6 +296,77 @@ function scanInstalled(installed, platform) {
 }
 
 // ---------------------------------------------------------------------------
+// Whose name is this — so one app's installed copy is not read as another app's.
+//
+// src/detect.js matches an entry to the inventory loosely ("Brave" is brave-browser), which
+// it has to. Loose also means the entry for anthropics/claude-code, whose name is
+// "claude-code", matched the installed desktop app "Claude": one of its words. The row then
+// showed the desktop app's 6.x as the installed version of a 2.x command line tool, read as
+// up to date, and would never have offered an update. The process match had the same hole,
+// so closing "Claude Code" before an update would have closed Claude.
+//
+// The lexical rule cannot tell those two from Brave and brave-browser. This list can: it
+// knows "Claude" and "Claude Code" are two apps. So a loose match is refused when BOTH sides
+// are known and they are different apps — the installed name is exactly one known app (by
+// the same reading the scan above uses), and the entry's name means another one (its name,
+// an alias, its repository, its WinGet id or its Homebrew token).
+//
+// Only then. An entry this list has never heard of keeps the loose match, because nothing
+// here can say it is wrong: "obs-studio-portable" is still OBS Studio.
+//
+// Rows the scan leaves out are left out as owners for the same reason: an installed "Python"
+// does not say which Python row it is, so it belongs to no row in particular.
+// ---------------------------------------------------------------------------
+
+function identities(app) {
+  const out = new Set([app.id, app.name, ...(app.aliases || [])].map(squash));
+  for (const repo of [app.repo, ...(app.also || [])]) {
+    if (!repo) continue;
+    out.add(squash(repo));
+    out.add(squash(String(repo).split('/').pop()));
+  }
+  if (app.brew) out.add(squash(app.brew));
+  if (app.winget) {
+    out.add(squash(app.winget));
+    out.add(squash(String(app.winget).split('.').slice(1).join('.')));
+  }
+  for (const name of Object.values(app.detect || {})) out.add(squash(name));
+  out.delete('');
+  return out;
+}
+
+// { owners: installed-name key -> Set of app ids, means: any identity -> Set of app ids }
+let _names = null;
+function names() {
+  if (_names) return _names;
+  const owners = new Map();
+  const means = new Map();
+  const add = (map, key, id) => {
+    if (!key) return;
+    if (!map.has(key)) map.set(key, new Set());
+    map.get(key).add(id);
+  };
+  for (const app of apps()) {
+    for (const key of identities(app)) add(means, key, app.id);
+    if (app.scan === false || SCAN_SKIP_CATEGORIES.has(app.category)) continue;
+    for (const name of [app.name, ...(app.aliases || [])]) add(owners, squash(name), app.id);
+  }
+  _names = { owners, means };
+  return _names;
+}
+
+// Is `installedName` exactly one known app while `needle` means a different one?
+// True = not a match, however alike the two names look.
+function ownedByAnother(installedName, needle) {
+  const { owners, means } = names();
+  const mine = owners.get(installedKey(installedName));
+  if (!mine) return false;
+  const theirs = means.get(squash(String(needle || '').replace(/\.(app|exe)$/i, '')));
+  if (!theirs) return false;
+  return ![...theirs].some((id) => mine.has(id));
+}
+
+// ---------------------------------------------------------------------------
 // Shortcuts — the curated list behind the Add box, the Popular apps picker and packs.
 //
 // A user types "vlc" or "libre office", not a package id. Popular apps are also the ones
@@ -362,6 +433,7 @@ function setFavorites(found) {
   const notes = found && found.notes && typeof found.notes === 'object' ? found.notes : {};
   _favorites = { apps: (found && Array.isArray(found.apps) ? found.apps : []), pins: (found && Array.isArray(found.pins) ? found.pins : []), notes };
   _apps = null;
+  _names = null;
 }
 // Ids of built-in apps the favorites file lists by name: shown under "My favorites" as well.
 const favoritePins = () => _favorites.pins.filter((id) => builtinApps().some((a) => a.id === id));
@@ -514,4 +586,4 @@ function preferredSource(app, platform, preference) {
   return list[0] || null;
 }
 
-module.exports = { CATALOG, SHORTCUTS, matchInstalled, scanInstalled, installedKey, onPlatform, findInstalled, lookup, sourcesFor, known, popular, apps, builtinApps, findBuiltin, setFavorites, favoritePins, favoriteNote, appById, detectFor, preferredSource, orderedSources, isWindowsOnly, WINDOWS_ONLY };
+module.exports = { CATALOG, SHORTCUTS, matchInstalled, scanInstalled, installedKey, ownedByAnother, onPlatform, findInstalled, lookup, sourcesFor, known, popular, apps, builtinApps, findBuiltin, setFavorites, favoritePins, favoriteNote, appById, detectFor, preferredSource, orderedSources, isWindowsOnly, WINDOWS_ONLY };
