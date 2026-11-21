@@ -134,7 +134,14 @@ test('Popular apps: My favorites button, the skipped-entries note, and Save as p
   assert.match(pop, /window\.api\.packsSave\(name, 'Picked in Popular apps\.', \[\.\.\.picked\]\)/, 'the ticked apps are what is saved');
   assert.match(pop, /if \(!p\.builtin && !p\.fromFile\) \{\n\s+const del = /, 'a pack from the file has no Delete button');
   assert.match(pop, /window\.addEventListener\('focus'/, 'coming back from the editor re-reads the file');
-  assert.match(pop, /row\.title = a\.description \? `\$\{a\.description\}\\n\$\{where\}` : where;/, 'a favorite\'s description leads its tooltip');
+  // The description is shown by a tooltip the page draws itself. The system one (a `title`
+  // attribute) never appeared in this window on macOS, so no row relies on it.
+  assert.equal(pop.split('id="tip"').length - 1, 1);
+  assert.match(pop, /row\.dataset\.what = a\.description \|\| '';/);
+  assert.ok(!/row\.title\s*=/.test(pop), 'no row uses the system tooltip');
+  assert.match(pop, /\$\('viewApps'\)\.addEventListener\('mouseover', \(e\) => tipFor\(rowOf\(e\.target\)\)\);/);
+  assert.match(pop, /\$\('viewApps'\)\.addEventListener\('focusin', \(e\) => tipFor\(rowOf\(e\.target\)\)\);/, 'keyboard focus shows it too');
+  assert.match(pop, /#tip \{[^}]*pointer-events: none;/, 'it never gets between the pointer and a checkbox');
   const preload = fs.readFileSync(path.join(__dirname, '..', 'electron', 'preload.js'), 'utf8');
   for (const api of ['favoritesStatus', 'favoritesOpen', 'favoritesCopyRow']) assert.ok(preload.includes(`${api}:`), api);
 });
