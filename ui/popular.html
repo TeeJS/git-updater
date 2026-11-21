@@ -79,6 +79,12 @@
   #favNote summary { cursor: pointer; }
   #favNote ul { margin: .3rem 0 0; padding-left: 1.2rem; color: var(--muted); }
   #favNote li { margin: .1rem 0; overflow-wrap: anywhere; }
+  /* What an app is, shown beside its row on hover or keyboard focus. Drawn by the page, not
+     the system's own tooltip: that one never appeared in this window on macOS. */
+  #tip { position: fixed; z-index: 30; max-width: min(24rem, calc(100vw - 1.5rem)); padding: .4rem .6rem; border-radius: 8px;
+         background: #21262d; border: 1px solid #444c56; color: var(--text); font-size: 12.5px; line-height: 1.4;
+         box-shadow: 0 10px 28px -10px #000; pointer-events: none; }
+  #tip .from { display: block; margin-top: .12rem; font-size: 11.5px; color: var(--muted); }
   .packform { display: inline-flex; gap: .4rem; align-items: center; }
   .packform input { width: 13rem; }
   .hidden { display: none !important; }
@@ -102,6 +108,8 @@
   <div id="viewPacks" class="hidden"></div>
   <div id="viewReview" class="hidden"></div>
 </div>
+
+<div id="tip" class="hidden" role="tooltip"><span class="what"></span><span class="from"></span></div>
 
 <div class="bar">
   <span class="count" id="count"></span>
@@ -133,6 +141,7 @@ const chosen = new Set();  // indexes of plan rows that will be added
 // --- Popular apps -----------------------------------------------------------------
 const WINDOWS_ONLY = 'Windows only';
 function renderApps() {
+  hideTip(); // the rows it points at are about to be replaced
   const box = $('viewApps'); box.innerHTML = '';
   const q = $('filter').value.trim().toLowerCase();
   // Two groups: the ordinary categories, then the Windows-only runtimes (.NET, VC++). Main only
@@ -171,9 +180,11 @@ function renderApps() {
         row.appendChild(el('span', 'nm', a.name));
         // Where it can come from on this computer — shown before anything is picked.
         row.appendChild(el('span', 'src', a.tracked ? 'in your list' : a.sources.join(' · ')));
-        const where = a.tracked ? `${a.name} is already in your list` : `${a.name} — available from ${a.sources.join(', ')}`;
-        // What the app is leads the tooltip: the built-in line, or the user's own for a favorite.
-        row.title = a.description ? `${a.description}\n${where}` : where;
+        // Shown by the tooltip (see showTip): what the app is — the built-in line, or the user's
+        // own for a favorite — then where it would come from.
+        row.dataset.what = a.description || '';
+        row.dataset.from = a.tracked ? 'Already in your list' : `Available from ${a.sources.join(', ')}`;
+        if (a.description) cb.setAttribute('aria-description', a.description);
         sec.appendChild(row);
       }
       grid.appendChild(sec);
@@ -185,6 +196,7 @@ function renderApps() {
 
 // --- Review: the same step for the picker and for a pack ----------------------------
 function showView(name) {
+  hideTip();
   for (const v of ['viewApps', 'viewPacks', 'viewReview']) $(v).classList.toggle('hidden', v !== name);
   $('back').classList.toggle('hidden', name !== 'viewReview');
   $('filter').classList.toggle('hidden', name !== 'viewApps');
@@ -336,6 +348,51 @@ $('go').onclick = () => {
 };
 $('back').onclick = () => { plan = null; chosen.clear(); showView(planFrom === 'packs' ? 'viewPacks' : 'viewApps'); status(''); sync(); };
 $('close').onclick = () => window.close();
+
+// --- the description tooltip ------------------------------------------------------------
+// One element, placed under the hovered (or keyboard-focused) row, or above it when there is
+// no room below. A short delay keeps it from flickering as the pointer crosses the list.
+const TIP_DELAY_MS = 250;
+let tipRow = null;
+let tipTimer = null;
+function hideTip() {
+  clearTimeout(tipTimer);
+  tipTimer = null;
+  tipRow = null;
+  $('tip').classList.add('hidden');
+}
+function showTip(row) {
+  const tip = $('tip');
+  tip.querySelector('.what').textContent = row.dataset.what || row.querySelector('.nm').textContent;
+  tip.querySelector('.from').textContent = row.dataset.from || '';
+  tip.style.left = '0px'; tip.style.top = '0px';
+  tip.classList.remove('hidden');
+  const r = row.getBoundingClientRect();
+  const t = tip.getBoundingClientRect();
+  const margin = 8;
+  const below = r.bottom + 4;
+  const top = below + t.height <= window.innerHeight - margin ? below : Math.max(margin, r.top - t.height - 4);
+  const left = Math.max(margin, Math.min(r.left + 22, window.innerWidth - t.width - margin));
+  tip.style.left = `${Math.round(left)}px`;
+  tip.style.top = `${Math.round(top)}px`;
+}
+function tipFor(row) {
+  if (row === tipRow) return;
+  hideTip();
+  if (!row) return;
+  tipRow = row;
+  tipTimer = setTimeout(() => { if (tipRow === row && row.isConnected) showTip(row); }, TIP_DELAY_MS);
+}
+const rowOf = (target) => (target && target.closest ? target.closest('#viewApps .item') : null);
+$('viewApps').addEventListener('mouseover', (e) => tipFor(rowOf(e.target)));
+$('viewApps').addEventListener('mouseleave', hideTip);
+$('viewApps').addEventListener('focusin', (e) => tipFor(rowOf(e.target)));
+$('viewApps').addEventListener('focusout', hideTip);
+// Anything that moves or redraws the rows takes the tooltip away rather than leave it stranded.
+document.querySelector('.body').addEventListener('scroll', hideTip, { passive: true });
+window.addEventListener('blur', hideTip);
+window.addEventListener('resize', hideTip);
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideTip(); });
 
 // --- favorites: the user's own apps and packs, from a file they edit -------------------
 let favFile = 'favorites.yaml';
