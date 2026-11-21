@@ -144,17 +144,27 @@ function clearToken() {
   try { fs.rmSync(TOKEN_PATH, { force: true }); } catch {}
 }
 
+// The main window's size, position and maximized state are remembered between runs, in their own
+// file next to config.json (which writes a .bak on every save and would collect one per resize).
+// The rules are in src/windowstate.js: what is saved, and when a saved position is not used.
+const windowstate = require('../src/windowstate');
+const WINDOW_STATE_PATH = path.join(DATA_DIR, windowstate.FILE_NAME);
+
 let win;
 let pendingCheck = false; // "Check now" from the tray arrived before the window finished loading
 // opts.minimized: a login start with no tray icon opens minimized to the taskbar, so it is visible.
 function createWindow(opts = {}) {
-  // Tall enough for the whole UI without scrolling, capped at the screen's work area.
+  // First run: tall enough for the whole UI without scrolling, capped at the screen's work area.
   const wa = screen.getPrimaryDisplay().workAreaSize;
-  win = new BrowserWindow({
+  const min = { minWidth: 720, minHeight: 480 }; // the list has an Auto-update column now; below 720 the app name would have no room
+  const saved = windowstate.fit(windowstate.read(WINDOW_STATE_PATH), screen.getAllDisplays().map((d) => d.workArea), { ...min, primary: screen.getPrimaryDisplay().workArea });
+  const bounds = saved ? saved.bounds : {
     width: Math.min(920, wa.width), // wide enough for the Type column to show next to Auto-update (it hides below ~890)
     height: Math.min(1000, wa.height),
-    minWidth: 720, // the list has an Auto-update column now; below this the app name would have no room
-    minHeight: 480,
+  };
+  win = new BrowserWindow({
+    ...bounds,
+    ...min,
     backgroundColor: '#0d1117',
     autoHideMenuBar: true,
     show: !opts.minimized,
@@ -166,6 +176,14 @@ function createWindow(opts = {}) {
       nodeIntegration: false,
     },
   });
+  // Before the close handler below, so the state is written while the window is still on screen:
+  // hiding to the tray is a close too, and so is the close that Quit in the tray menu causes.
+  windowstate.track(win, { file: WINDOW_STATE_PATH, asked: bounds, log });
+  // maximize() also shows the window, so a minimized login start waits until it is about to be shown anyway.
+  if (saved && saved.maximized) {
+    if (opts.minimized) win.once('ready-to-show', () => win.maximize());
+    else win.maximize();
+  }
   if (opts.minimized) win.once('ready-to-show', () => { win.showInactive(); win.minimize(); });
   // With "keep running" on, closing the window hides it to the tray instead of quitting; Quit in the
   // tray menu, Cmd+Q and a system shutdown are really quitting and are never intercepted.

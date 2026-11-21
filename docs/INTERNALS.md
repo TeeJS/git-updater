@@ -639,6 +639,37 @@ smoke test of `electron/main.js` (window hides on close with the tray on, quits 
 login-start modes, the tray following `config:save`) was run with config, data and Chromium user
 data redirected to a temp folder.
 
+### The main window remembers its size and position
+
+The main window (only that one) comes back where it was left: size, position and whether it was
+maximized. The state is `window-state.json` next to `config.json`, not in it, because `config.json`
+writes a `.bak` on every save and would collect one per resize. The rules are in
+`src/windowstate.js`, which has no Electron import (`test/windowstate.test.js` drives it with plain
+rectangles and a fake window); `electron/main.js` only reads the displays and hands over the window.
+Ported from PlayingKarrde's fork.
+
+- **Opening.** A saved position is used only while its title bar still lands on a connected display.
+  After a monitor is unplugged or a resolution drops, the position is left out and the window is
+  centred the way a first run is, keeping its size. The size is capped at the work area of the
+  display it opens on and never goes below the window's minimum. A missing, corrupt or unreadable
+  file is simply a first run.
+- **Saving.** Half a second after a move or resize stops, and at once on close. Hiding to the tray is
+  a close too, so that is covered, and Quit from the tray changes nothing because a hidden or
+  minimized window is not read. What is saved is the un-maximized bounds plus a `maximized` flag, so
+  un-maximizing after a restart returns to the earlier size.
+- **No creep.** At 125% or 150% display scaling Windows hands back a new window a few pixels off what
+  it was asked for; saving that would grow or shift the window a little on every run. So the bounds
+  the window was *asked* to open with are what get written, until the size (or, separately, the
+  position) is more than 8 px away from what it opened with.
+- **A maximized window can forget.** On macOS, maximize then minimize then restore makes Electron
+  report the maximized bounds as the normal ones. A maximized window whose normal bounds equal its
+  current ones is not believed; the last ones known are kept.
+
+Checked in a real window on macOS with every folder in a temp directory: move and resize, close,
+reopen; maximize and back; a state on a display that is not there; an oversized, an undersized and a
+cut-off file; hide to the tray and Quit; a minimized login start. The Windows scaling case is covered
+by reasoning and unit tests only.
+
 ### Scheduled check (cron-style)
 
 **Settings -> Schedule** can check for updates on a schedule, off by default. It only **checks and
@@ -903,6 +934,7 @@ src/                 the engine (no UI, no shell):
     index.js         the registry: keys, selection, checksum policy, resolver, provenance
     net.js           ctx.net for providers: HTTPS only, no redirects, size-capped
     github.js gitlab.js gitea.js winget.js brew.js folder.js   one provider per file
+  windowstate.js     the main window's remembered size and position: <config dir>/window-state.json
   log.js             file log -> <config dir>/logs (Settings -> Open log)
   platform/          EVERYTHING OS-specific lives here, behind one interface:
     index.js         dispatch on process.platform; a no-op impl for anything unsupported
