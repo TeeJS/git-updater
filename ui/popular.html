@@ -457,7 +457,12 @@ async function setTab(next) {
   sync();
 }
 $('tabs').querySelectorAll('button').forEach((b) => (b.onclick = () => setTab(b.dataset.tab)));
-loadFavNote().then(() => setTab(new URLSearchParams(location.search).get('tab') === 'packs' ? 'packs' : 'apps'));
+// Opened from Scan this PC with the apps that were ticked there (?scan=id,id): go straight to
+// their review. Back returns to the ordinary list.
+const scanIds = (new URLSearchParams(location.search).get('scan') || '').split(',').filter((id) => /^[a-z0-9]{1,80}$/.test(id));
+loadFavNote()
+  .then(() => setTab(new URLSearchParams(location.search).get('tab') === 'packs' ? 'packs' : 'apps'))
+  .then(() => { if (scanIds.length) return review(() => window.api.scanPlan(scanIds), 'apps', `${scanIds.length} app${scanIds.length === 1 ? '' : 's'} found on this PC`); });
 </script>
 </body>
 </html>

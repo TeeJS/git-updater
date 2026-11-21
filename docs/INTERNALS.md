@@ -723,8 +723,16 @@ exists once, the no-split rule and both of those behaviours.
 The Scan window (`ui/scan.html`) has one list: **Installed on this PC**. It used to have a
 second mode, "All known apps", that listed the whole catalog. Every one of its entries is
 already in Popular apps, so it was removed together with its `catalog:all` channel, the
-`catalogAll` preload method and the `openScan(mode)` argument. Matches are added as
-Installer, as before. `scan:open` takes no argument and, outside `SCAN_PLATFORMS`, throws
+`catalogAll` preload method and the `openScan(mode)` argument.
+
+What it finds (`scanInstalled` in `src/catalog.js`): the GitHub catalog's own name patterns,
+then every other app in Popular apps by name — the installed name with its version and
+architecture noise removed must equal the app's name or an alias exactly. Runtimes that
+install side by side (Java, .NET, VC++) and rows marked `scan: false` (Python, Node.js
+release lines) are left out of the name pass. Nothing is added from the scan window: *Review
+and add* (`scan:review`) opens Popular apps on its review step for the ticked apps
+(`popular.html?scan=id,id`, planned by `scan:plan`, installer first on Windows).
+`scan:open` takes no argument and, outside `SCAN_PLATFORMS`, throws
 before any window exists: there is nothing for it to show. `test/ui-scan.test.js` runs the
 real handler on each platform and the window's script against a minimal DOM.
 

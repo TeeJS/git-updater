@@ -561,35 +561,48 @@ const SCAN_PLATFORMS = new Set(['win32', 'darwin']);
 
 ipcMain.handle('app:platform', () => ({ platform: process.platform, canScan: SCAN_PLATFORMS.has(process.platform) }));
 
+// Every known app found installed: the GitHub catalog's patterns AND every app in Popular
+// apps by name (see scanInstalled in src/catalog.js), so an app that comes from WinGet or
+// Homebrew — Chrome, Firefox, Zoom — is found too. -> [{ id, name, displayName, version,
+// sources: [label], tracked }]
 ipcMain.handle('scan:run', async () => {
   if (!SCAN_PLATFORMS.has(process.platform)) return [];
   detect.clearCache();
-  const tracked = new Set(readConfig().repos.map((r) => `${r.owner}/${r.repo}`.toLowerCase()));
-  // Packaged (MSIX) rows are package identities, not display names: the scan's name patterns
+  const tracked = trackedKeys(readConfig());
+  const types = knownTypes();
+  // Packaged (MSIX) rows are package identities, not display names: the scan's name rules
   // are not written for them.
-  return catalog.matchInstalled((await detect.allInstalled()).filter((e) => !e.packaged), tracked); // filtered to this OS
+  const installed = (await detect.allInstalled()).filter((e) => !e.packaged);
+  return catalog.scanInstalled(installed, process.platform).map((hit) => {
+    const app = catalog.appById(hit.id);
+    const usable = catalog.sourcesFor(app, process.platform).filter((s) => types.includes(s.type));
+    return {
+      ...hit,
+      description: app.description,
+      sources: usable.map((s) => sources.provider(s.type).label),
+      tracked: usable.some((s) => isTracked(tracked, s)) || alsoTracked(tracked, app),
+    };
+  }).filter((r) => r.sources.length);
 });
-// Add selected repos: [{repo: "owner/name", type: "portable"|"installer"}].
-ipcMain.handle('scan:add', (_e, items) => {
-  if (!Array.isArray(items)) throw new Error('items must be an array');
+// What adding the ticked apps would do, app by app — the same review Popular apps shows. An
+// app found INSTALLED is updated by its installer where it has one, so on Windows the
+// installer form is tried first whatever the type preference says; a portable copy would
+// land beside the installed one instead of updating it.
+ipcMain.handle('scan:plan', async (_e, ids) => {
+  if (!Array.isArray(ids) || ids.length > packs.MAX_APPS) throw new Error('too many apps selected');
   const cfg = readConfig();
-  if (!Array.isArray(cfg.repos)) cfg.repos = [];
-  if (items.some((i) => i && i.type === 'portable') && !cfg.portableRoot) {
-    throw new Error('set the portable apps folder first (main window → Settings), then add portable apps');
+  const pack = { apps: ids.filter((id) => typeof id === 'string').map((id) => ({ id })) };
+  return planItems(packs.resolveRefs(pack, process.platform, cfg.sourcePreference, knownTypes()), { typeFirst: process.platform === 'win32' ? 'installer' : null });
+});
+// "Review and add" in the scan window: hand the ticked apps to the Popular apps window's
+// review step, which shows where every file would come from before anything is added.
+ipcMain.handle('scan:review', (_e, ids) => {
+  if (!Array.isArray(ids) || !ids.length || ids.length > packs.MAX_APPS || !ids.every((id) => typeof id === 'string' && /^[a-z0-9]{1,80}$/.test(id))) {
+    throw new Error('choose the apps to add first');
   }
-  let added = 0;
-  for (const it of items) {
-    const m = /^([^/]+)\/([^/]+)$/.exec(String(it && it.repo));
-    const type = it && it.type === 'portable' ? 'portable' : 'installer';
-    if (!m) continue;
-    if (cfg.repos.some((r) => r.owner === m[1] && r.repo === m[2] && r.type === type)) continue;
-    cfg.repos.push({ owner: m[1], repo: m[2], type });
-    added++;
-  }
-  if (added) saveConfigFile(cfg);
-  if (win && !win.isDestroyed()) win.webContents.send('config-changed');
+  openPopular({ scan: ids.join(',') });
   if (scanWin && !scanWin.isDestroyed()) scanWin.close();
-  return { added };
+  return { opened: ids.length };
 });
 // Running check and close for a tracked app.
 ipcMain.handle('app:is-running', async (_e, appKey) => {
@@ -1063,8 +1076,14 @@ const alsoTracked = (set, catalogApp) => {
 };
 
 let popularWin = null;
-ipcMain.handle('popular:open', (_e, tab) => {
-  if (popularWin && !popularWin.isDestroyed()) return popularWin.focus();
+// query: { tab: 'packs' } opens on Packs; { scan: 'id,id' } opens on the review of those apps.
+function openPopular(query) {
+  const page = path.join(__dirname, '..', 'ui', 'popular.html');
+  if (popularWin && !popularWin.isDestroyed()) {
+    // Already open: a plain open just brings it forward; a scan review replaces what it shows.
+    if (query && query.scan) popularWin.loadFile(page, { query });
+    return popularWin.focus();
+  }
   popularWin = new BrowserWindow({
     width: 900,
     height: 760,
@@ -1076,9 +1095,10 @@ ipcMain.handle('popular:open', (_e, tab) => {
     icon: path.join(__dirname, 'icon.png'),
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false },
   });
-  popularWin.loadFile(path.join(__dirname, '..', 'ui', 'popular.html'), tab === 'packs' ? { query: { tab: 'packs' } } : undefined);
+  popularWin.loadFile(page, query ? { query } : undefined);
   popularWin.on('closed', () => { popularWin = null; });
-});
+}
+ipcMain.handle('popular:open', (_e, tab) => openPopular(tab === 'packs' ? { tab: 'packs' } : undefined));
 
 // Every curated app that has a source on this OS, by category. No network.
 ipcMain.handle('popular:list', () => {
@@ -1119,10 +1139,12 @@ ipcMain.handle('popular:list', () => {
 // small. Each item's sources are tried IN ORDER until one has a file this machine can be
 // given — so a preferred provider with no build here falls through to the next instead
 // of reporting the app as unavailable. A pinned reference has exactly one source.
-async function planItems(items) {
+// opts.typeFirst: 'installer' | 'portable' — tried first regardless of the saved preference.
+async function planItems(items, opts = {}) {
   const cfg = readConfig();
   const tracked = trackedKeys(cfg);
-  const want = cfg.typePreference === 'installer' || cfg.typePreference === 'portable' ? cfg.typePreference : null;
+  const saved = cfg.typePreference === 'installer' || cfg.typePreference === 'portable' ? cfg.typePreference : null;
+  const want = opts.typeFirst === 'installer' || opts.typeFirst === 'portable' ? opts.typeFirst : saved;
   const order = want ? [want, want === 'portable' ? 'installer' : 'portable'] : ['portable', 'installer'];
   const ctx = sources.makeCtx();
   const labelOf = (source) => {

@@ -222,6 +222,80 @@ function matchInstalled(installed, trackedRepos, platform) {
 }
 
 // ---------------------------------------------------------------------------
+// Scan this PC — which known apps are installed on this machine.
+//
+// The scan used to know only CATALOG, the GitHub projects above, so an app that comes from
+// WinGet or Homebrew (Chrome, Firefox, Zoom, VLC...) could never be found however plainly it
+// was installed. It now covers every app in the Popular apps list, in two passes:
+//
+//   1. CATALOG's own patterns, exactly as before, for the projects that have one.
+//   2. For every other listed app: its NAME. The installed name, with its version and
+//      architecture noise taken off, must be exactly the app's name or one of its aliases —
+//      "Mozilla Firefox (x64 en-US)" is Mozilla Firefox, "GIMP 3.2.8" is GIMP, "VLC.app" is
+//      the alias vlc. Exact on purpose: "Chrome Remote Desktop Host" is not Google Chrome and
+//      "Git Extensions" is not Git. A name the rule cannot bridge is one more alias.
+//
+// Pass 2 is for Windows and macOS only (a Linux inventory is package identifiers, matched
+// exactly in pass 1), and it leaves out runtimes that install side by side in several
+// versions (Java, .NET, VC++) and any row marked `scan: false`.
+// ---------------------------------------------------------------------------
+
+const SCAN_SKIP_CATEGORIES = new Set(['Java', '.NET', 'VC++ Redistributables']);
+const SCAN_NOISE = new Set(['bit', 'x64', 'x86', 'arm64', 'amd64', 'release', 'version', 'stable', 'user']);
+
+// "Mozilla Firefox (x64 en-US)" -> "mozillafirefox"; "PuTTY release 0.85 (64-bit)" -> "putty";
+// "zoom.us.app" -> "zoomus"; "1Password" -> "1password" (a number inside a word is the name).
+function installedKey(displayName) {
+  const text = String(displayName || '').toLowerCase().replace(/\.(app|exe)$/, '').replace(/\([^)]*\)/g, ' ');
+  return text
+    .split(/[^a-z0-9.+#]+/)
+    .filter((t) => t && !/^v?\d+(\.\d+)*[a-z]?$/.test(t) && !SCAN_NOISE.has(t.replace(/[^a-z0-9]/g, '')))
+    .join('')
+    .replace(/[^a-z0-9]+/g, '');
+}
+
+// installed: [{ DisplayName, DisplayVersion }]. -> [{ id, name, displayName, version }], one
+// row per known app found, in list order. An app found more than once reports its highest version.
+function scanInstalled(installed, platform) {
+  const plat = platform || process.platform;
+  const rows = (installed || []).filter((e) => e && e.DisplayName);
+  const found = new Map();
+  const put = (app, hit) => {
+    const prev = found.get(app.id);
+    if (prev && cmpVersion(hit.DisplayVersion || '0', prev.version || '0') <= 0) return;
+    found.set(app.id, { id: app.id, name: app.name, displayName: hit.DisplayName, version: hit.DisplayVersion || '' });
+  };
+  const offered = (app) => sourcesFor(app, plat).length > 0;
+
+  // 1. The GitHub catalog's own patterns.
+  const byRepo = new Map(builtinApps().filter((a) => a.repo).map((a) => [a.repo.toLowerCase(), a]));
+  for (const entry of CATALOG) {
+    if (!onPlatform(entry, plat)) continue;
+    const hit = findInstalled(entry, rows, plat);
+    const app = hit && byRepo.get(entry.repo.toLowerCase());
+    if (app && offered(app)) put(app, hit);
+  }
+
+  // 2. Every other listed app, by name.
+  if (plat !== 'linux') {
+    const byKey = new Map();
+    for (const e of rows) {
+      const key = installedKey(e.DisplayName);
+      if (!key) continue;
+      const prev = byKey.get(key);
+      if (!prev || cmpVersion(e.DisplayVersion || '0', prev.DisplayVersion || '0') > 0) byKey.set(key, e);
+    }
+    for (const app of builtinApps()) {
+      if (!app.listed || app.scan === false || SCAN_SKIP_CATEGORIES.has(app.category) || found.has(app.id) || !offered(app)) continue;
+      const hit = [app.name, ...app.aliases].map((n) => byKey.get(squash(n))).find(Boolean);
+      if (hit) put(app, hit);
+    }
+  }
+  const order = new Map(builtinApps().map((a, i) => [a.id, i]));
+  return [...found.values()].sort((a, b) => order.get(a.id) - order.get(b.id));
+}
+
+// ---------------------------------------------------------------------------
 // Shortcuts — the curated list behind the Add box, the Popular apps picker and packs.
 //
 // A user types "vlc" or "libre office", not a package id. Popular apps are also the ones
@@ -245,6 +319,9 @@ function matchInstalled(installed, trackedRepos, platform) {
 //           source: nothing is ever installed from it through this row. Bitwarden is the
 //           case that needed it: its desktop app ships from bitwarden/clients, a repository
 //           that also releases a web vault and a CLI, so it cannot simply be a `repo` here.
+//   scan    false: never offered by "Scan this PC". For rows that stand for one release
+//           line among several (Python 3.15, Node.js 22): an installed "Python" or "Node.js"
+//           does not say which line it is, and offering the wrong one is a major-version jump.
 //   detect  { <platform>: name } — what the installed app is inventoried as, for the rare
 //           app its own name cannot find. A packaged (MSIX) Windows app is listed under its
 //           package identity: Windows App is "MicrosoftCorporationII.Windows365".
@@ -268,6 +345,7 @@ function matchInstalled(installed, trackedRepos, platform) {
 // ---------------------------------------------------------------------------
 
 const SHORTCUTS = require('./shortcuts.json');
+const { cmpVersion } = require('./core');
 
 const squash = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
 const UNLISTED = 'More from GitHub';
@@ -333,7 +411,7 @@ function builtinApps() {
     seenId.add(id);
     // Where the GitHub project ships builds: the catalog row's limit, else the shortcut's own
     // `platforms` (Rectangle is a macOS app; its repo must not be offered on Windows).
-    out.push({ id, name: s.name, category: s.category, description: s.description, listed: true, aliases: s.aliases || [], winget: s.winget, brew: s.brew, repo: s.repo, repoPlatforms: (row && row.platforms) || s.platforms, detect: s.detect, only: s.type === 'installer' || s.type === 'portable' ? s.type : undefined, also: Array.isArray(s.also) ? s.also : undefined });
+    out.push({ id, name: s.name, category: s.category, description: s.description, listed: true, aliases: s.aliases || [], winget: s.winget, brew: s.brew, repo: s.repo, repoPlatforms: (row && row.platforms) || s.platforms, detect: s.detect, only: s.type === 'installer' || s.type === 'portable' ? s.type : undefined, also: Array.isArray(s.also) ? s.also : undefined, scan: s.scan !== false });
   }
   for (const c of CATALOG) {
     if (seenRepo.has(c.repo.toLowerCase())) continue;
@@ -436,4 +514,4 @@ function preferredSource(app, platform, preference) {
   return list[0] || null;
 }
 
-module.exports = { CATALOG, SHORTCUTS, matchInstalled, onPlatform, findInstalled, lookup, sourcesFor, known, popular, apps, builtinApps, findBuiltin, setFavorites, favoritePins, favoriteNote, appById, detectFor, preferredSource, orderedSources, isWindowsOnly, WINDOWS_ONLY };
+module.exports = { CATALOG, SHORTCUTS, matchInstalled, scanInstalled, installedKey, onPlatform, findInstalled, lookup, sourcesFor, known, popular, apps, builtinApps, findBuiltin, setFavorites, favoritePins, favoriteNote, appById, detectFor, preferredSource, orderedSources, isWindowsOnly, WINDOWS_ONLY };
