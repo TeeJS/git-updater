@@ -200,6 +200,13 @@ the thing being replaced.
 Prefer beta builds for a specific app? Tick *include beta (pre-release) versions* when
 adding it.
 
+### Compact view (optional)
+
+Lots of apps? Tick **Compact** in the header. Each app becomes one line (status dot, name,
+current → available version, its button), and the lines flow into as many columns as the
+window is wide enough for. The source and type are in the name's tooltip and the **⋯** menu,
+which also has the auto-update switch. Untick it to get the full list back.
+
 ### Categories (optional)
 
 Want games in `C:\Games` and everything else in `C:\Apps`? Turn on **Settings → Apps and

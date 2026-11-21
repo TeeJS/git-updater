@@ -113,6 +113,7 @@ function saveConfigFile(cfg) {
   if (cfg.loginAction != null && !autoupdate.LOGIN_ACTIONS.includes(cfg.loginAction)) delete cfg.loginAction;
   if (cfg.loginQuit != null) cfg.loginQuit = !!cfg.loginQuit;
   if (cfg.forceClose != null) cfg.forceClose = !!cfg.forceClose;
+  if (cfg.compactView != null) cfg.compactView = !!cfg.compactView;
   fs.mkdirSync(path.dirname(CONFIG_PATH), { recursive: true });
   if (fs.existsSync(CONFIG_PATH)) {
     const stamp = new Date().toISOString().replace(/[:.]/g, '-');

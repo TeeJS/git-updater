@@ -150,12 +150,13 @@ test('everything the feature adds to the page starts hidden, and is shown only b
 
 test('off, the list is drawn by the same code as before: no headers, no dragging, no extra menu items', () => {
   // Headers only with the switch on and at least one category; otherwise the plain loop.
-  assert.match(html, /if \(catsOn\(\) && listCats\(\)\.length\) renderGroups\(tb, shown, renderRow\);\s*else shown\.forEach\(\(r\) => renderRow\(r, ''\)\);/);
+  assert.match(html, /if \(catsOn\(\) && listCats\(\)\.length\) renderGroups\(tb, shown, draw\);\s*else shown\.forEach\(\(r\) => draw\(r, ''\)\);/);
   assert.match(html, /const dragApps = catsOn\(\) && !busy && !SORT_COLUMNS\.includes\(config\.sortColumn\);/);
   assert.match(html, /if \(dragApps\) makeDraggable\(row,/);
   // The only callers that make anything draggable are behind the switch.
   const uses = [...html.matchAll(/makeDraggable\(/g)].length;
-  assert.strictEqual(uses, 4, 'the definition, an app row, a category header, a Settings row');
+  assert.strictEqual(uses, 5, 'the definition, an app row (ordinary and compact), a category header, a Settings row');
+  assert.strictEqual([...html.matchAll(/if \(dragApps\) makeDraggable\(row,/g)].length, 2, 'both kinds of app row drag only behind the switch');
   assert.match(html, /function renderCatEditor\(\) \{\s*const list = \$\('catList'\);\s*list\.replaceChildren\(\);\s*if \(!catsOn\(\)\) return;/);
   // The row menu.
   const menu = html.slice(html.indexOf('function openMenu('), html.indexOf('// --- choose download ---'));
@@ -178,7 +179,8 @@ test('sorting: the third click that clears a column sort exists only with the sw
 
 test('the list is still rendered from the sorted, filtered rows, and grouping comes after both', () => {
   const render = html.slice(html.indexOf('function renderRepos()'), html.indexOf('function targetKeys()'));
-  assert.ok(render.indexOf('const shown = visibleRepos(sortedRepos())') < render.indexOf('renderGroups(tb, shown, renderRow)'));
+  assert.ok(render.indexOf('const shown = visibleRepos(sortedRepos())') < render.indexOf('renderGroups(tb, shown, draw)'));
+  assert.match(render, /const draw = compactOn\(\) \? renderCompactRow : renderRow;/, 'compact view changes how a row is drawn, never which rows');
   // Collapsing only folds rows away: what the toolbar acts on is decided before grouping.
   assert.ok(render.indexOf('shownKeys = new Set(shown.map(keyOf))') < render.indexOf('renderGroups('));
 });

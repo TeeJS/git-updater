@@ -159,7 +159,9 @@
   .src-badge.s-winget, .src-badge.s-brew { color: var(--blue); border-color: rgba(88,166,255,.35); }
   .src-badge.s-folder { color: var(--accent); border-color: rgba(227,161,60,.4); }
   .src-badge.s-unknown { color: var(--red); border-color: var(--red); }
-  .sum-none { color: var(--accent); }
+  /* One line, always: the host gives way (…) before "no checksum" wraps and makes the row taller. */
+  .app-src { white-space: nowrap; }
+  .sum-none { flex: none; white-space: nowrap; color: var(--accent); }
   .pref-list { display: flex; flex-wrap: wrap; gap: .35rem; flex: 1; min-width: 12rem; }
   .pref-chip { display: inline-flex; align-items: center; gap: .25rem; padding: .15rem .2rem .15rem .55rem; border: 1px solid var(--border); border-radius: 999px; font-size: 12.5px; color: var(--text); background: #0d1117; }
   .pref-chip button { padding: 0 .35rem; border: 0; background: transparent; color: var(--muted); font-size: 12px; line-height: 18px; }
@@ -242,6 +244,30 @@
   #chooserStatus { margin-right: auto; min-width: 0; font-size: 12.5px; color: var(--muted); }
   #chooserStatus.bad { color: var(--red); }
   .force-warn { font-size: .84rem; color: var(--accent); }
+  /* Compact view (the Compact switch in the header, remembered). One line per app: status dot,
+     name, current → available, the action button. The lines flow into as many columns as the
+     window has room for (400px or more each, so two at the 920px first-run width and one when it
+     is narrower), across the full window width.
+     Source and type move to the name's tooltip and the ⋯ menu. Nothing below applies without
+     body.compact, so the ordinary list is untouched. */
+  .compact-switch { font-size: .8rem; gap: .3rem; color: var(--muted); cursor: pointer; }
+  /* The header must stay on one line down to the 720px minimum. Where Scan this PC is shown there
+     is no room left for the word at that width, so only the box stays (its tooltip names it). */
+  @media (max-width: 850px) { .top-actions:has(#scanPc:not([hidden])) .compact-switch span { display: none; } }
+  body.compact .wrap { max-width: none; }
+  body.compact #settingsScreen { max-width: 900px; margin: 0 auto; }
+  body.compact .table-header, body.compact #updateSel { display: none; }
+  body.compact #rows { columns: 400px; column-gap: 22px; column-rule: 1px solid var(--border); }
+  body.compact .app-row { grid-template-columns: 9px minmax(3rem, max-content) minmax(7rem, 1fr) auto; column-gap: 8px; padding: .16rem 0; break-inside: avoid; }
+  body.compact .group-h { column-span: all; }
+  body.compact .app-name { font-size: 13px; }
+  body.compact .st { gap: 0; }
+  .cv { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 500 12.5px var(--mono); font-variant-numeric: tabular-nums; color: var(--muted); text-align: right; }
+  .cv .to { color: var(--blue); }
+  .cv.say { font: 400 12.5px var(--sans); }
+  body.compact .rowbtn { padding: .14rem .55rem; font-size: 12.5px; }
+  body.compact .kebab { padding: .1rem .4rem; font-size: 15px; margin-left: 0; }
+  .menu .menu-info { padding: .25rem .6rem .3rem; font-size: 12px; line-height: 16px; color: var(--muted); max-width: 19rem; overflow-wrap: anywhere; }
   .hint { font-size: .84rem; color: var(--faint); margin: .6rem 0 0; }
   .hint:empty { display: none; }
   /* "Repeat every:" above each cron line: label over each dropdown, one unit active at a time. */
@@ -338,6 +364,7 @@
     <span id="selfup" role="status"><span id="selfupText"></span><button type="button" id="selfupBtn" class="primary"></button></span>
     </span>
     <div class="top-actions">
+      <label class="scan-label compact-switch" title="One line per app, in as many columns as the window has room for"><input type="checkbox" id="compactView" aria-label="Compact view"> <span>Compact</span></label>
       <button type="button" id="scanPc" title="Find apps already installed on this PC that git-updater can keep up to date">Scan this PC</button>
       <button type="button" id="packsBtn" title="Add a named set of apps in one go">Packs</button>
       <button type="button" id="browseAll" class="primary" title="Pick apps from a categorized list">Popular apps</button>
@@ -1030,6 +1057,47 @@ document.querySelectorAll('.table-header [data-sort]').forEach((header) => {
   };
 });
 
+// --- compact view ---
+// The Compact switch in the header. It is how the list is drawn and nothing else: the same
+// apps, the same order, the same buttons. Remembered in config.json like the sort order.
+const compactOn = () => config.compactView === true;
+function syncCompact() {
+  $('compactView').checked = compactOn();
+  document.body.classList.toggle('compact', compactOn());
+}
+// What the line shows after the name. Normally the versions, "1.2.0 → 1.3.0" when there is an
+// update. While something is happening to the app, or it failed, that is said instead, because
+// in this view the status is otherwise only a coloured dot.
+function compactVersions(s, sv) {
+  if (sv.cls === 'c-work' || s.ph === 'failed') {
+    const say = el('span', 'cv say ' + sv.cls, sv.text);
+    say.title = sv.tip || sv.text;
+    return say;
+  }
+  const cur = s.ph === 'loading' ? '…' : s.from || (s.present ? 'Unknown' : 'Not installed');
+  // An app that is not installed yet shows only the version it would install: its button
+  // already says Install, and "Not installed → " would push the version off the line.
+  const fresh = !s.from && !s.present && !!s.to;
+  const out = el('span', 'cv', fresh ? '' : cur);
+  if (s.to && s.to !== s.from) out.append(fresh ? '' : ' → ', el('span', 'to', s.to));
+  out.title = `${sv.text}\nCurrent: ${cur}${s.to ? `\nAvailable: ${s.to}` : ''}`;
+  return out;
+}
+const typeLabelOf = (r) => (r.type === 'installer' ? 'Installer' : 'Portable');
+// Everything the ordinary row shows that the compact line does not: type, source, folder.
+function compactTip(r, key, s, sv) {
+  const lines = [rowName(r) + (r.prerelease ? ' — tracking beta (pre-release) versions' : ''), sv.text, `Type: ${typeLabelOf(r)}`, sourceLine(r, key, s).title];
+  if (r.type === 'portable' && dirOf(r)) lines.push(`Folder: ${dirOf(r)}`);
+  return lines.filter(Boolean).join('\n');
+}
+$('compactView').onchange = () => {
+  if ($('compactView').checked) config.compactView = true; else delete config.compactView;
+  syncCompact();
+  renderRepos();
+  saveConfig();
+};
+// --- end of the compact view block ---
+
 function renderRepos() {
   const tb = $('rows');
   tb.innerHTML = '';
@@ -1095,7 +1163,11 @@ function renderRepos() {
     autoCell.appendChild(ac);
     row.appendChild(autoCell);
 
-    // Actions
+    row.appendChild(rowActions(r, key, s));
+    tb.appendChild(row);
+  };
+  // The row's button and its ⋯ menu: the same in the ordinary list and the compact one.
+  const rowActions = (r, key, s) => {
     const act = el('div', 'row-actions');
     const runningFail = s.ph === 'failed' && /is running/.test(s.reason || '');
     // A row that needs a file chosen says so right here, where its status and button
@@ -1110,13 +1182,29 @@ function renderRepos() {
     const kb = el('button', 'kebab ghost', '⋯'); kb.title = 'More';
     kb.onclick = (ev) => { ev.stopPropagation(); openMenu(r, kb); };
     act.appendChild(kb);
-    row.appendChild(act);
-
+    return act;
+  };
+  // Compact view: the same app on one line. What the ordinary row spells out in columns is in
+  // the tooltips here and in the ⋯ menu.
+  const renderCompactRow = (r, group) => {
+    const key = keyOf(r);
+    const s = st[key] || (st[key] = { ph: 'idle' });
+    const row = el('div', 'app-row');
+    if (dragApps) makeDraggable(row, { kind: 'app', group, id: key }, reorderApps);
+    const sv = statusView(s);
+    const dot = el('span', 'st ' + sv.cls); dot.appendChild(el('span', 'dot')); dot.title = sv.tip || sv.text;
+    row.appendChild(dot);
+    const name = el('span', 'app-name', `${rowName(r)}${r.prerelease ? ' β' : ''}`);
+    name.title = compactTip(r, key, s, sv);
+    row.appendChild(name);
+    row.appendChild(compactVersions(s, sv));
+    row.appendChild(rowActions(r, key, s));
     tb.appendChild(row);
   };
+  const draw = compactOn() ? renderCompactRow : renderRow;
   // Off, or on with no category made yet: the plain list, exactly as it always was.
-  if (catsOn() && listCats().length) renderGroups(tb, shown, renderRow);
-  else shown.forEach((r) => renderRow(r, ''));
+  if (catsOn() && listCats().length) renderGroups(tb, shown, draw);
+  else shown.forEach((r) => draw(r, ''));
   syncBar();
 }
 
@@ -1184,6 +1272,12 @@ function openMenu(r, anchor) {
   const item = (label, fn, danger) => { const b = el('button', danger ? 'danger' : null, label); b.onclick = (e) => { e.stopPropagation(); closeMenu(); fn(); }; menuEl.appendChild(b); };
   const sep = () => menuEl.appendChild(el('div', 'sep'));
 
+  // Compact view has no Type column and no source line, so the menu says both.
+  if (compactOn()) {
+    const src = sourceLine(r, key, s);
+    menuEl.appendChild(el('div', 'menu-info', `${typeLabelOf(r)} · ${[...src.children].map((c) => c.textContent.replace(/^· /, '')).join(' · ')}`));
+    sep();
+  }
   if (s.present) {
     item('Open App', async () => {
       try { await window.api.openApp(key); }
@@ -1215,6 +1309,14 @@ function openMenu(r, anchor) {
   if (r.type === 'portable') item('Open folder', () => window.api.openFolder(key));
   sep();
   item('Edit…', () => startEdit(r));
+  // The Auto-update column is not drawn in compact view; its tick is here instead.
+  if (compactOn()) item(r.autoUpdate ? 'Turn auto-update off' : 'Turn auto-update on', () => {
+    if (r.autoUpdate) delete r.autoUpdate; else r.autoUpdate = true;
+    saveConfig();
+    renderInstallInfo();
+    renderRepos();
+    msg(`Auto-update is ${r.autoUpdate ? 'on' : 'off'} for ${shortName(r)}.`, 'ok');
+  });
   if (catsOn()) {
     const cur = catOf(r);
     listCats().filter((c) => c !== cur).forEach((c) => item(`Move to ${c.name}`, () => moveToCategory(r, c.name)));
@@ -1770,6 +1872,7 @@ async function load() {
   $('portableRoot').value = config.portableRoot || '';
   $('requireChecksum').checked = !!config.requireChecksum;
   syncCatsSwitch();
+  syncCompact();
   $('typePref').value = config.typePreference === 'portable' || config.typePreference === 'installer' ? config.typePreference : '';
   renderSourcePrefs();
   $('selfPreRel').checked = !!config.selfUpdatePrerelease;
@@ -2323,6 +2426,7 @@ window.api
   .then(({ canScan }) => {
     if (canScan) return;
     $('scanPc').style.display = 'none';
+    $('scanPc').hidden = true; // also lets the header's styles know the button is not there
   })
   .catch(() => {}); // an older main process without the handler keeps today's behaviour
 $('browseAll').onclick = () => window.api.openPopular();

@@ -814,6 +814,31 @@ window's update, the scheduled install and the sign-in update all read it from t
 the main process (`forceClose: autoClose && !!cfg.forceClose`); it is never taken from the window.
 The line next to the box says the cost in plain words: a forced close can lose unsaved work.
 
+### Compact view (`compactView`)
+
+The **Compact** box in the header, remembered in `config.json` like the sort order. It changes
+how a row is drawn and nothing else: `renderRepos()` picks `renderCompactRow` or `renderRow` for
+the same sorted, filtered, grouped rows. A compact row is one 28px line: status dot, name,
+`current → available`, the row's button and its ⋯ menu (both built by the shared `rowActions`).
+While something is happening to an app, or it failed, the line says that instead of the versions,
+since the status is otherwise only the dot's colour.
+
+- Layout is CSS only, all of it behind `body.compact`: `.wrap` loses its 900px limit, and `#rows`
+  becomes a multi-column block (`columns: 400px`), so the number of columns follows the window:
+  one below roughly 900px wide, two at the 920px first-run width (412px each), three from about
+  1320px, four from about 1740px. A category header spans all
+  columns (`column-span: all`) with its apps in columns under it. Settings keeps its 900px width.
+- What the line leaves out is in the name's tooltip (type, source, file host, checksum, folder)
+  and at the top of the ⋯ menu; the menu also gains *Turn auto-update on/off*, because the
+  Auto-update column is not drawn. The column headers are not drawn either, so sorting and
+  "Update selected" are for the full list; the sort last chosen there still applies.
+- The header has to stay on one line at the 720px minimum width, so where *Scan this PC* is shown
+  the word "Compact" is dropped below 850px and only the box (with its tooltip) stays.
+
+The same change fixed a row-height bug in the ordinary list: "· no checksum" could wrap inside the
+source line and make that row 70px instead of 52px. The source line is now one line always; the
+host gives way with an ellipsis first.
+
 ### Auto-update column and the Install schedule
 
 Each app row has an **Auto-update** checkbox (`repo.autoUpdate: true` in `config.json`; unticking
