@@ -972,12 +972,23 @@ function addSourceItems(items) {
   return { added: keys.length, skipped, conflicts, keys };
 }
 
-ipcMain.handle('source:add', (e, items) => {
+ipcMain.handle('source:add', (e, items, opts) => {
   const fromMain = fromWindow(e, win, mainPage);
   const fromPicker = fromWindow(e, popularWin, popularPage);
   if (!fromMain && !fromPicker) throw new Error('only the main or Popular apps window can add these apps');
   const res = addSourceItems(items);
-  if (res.added && fromPicker && win && !win.isDestroyed()) win.webContents.send('config-changed');
+  const mainOpen = win && !win.isDestroyed();
+  // A review that came from Scan this PC ends on the main window, the way Add an app does:
+  // the main window says what was added and checks the new rows, and this window closes.
+  // (It used to stay open on the Popular apps list, which the user never asked to see.)
+  if (res.added && fromPicker && opts && opts.scan === true && mainOpen) {
+    const clash = (res.conflicts || []).map((c) => `${c.name} (same folder as ${c.with})`);
+    const message = `Added ${res.added} app${res.added === 1 ? '' : 's'} found on this PC${res.skipped ? `, ${res.skipped} already in your list` : ''}${clash.length ? `. Not added: ${clash.join(', ')}` : ''}.`;
+    win.webContents.send('results:added', { keys: res.keys || [], message: message.slice(0, 400), handoff: null });
+    win.focus();
+    return { ...res, closing: true };
+  }
+  if (res.added && fromPicker && mainOpen) win.webContents.send('config-changed');
   return res;
 });
 // --- Popular apps and packs ----------------------------------------------------

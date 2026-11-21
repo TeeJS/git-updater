@@ -176,6 +176,43 @@ test('on Windows the window check ignores drive-letter case', async () => {
   await assert.rejects(async () => h.call('source:resolve', h.fromMain, { text: 'vlc', prerelease: false }), /only the main window/);
 });
 
+test('adding from a Scan this PC review hands the result to the main window', () => {
+  const h = mainHarness();
+  let focused = 0;
+  h.mainWin.focus = () => { focused++; };
+  const popular = { isDestroyed: () => false, webContents: makeWebContents(uiUrl('popular.html') + '?scan=vlc') };
+  h.setPopular(popular);
+  const from = h.ev(popular.webContents);
+  const item = [{ source: { type: 'github', owner: 'o', repo: 'vlc' }, name: 'vlc', type: 'installer' }];
+  const add = (items, opts) => h.handlers['source:add'](from, items, opts);
+
+  const res = add(item, { scan: true });
+  assert.equal(res.added, 1);
+  assert.equal(res.closing, true, 'the review window is told to close');
+  const sent = h.mainWin.webContents.sent;
+  const added = sent.filter(([ch]) => ch === 'results:added');
+  assert.equal(added.length, 1, 'the main window says what was added and checks the new rows');
+  assert.equal(added[0][1].message, 'Added 1 app found on this PC.');
+  assert.equal(added[0][1].keys.length, 1);
+  assert.equal(sent.filter(([ch]) => ch === 'config-changed').length, 0, 'results:added reloads the list itself');
+  assert.equal(focused, 1);
+
+  // Nothing new to add: the review stays open to say so, and the main window is not told.
+  h.setCommit(() => ({ added: 0, skipped: 1, conflicts: [], keys: [] }));
+  const again = add(item, { scan: true });
+  assert.equal(again.added, 0);
+  assert.equal(again.closing, undefined);
+  assert.equal(sent.filter(([ch]) => ch === 'results:added').length, 1);
+
+  // The ordinary Popular apps review is unchanged: it stays open and only refreshes the list.
+  const other = [{ source: { type: 'github', owner: 'o', repo: 'gimp' }, name: 'gimp', type: 'installer' }];
+  h.setCommit((items) => ({ added: items.length, skipped: 0, conflicts: [], keys: [] }));
+  const plain = add(other);
+  assert.equal(plain.added, 1);
+  assert.equal(plain.closing, undefined);
+  assert.equal(sent.filter(([ch]) => ch === 'config-changed').length, 1);
+});
+
 test('results:search validates its input', async () => {
   const h = mainHarness();
   const { e } = await h.openAdd();

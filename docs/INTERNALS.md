@@ -748,7 +748,10 @@ architecture noise removed must equal the app's name or an alias exactly. Runtim
 install side by side (Java, .NET, VC++) and rows marked `scan: false` (Python, Node.js
 release lines) are left out of the name pass. Nothing is added from the scan window: *Review
 and add* (`scan:review`) opens Popular apps on its review step for the ticked apps
-(`popular.html?scan=id,id`, planned by `scan:plan`, installer first on Windows).
+(`popular.html?scan=id,id`, planned by `scan:plan`, installer first on Windows). That
+window is then only the review: *Add* sends the result to the main window (`results:added`,
+as Add an app does, so the new rows are checked there) and closes it, and *Cancel* closes it.
+It never falls back to the Popular apps list, which the user did not open.
 `scan:open` takes no argument and, outside `SCAN_PLATFORMS`, throws
 before any window exists: there is nothing for it to show. `test/ui-scan.test.js` runs the
 real handler on each platform and the window's script against a minimal DOM.

@@ -71,7 +71,8 @@ The tarball has no such requirement, which is why it is the recommended Linux do
 - **Scan this PC** (Windows and macOS; top right, next to *Packs*). Lists the programs you
   already have that git-updater recognizes — every app in Popular apps, whichever source it
   comes from, plus a catalog of 120+ GitHub-released tools — and takes the ones you tick to
-  the same review step Popular apps uses before adding them. Not offered on Linux, where your package
+  the same review step Popular apps uses before adding them, then returns to the main window
+  with the new rows checked. Not offered on Linux, where your package
   manager already owns most of what it would find and accepting a suggestion would give
   you a second copy outside it. To add known apps you do not have yet, on any platform,
   use *Popular apps*.

@@ -21,7 +21,7 @@ contextBridge.exposeInMainWorld('api', {
   listProviders: () => ipcRenderer.invoke('sources:providers'),
   resolveSource: (text, prerelease) => ipcRenderer.invoke('source:resolve', { text, prerelease }),
   inspectSource: (source, prerelease) => ipcRenderer.invoke('source:inspect', { source, prerelease }),
-  addSources: (items) => ipcRenderer.invoke('source:add', items),
+  addSources: (items, opts) => ipcRenderer.invoke('source:add', items, opts),
   openAddWindow: (searchId) => ipcRenderer.invoke('results:open', searchId),
   onResultsAdded: (cb) => { ipcRenderer.on('results:added', (_e, data) => cb(data)); },
   editApp: (appKey, type, prerelease) => ipcRenderer.invoke('app:edit', { appKey, type, prerelease }),
