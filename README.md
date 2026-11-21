@@ -175,7 +175,9 @@ signature no longer verifies, git-updater puts the previous version back rather 
 leaving you with the damaged one.
 
 **git-updater updates itself in place on Windows and Linux**, where the new version is
-installed in its own folder and the launcher switches to it on next start. On macOS it
+installed in its own folder and the launcher switches to it on next start. Run from the
+AppImage, it replaces the AppImage file itself (same name, same place) and starts it again;
+if that file is in a folder you cannot write to, it offers the download instead. On macOS it
 tells you a new version exists and sends you to the release page instead: an app bundle is
 the unit macOS launches, so there is nowhere to put a launcher that is not itself inside
 the thing being replaced.

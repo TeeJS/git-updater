@@ -502,6 +502,38 @@ launcher on its first update — its files are never touched again.
   `update:progress` stream and `last-apply.json` marker are reused. `selfupdate:openRelease`
   remains as a fallback link. `electron/main.js` reaches all of this behind an `IS_MAC` guard,
   so electron-updater never loads on Windows or Linux.
+- **A copy running from an AppImage replaces the image file** (same module, same two calls
+  from `electron/main.js`: `prepareUpdate` then `relaunchViaLauncher`). The launcher model has
+  nowhere to work there: `process.execPath` is inside the image's mount (`/tmp/.mount_*`), a
+  read-only squashfs, so staging `app-<tag>` beside it failed with EROFS, and the mount is gone
+  when the process exits anyway. What happens instead:
+  - *Detection* (`appImageFile`): Linux, `$APPIMAGE` set, **and** our own executable inside
+    `$APPDIR`. `$APPIMAGE` alone is not trusted, because every child of an AppImage inherits
+    it: a tarball install started from an AppImage terminal or editor would otherwise rename
+    our release over that other program.
+  - *Asset* (`appImageAsset`): the release's `.AppImage` for this architecture
+    (`…-linux-x86_64.AppImage` / `…-linux-arm64.AppImage`), refused outright if only the other
+    architecture's is there. `selfUpdateAssets`, which drops AppImages, is still what a tarball
+    install uses. The download limit, the digest check and the beta channel are the same code
+    path as every other self-update.
+  - *Replace* (`replaceAppImage`): the verified download is copied **beside** the image
+    (`.git-updater-selfupdate-appimage-<pid>`), given the old image's mode, flushed, and renamed
+    over it. The path never changes, so the desktop entry, the login entry and the user's own
+    shortcut keep working; the cost is that a file named `git-updater-0.3.0-…AppImage` can
+    contain a later version. A leftover temporary file is removed by `cleanupLeftovers()`.
+  - *Relaunch*: the same path is started with `--wait-pid`, with `APPIMAGE`, `APPDIR`, `ARGV0`
+    and `OWD` removed and the old mount's entries taken out of `PATH`, `LD_LIBRARY_PATH`,
+    `XDG_DATA_DIRS` and `GSETTINGS_SCHEMA_DIR` (`relaunchEnv`; the lists are what
+    electron-builder's runtime and AppRun set). A run started with `--appimage-extract-and-run`
+    is given `APPIMAGE_EXTRACT_AND_RUN=1`, since the flag itself never reaches the app.
+  - *An image that cannot be replaced* (its folder is not writable, e.g. `/opt`, or the file was
+    moved while running): `canApply()` is false, so the header button reads **Download
+    <version>** and opens the release page, and the scheduled install sends a notification
+    saying so instead of failing on every run.
+
+  None of this has been run against a real AppImage yet. `test/selfupdate-appimage.test.js`
+  describes the environment (`env`, `platform`, `execPath`, `arch` are arguments) and uses
+  plain files for the image and its mount.
 - On every start (`electron/main.js`, before the single-instance lock): if `--wait-pid` is
   present, wait for that process to exit (it holds the lock). Then, if a newer `app-*` folder
   exists that isn't the one we're running from, spawn its exe and exit — that's the launcher
@@ -856,7 +888,8 @@ src/                 the engine (no UI, no shell):
   install.js         transactional portable dir-swap, archive extraction, silent installer
   tar.js             tar reader that preserves Unix modes and symlinks (7-Zip drops both)
   runner.js          orchestration + progress events; state keyed per (repo + type)
-  selfupdate.js      git-updater updating itself: download/verify/extract, launcher hand-off
+  selfupdate.js      git-updater updating itself: download/verify/extract, launcher hand-off;
+                     run from an AppImage, replacing the image file instead
   state.js           atomic state + cross-process update lock
   paths.js           per-platform config/data directories
   detect.js          installed versions/flavor + running-app check (async) — matching only

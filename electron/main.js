@@ -245,6 +245,14 @@ async function backgroundSelfUpdate() {
   try {
     const found = await checkSelfUpdate();
     if (!found) { log('scheduled install: git-updater is up to date'); return; }
+    if (found.canApply === false) {
+      // Only an AppImage in a folder this user cannot write (say /opt, put there by root) gets here. There is
+      // nothing to apply, so it is reported as a version to download, the way the window's button does it,
+      // instead of failing with the same error on every scheduled run.
+      log(`scheduled install: git-updater ${found.version} is available, but its AppImage cannot be replaced where it is`);
+      notify(`git-updater ${found.version} is available. It cannot replace its own file where it is installed; press Check all, then Download.`);
+      return;
+    }
     const onScreen = !!(win && !win.isDestroyed() && win.isVisible() && !win.isMinimized());
     log(`scheduled install: updating git-updater to ${found.version}${onScreen ? '' : ' (restarting quietly)'}`);
     const send = (phase, pct) => { if (win && !win.isDestroyed()) win.webContents.send('update:progress', { id: 'self', phase, pct }); };
@@ -1465,6 +1473,8 @@ ipcMain.handle('update', async (e, body = {}) => {
 
 // Downloads+verifies+extracts the new build into ROOT\app-<version>\ (nothing running is
 // touched), then restarts through the launcher, which hands off to it once this process is gone.
+// Run from an AppImage there is no such folder: prepareUpdate replaces the image file and
+// relaunchViaLauncher starts that same file again (both decide from $APPIMAGE; see src/selfupdate.js).
 // Shared by the window's Update button and the scheduled install; the caller owns the `updating` flag.
 // `quiet` (a scheduled run with no window on screen) is kept in the apply marker, so the new process
 // starts hidden or minimized the way this one is instead of putting a window up.
