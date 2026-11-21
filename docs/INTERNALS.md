@@ -224,6 +224,11 @@ a favorite by its source, never by that id, because another machine may not have
 - A manifest's `Upgrade` switches are added only when a version of the app is found installed.
 - A Burn bundle that declares no switches gets WinGet's own default, `/quiet /norestart`.
 - An installer inside a zip is unpacked (the one file the manifest names) and that file is run.
+- The saved file always carries the extension of the declared installer type. An address
+  such as `.../WinSCP-6.7.1-Setup.exe/download` used to be saved as `download`, and Windows
+  will not start a program whose name has no extension (`spawnSync ... ENOENT`). The name is
+  the nearest path segment with the right extension, else a `file=` query value with it, else
+  the last segment with the extension added. Only the saved name changes, never the address.
 - A packaged app (MSIX) is never run: it is opened in Windows' App Installer window, and found
   afterwards in the per-user package registry (`src/platform/win.js` `parsePackageKeys`).
 

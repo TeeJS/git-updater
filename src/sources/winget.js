@@ -293,6 +293,41 @@ function dependencies(value) {
   ].filter((item) => typeof item === 'string');
 }
 
+// The extensions a download of each WinGet installer type may carry. The first is the one
+// given to a file whose address names none.
+const FILE_EXT = new Map([
+  ['msi', ['msi']], ['wix', ['msi']],
+  ['nullsoft', ['exe']], ['inno', ['exe']], ['exe', ['exe']], ['burn', ['exe']], ['portable', ['exe']],
+  ['msix', ['msix', 'msixbundle', 'appx', 'appxbundle']], ['appx', ['appx', 'appxbundle', 'msix', 'msixbundle']],
+  ['zip', ['zip']],
+]);
+
+// The name a download is saved under. Usually the address's last segment — but not always:
+//
+//   https://sourceforge.net/projects/winscp/files/WinSCP/6.7.1/WinSCP-6.7.1-Setup.exe/download
+//
+// ends in "download". The file was saved under that name, and Windows will not start a
+// program whose name has no extension: the install failed with "spawnSync ...\download
+// ENOENT" (WinSCP, on a real PC; KeePass, Pidgin, InfraRecorder, CCleaner and Eclipse are
+// listed the same way). WinGet says what the file IS, so its name can always be made to say
+// so too: the nearest segment that carries the type's extension, else a `file=`-style query
+// value that does, else the last segment with the extension added.
+function downloadName(url, installerType) {
+  const exts = FILE_EXT.get(installerType);
+  const decode = (text) => { try { return decodeURIComponent(text); } catch { return ''; } };
+  const segments = url.pathname.split('/').filter(Boolean).map(decode);
+  const last = segments.at(-1) || '';
+  if (!exts) return last;
+  const fits = (name) => exts.some((ext) => name.toLowerCase().endsWith(`.${ext}`) && name.length > ext.length + 1);
+  const inPath = [...segments].reverse().find(fits);
+  if (inPath) return inPath;
+  for (const value of url.searchParams.values()) {
+    const base = String(value).split(/[\\/]/).pop();
+    if (fits(base)) return base;
+  }
+  return last ? `${last}.${exts[0]}` : '';
+}
+
 function installerAsset(installer, common) {
   if (!installer || typeof installer !== 'object' || Array.isArray(installer)) throw new Error('WinGet returned an invalid installer row');
   const info = { ...common, ...installer };
@@ -318,7 +353,7 @@ function installerAsset(installer, common) {
   let name;
   try {
     downloadUrl = new URL(installer.InstallerUrl);
-    name = decodeURIComponent(downloadUrl.pathname.split('/').at(-1));
+    name = downloadName(downloadUrl, info.InstallerType);
   } catch {}
   const safeName = name && !/[\\/:*?"<>|\u0000-\u001f]|[. ]$|^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(name);
   const args = kind && kind !== 'msix' && type === 'installer' ? installerArguments(info, kind) : {};

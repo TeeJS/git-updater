@@ -341,6 +341,57 @@ Installers:
   }
 });
 
+// Found on a real Windows PC: WinSCP's listing ends in ".../WinSCP-6.7.1-Setup.exe/download".
+// The file was saved as "download", and Windows will not start a program whose name has no
+// extension: "spawnSync ...\\download ENOENT". The other addresses are the real shapes of
+// KeePass, CCleaner and Eclipse.
+test('WinGet download name: always carries the extension of the declared installer type', { skip: !available.ok }, async (t) => {
+  const row = packages[0];
+  const buffer = Buffer.from(`PackageIdentifier: ${row.id}
+PackageVersion: ${row.version}
+ManifestType: merged
+Installers:
+- Architecture: x64
+  InstallerType: inno
+  InstallerUrl: https://sourceforge.net/projects/winscp/files/WinSCP/6.7.1/WinSCP-6.7.1-Setup.exe/download
+- Architecture: x64
+  InstallerType: exe
+  InstallerUrl: https://vendor.example/ccleaner/build_RELEASE
+  InstallerSwitches:
+    Silent: /S
+- Architecture: x64
+  InstallerType: zip
+  NestedInstallerType: portable
+  InstallerUrl: https://www.eclipse.org/downloads/download.php?file=/technology/epp/downloads/release/2026-09/R/eclipse-java-2026-09-R-win32-x86_64.zip&r=1
+- Architecture: x64
+  InstallerType: wix
+  InstallerUrl: https://vendor.example/files/Tool%20Setup.MSI/download
+- Architecture: x64
+  InstallerType: nullsoft
+  InstallerUrl: https://vendor.example/plain.exe
+- Architecture: x64
+  InstallerType: nullsoft
+  InstallerUrl: https://vendor.example/get?file=..%5C..%5Cevil%3F.exe
+`);
+  const manifestSha256 = createHash('sha256').update(buffer).digest('hex');
+  const cacheDir = path.join(scratch, 'name-test');
+  t.after(() => fs.rmSync(cacheDir, { recursive: true, force: true }));
+  const { ctx } = context({ cacheDir, replacements: [[row.url, buffer], [MICROSOFT_MANIFESTS, manifestIndex([{ ...row, manifestSha256 }])]] });
+  const [winscp, ccleaner, eclipse, msi, plain, evil] = (await winget.getLatestRelease(packageSource(row.id), ctx)).assets;
+
+  assert.equal(winscp.name, 'WinSCP-6.7.1-Setup.exe', 'the segment that names the file, not "download"');
+  assert.equal(winscp.unsupported, undefined);
+  assert.equal(ccleaner.name, 'build_RELEASE.exe', 'no segment names it, so the type\'s extension is added');
+  assert.equal(eclipse.name, 'eclipse-java-2026-09-R-win32-x86_64.zip', 'a file= value in the query');
+  assert.equal(msi.name, 'Tool Setup.MSI');
+  assert.equal(plain.name, 'plain.exe', 'an ordinary address is unchanged');
+  // The address itself is never rewritten: only the name the file is saved under.
+  assert.equal(winscp.browser_download_url, 'https://sourceforge.net/projects/winscp/files/WinSCP/6.7.1/WinSCP-6.7.1-Setup.exe/download');
+  // A name taken from the query is still held to the same rules as any other.
+  assert.equal(evil.name.includes('..'), false);
+  assert.match(evil.unsupported || '', /usable HTTPS download/);
+});
+
 test('WinGet installer inside a zip: the one named setup program is the installer; anything else is refused', { skip: !available.ok }, async (t) => {
   const row = packages[0];
   const buffer = Buffer.from(`PackageIdentifier: ${row.id}
