@@ -67,7 +67,9 @@ The tarball has no such requirement, which is why it is the recommended Linux do
 - **Updates on your terms.** Per-app Check/Update buttons, or *Check all* / *Update all*
   batches with live progress (Downloading 42% → Verifying → Installing). Each row has an
   overflow menu: Edit, Force reinstall, Close app & update, View source, Preview selected
-  file, Open folder, Stop tracking.
+  file, Choose download…, Open folder, Stop tracking. *Choose download…* lists the latest
+  release's files with why each does or does not suit this computer, and remembers your pick
+  for later versions; a row that cannot pick a file by itself offers **Choose…** in place.
 - **Scan this PC** (Windows and macOS; top right, next to *Packs*). Lists the programs you
   already have that git-updater recognizes — every app in Popular apps, whichever source it
   comes from, plus a catalog of 120+ GitHub-released tools — and takes the ones you tick to
@@ -207,7 +209,7 @@ npm run dist               # build the portable zips (signed when the machine ha
 There's also a headless CLI (`node bin/watch.js check|update`) for scripting. Config lives in
 git-updater's own folder — `%APPDATA%\git-updater\` on Windows, `~/Library/Application
 Support/git-updater/` on macOS, `~/.config/git-updater/` on Linux. Per-app overrides (asset
-patterns, custom install dirs, installer switches), architecture notes, and design details
+patterns — also settable from a row's *Choose download…* — custom install dirs, installer switches), architecture notes, and design details
 are in **[docs/INTERNALS.md](docs/INTERNALS.md)**.
 
 ## License

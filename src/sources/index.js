@@ -306,13 +306,30 @@ function isEmulated(asset, host) {
 // host: { platform, arch, flavor, osRelease }. Defaults to the running machine.
 // Returns the chosen asset. The returned object is the provider's asset, plus
 // `emulated: true` when it is not native to this machine.
+//
+// A failure that choosing a file by hand would fix — nothing fits automatically, or a
+// saved choice stopped matching — carries `chooseFile: true` and `chooseWhy` (the reason in
+// plain words), so Check, Preview and Update can all offer "Choose…" instead of a dead end.
 function selectAsset(entry, rel, host = {}) {
-  const h = {
-    platform: host.platform || process.platform,
-    arch: host.arch || process.arch,
-    flavor: host.flavor || null,
-    osRelease: host.osRelease || null,
-  };
+  const h = machine(host);
+  try {
+    return pick(entry, rel, h);
+  } catch (e) {
+    const why = choiceReason(entry, rel, h, e);
+    if (why) Object.assign(e, { chooseFile: true, chooseWhy: why });
+    throw e;
+  }
+}
+
+const machine = (host = {}) => ({
+  platform: host.platform || process.platform,
+  arch: host.arch || process.arch,
+  flavor: host.flavor || null,
+  osRelease: host.osRelease || null,
+});
+
+// The selection itself, with no opinion about what a failure means.
+function pick(entry, rel, h) {
   // GitHub entries are untouched, including the long-standing rule that a hand-pinned
   // asset pattern is taken literally.
   if (isGithub(entry)) {
@@ -350,6 +367,158 @@ function selectSourced(entry, rel, h) {
     }
     throw e;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Choosing a file by hand ("Choose download…")
+// ---------------------------------------------------------------------------
+
+// The sources that publish a LIST of files to choose from: a GitHub, GitLab or Gitea
+// release, and a vendor's download folder (whose files all carry the version in their
+// names, which is exactly what the saved choice keys on). WinGet and Homebrew are left
+// out on purpose: their listing resolves to the one vendor file it hash-pins, picked on
+// stated facts (architecture, scope, locale) rather than names — there is no list to show,
+// and several rows there can share one file name, so a name could not tell them apart.
+const FILE_LISTS = new Set(['github', 'gitea', 'gitlab', 'folder']);
+const canChooseFile = (entry) => FILE_LISTS.has(sourceOf(entry).type);
+function requireFileList(entry) {
+  if (canChooseFile(entry)) return;
+  throw new Error(`${provider(sourceOf(entry).type).label} names the one file for this app itself, so there is no list to choose from`);
+}
+
+const ARCH_WORDS = { x64: 'Intel/AMD (x64)', arm64: 'ARM (arm64)', ia32: '32-bit (x86)' };
+
+// Which other system a file this platform rejects looks made for, when its name says.
+function otherSystem(name, platform) {
+  for (const id of ['win32', 'darwin', 'linux']) {
+    const t = assetTable(id);
+    if (t.id === assetTable(platform).id) continue;
+    if (!t.reject.test(name) && (t.ext.installer.test(name) || t.ext.portable.test(name))) return t.label;
+  }
+  return null;
+}
+
+// What the chooser says under a file's name: why it is or is not suited to this computer.
+// -> [text, tone]. Plain words only — this is read by someone who should never have to
+// know what an "asset" is. tone is how the row is drawn:
+//   ''      fits this computer
+//   'warn'  would work, with a caveat worth reading first (emulated, or nothing to go on)
+//   'off'   not for this computer, or not usable as the app is tracked — drawn dimmed
+// A release for three systems is mostly 'off' rows, so they are quiet rather than red:
+// "made for Windows" is a reason to skip a file, not an error.
+function fileNote(status, o) {
+  const { system, type, gh, arch, hostArch, name, platform } = o;
+  const kind = type === 'installer' ? 'installer' : 'portable build';
+  const mine = ARCH_WORDS[hostArch] || hostArch;
+  const theirs = ARCH_WORDS[arch] || arch;
+  switch (status) {
+    case 'ok':
+      if (arch === 'universal') return [`Fits this computer: ${system}, any processor.`, ''];
+      return arch
+        ? [`Fits this computer: ${system}, ${theirs}.`, '']
+        : [`Fits ${system}. The name does not say which processor it is for.`, ''];
+    case 'emulated':
+      return [`Made for ${theirs} processors, not native to this computer: it runs under emulation.`, 'warn'];
+    case 'other-arch':
+      return gh
+        ? [`The name says ${theirs} processors, and this computer is ${mine}. Choose it only if you know it runs here.`, 'off']
+        : [`Made for ${theirs} processors. This computer is ${mine} and cannot run it.`, 'off'];
+    case 'other-type':
+      return type === 'installer'
+        ? ['A portable build, and this app is tracked as an Installer. To use it, Edit the app and change its type to Portable.', 'off']
+        : ['An installer, and this app is tracked as Portable. To use it, Edit the app and change its type to Installer.', 'off'];
+    case 'rejected': {
+      const other = otherSystem(name, platform);
+      const what = other ? `Made for ${other}, not ${system}.` : `Not a ${system} app: source code, debug files, or made for another system.`;
+      return [gh ? `${what} Choose it only if you know it runs here.` : what, 'off'];
+    }
+    default:
+      return gh
+        ? [`Nothing in the name says this is a ${system} ${kind}. Choose it only if you know it is.`, 'warn']
+        : [`Nothing in the name says this is a ${system} ${kind}, so it is not offered.`, 'off'];
+  }
+}
+
+const CHOICE_ORDER = { ok: 0, emulated: 1, unknown: 2, 'other-arch': 3, rejected: 4, 'other-type': 5 };
+
+// Everything "Choose download…" shows for one tracked app: each file in the release ranked
+// for this machine, why it is or is not suited to it, whether it may be chosen, which one
+// would be picked automatically and which one a saved choice currently selects.
+//
+// Each file's `pattern` is what choosing it would save as the entry's `asset` override. It
+// is PROVEN here rather than assumed: the real selection is run with that override, and the
+// file is only choosable if it comes back as the one and only match. So a choice can never
+// be saved that the next Check would then refuse.
+//
+// status: 'ok' | 'emulated' | 'other-arch' | 'other-type' | 'unknown' | 'rejected'
+function fileChoices(entry, rel, host = {}) {
+  requireFileList(entry);
+  const h = machine(host);
+  const gh = isGithub(entry);
+  const table = assetTable(h.platform);
+  const names = (rel.assets || []).map((a) => a && a.name).filter(Boolean);
+  const tryPick = (e) => {
+    try { return pick(e, rel, h).name; } catch { return null; }
+  };
+  const automatic = { ...entry, asset: undefined };
+  const auto = tryPick(automatic);
+  const current = entry.asset ? tryPick(entry) : null;
+  const files = core.classifyAssets(rel.assets, entry.type, h.arch, h.flavor, h.platform, h.osRelease).map((c) => {
+    let status = c.status;
+    // Whether this processor can run it at all is the registry's rule (archRank), the same
+    // one the strict filter applies to every non-GitHub pick.
+    if (status === 'ok') {
+      if (!strictArchFilter([c.asset], h).length) status = 'other-arch';
+      else if (isEmulated(c.asset, h)) status = 'emulated';
+    }
+    // GitHub takes the override literally, so anything but the other package type can be
+    // chosen, each with the warning its row carries. Every other source only ever narrows
+    // what this machine and this package type can use (see selectSourced), so only those
+    // files can be.
+    let choosable = gh ? status !== 'other-type' : status === 'ok' || status === 'emulated';
+    let pattern = null;
+    let [note, tone] = fileNote(status, { system: table.label, type: entry.type, gh, arch: namedArch(c.name, h.platform), hostArch: h.arch, name: c.name, platform: h.platform });
+    if (choosable) {
+      pattern = core.assetPatternFor(c.name, rel.tag_name, names);
+      // assetPatternFor already avoids every sibling's name, so the one way this fails is
+      // two files with the very same name (a vendor folder's win/ and mac/ copies).
+      if (tryPick({ ...entry, asset: pattern }) !== c.name) {
+        choosable = false;
+        pattern = null;
+        [note, tone] = ['Another file in this release has the same name, so this one cannot be chosen by name.', 'off'];
+      }
+    }
+    return { name: c.name, size: c.size, score: c.score, status, choosable, pattern, note, tone, auto: c.name === auto, current: c.name === current };
+  });
+  files.sort((a, b) => CHOICE_ORDER[a.status] - CHOICE_ORDER[b.status] || (b.score || 0) - (a.score || 0) || a.name.localeCompare(b.name));
+  // Two files that score the same are separated only by the length of their names, which
+  // is a coin flip (OBS's two Ubuntu .debs on a machine that is neither release).
+  const fit = files.filter((f) => f.status === 'ok' && f.choosable);
+  const tie = !entry.asset && fit.length > 1 && fit[0].score === fit[1].score;
+  return { system: table.label, version: core.normTag(rel.tag_name), files, auto, current, saved: !!entry.asset, tie };
+}
+
+// Would choosing a file by hand fix this selection failure? -> the reason in plain words,
+// or null when it would not (and the original error stands on its own).
+function choiceReason(entry, rel, h, e) {
+  if (!canChooseFile(entry)) return null;
+  // "Only ships the other type" already names its own fix: change the type.
+  if (!entry.asset && /only (ships|lists) /.test(String(e && e.message))) return null;
+  let listing;
+  try {
+    listing = fileChoices(entry, rel, h);
+  } catch {
+    return null;
+  }
+  // Nothing that could be chosen — an empty release, or (off GitHub) nothing this machine
+  // can use — so a chooser would be a second dead end, not a way out.
+  if (!listing.files.some((f) => f.choosable)) return null;
+  const ver = listing.version;
+  if (!entry.asset) return `no file in ${ver} clearly fits this computer (${listing.system} ${entry.type}), so none is picked automatically. Choose the one to use`;
+  const many = /matched (\d+) assets/.exec(String(e.message));
+  if (many) return `your saved download choice now fits ${many[1]} files in ${ver}. Choose again`;
+  if (/^no asset matched/.test(String(e.message))) return `your saved download choice fits no file in ${ver}; the files may have been renamed. Choose again`;
+  return 'the download choice saved for this app cannot be read. Choose again';
 }
 
 // ---------------------------------------------------------------------------
@@ -664,6 +833,9 @@ module.exports = {
   makeCtx,
   getLatestRelease,
   selectAsset,
+  canChooseFile,
+  requireFileList,
+  fileChoices,
   archRank,
   strictArchFilter,
   parseSums,

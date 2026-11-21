@@ -208,6 +208,39 @@
   .menu button:hover { background: #2a313a; }
   .menu button.danger { color: var(--red); }
   .menu .sep { height: 1px; background: var(--border); margin: .3rem .2rem; }
+  /* Choose download: a dialog over the list, so the page itself gives up no space to it. One
+     card per file, the same shape as a source in the Add an app window. */
+  #chooser { width: min(700px, calc(100vw - 2rem)); max-height: calc(100vh - 2rem); padding: 14px 16px; color: var(--text);
+             color-scheme: dark; /* the list's scrollbar: without this it is a white bar on the dark dialog */
+             background: linear-gradient(180deg, var(--panel), var(--panel-2)); border: 1px solid var(--border);
+             border-radius: 12px; box-shadow: 0 18px 50px -12px #000; }
+  #chooser[open] { display: flex; flex-direction: column; }
+  #chooser::backdrop { background: rgba(1,4,9,.7); }
+  #chooser .sec-h { margin: 0; }
+  .ch-sub { font-size: 12.5px; line-height: 17px; color: var(--muted); margin: .15rem 0 .6rem; overflow-wrap: anywhere; }
+  .ch-sub b { color: var(--accent); font-weight: 600; }
+  .ch-list { flex: 1; min-height: 3rem; overflow-y: auto; display: flex; flex-direction: column; gap: .45rem;
+             border-top: 1px solid var(--border); padding-top: .65rem; }
+  .ch-file { flex: none; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .15rem .8rem; align-items: center;
+             border: 1px solid var(--border); border-radius: 10px; padding: .5rem .7rem; background: var(--panel); }
+  .ch-file.picked { border-color: rgba(227,161,60,.55); }
+  .ch-name { font: 500 13px var(--mono); overflow-wrap: anywhere; }
+  .ch-name .src-badge { display: inline-block; margin-left: .45rem; vertical-align: 1px; }
+  .ch-name .src-badge.yours { color: var(--accent); border-color: rgba(227,161,60,.4); }
+  .ch-name .src-badge.auto { color: var(--blue); border-color: rgba(88,166,255,.35); }
+  .ch-why { grid-column: 1; font-size: 12.5px; line-height: 17px; color: var(--muted); }
+  .ch-why.warn { color: var(--accent); }
+  /* Files not meant for this computer are most of a three-system release: kept quiet, under
+     their own small heading, so the ones that fit are what the eye lands on. */
+  .ch-group { flex: none; font: 600 .68rem var(--mono); letter-spacing: .07em; text-transform: uppercase; color: var(--faint); margin: .35rem 0 0 .1rem; }
+  .ch-file.off { background: transparent; }
+  .ch-file.off .ch-name { color: var(--muted); }
+  .ch-file.off .ch-why { color: var(--faint); }
+  .ch-file.off button { background: transparent; color: var(--muted); }
+  .ch-file button { grid-column: 2; grid-row: 1 / span 2; white-space: nowrap; }
+  .ch-bar { display: flex; gap: .55rem; align-items: center; padding-top: .7rem; border-top: 1px solid var(--border); margin-top: .7rem; }
+  #chooserStatus { margin-right: auto; min-width: 0; font-size: 12.5px; color: var(--muted); }
+  #chooserStatus.bad { color: var(--red); }
   .hint { font-size: .84rem; color: var(--faint); margin: .6rem 0 0; }
   .hint:empty { display: none; }
   /* "Repeat every:" above each cron line: label over each dropdown, one unit active at a time. */
@@ -524,11 +557,23 @@
         <button id="editFavorites" title="Your own apps and packs, added to Popular apps. Opens the file in your editor; a starter with examples is created the first time.">Edit favorites file</button>
         <button id="openLog">Open log</button>
       </div>
-      <p class="hint">config.json: per-app overrides such as asset pattern, install folder and installer arguments. Favorites file: your own apps and packs for Popular apps.</p>
+      <p class="hint">config.json: per-app overrides such as install folder and installer arguments. Favorites file: your own apps and packs for Popular apps.</p>
       <p class="hint">git-updater <span id="appVersion"></span></p>
     </section>
   </div>
 </div>
+
+<dialog id="chooser" aria-labelledby="chooserTitle">
+  <h2 class="sec-h" id="chooserTitle">Choose download</h2>
+  <p class="ch-sub" id="chooserSub"></p>
+  <div class="ch-list" id="chooserList"></div>
+  <div class="ch-bar">
+    <span id="chooserStatus" role="status"></span>
+    <button type="button" id="chooserAuto" title="Forget your choice and let git-updater pick the file again">Pick automatically</button>
+    <!-- Focus starts here, not on the first "Use this file": a stray Enter must not save a choice. -->
+    <button type="button" id="chooserClose" autofocus>Close</button>
+  </div>
+</dialog>
 
 <script>
 // Browser copy of core.cmpVersion. Kept in sync by the parity test in ui-sort.test.js.
@@ -591,7 +636,9 @@ const keyOf = (r) => `${r.owner}/${r.repo}#${r.type}`;
 // A long message (a file's full address, a rate-limit explanation) is marked so the toolbar can
 // give it a row of its own instead of wrapping it into a narrow column beside the buttons.
 const msg = (t, cls) => { const m = $('msg'); m.textContent = t || ''; m.className = [cls, String(t || '').length > 70 ? 'long' : ''].filter(Boolean).join(' '); };
-const clean = (e) => String(e && e.message ? e.message : e).replace(/^Error:\s*/, '');
+// A refusal from the main process arrives wrapped ("Error invoking remote method 'x': Error: …");
+// only the reason itself is something to show.
+const clean = (e) => String(e && e.message ? e.message : e).replace(/^Error:\s*/, '').replace(/^Error invoking remote method '[^']+':\s*(Error:\s*)?/, '');
 const selectedType = () => $('newType').querySelector('button.active').dataset.type;
 $('newType').querySelectorAll('button').forEach((b) =>
   b.onclick = () => { $('newType').querySelectorAll('button').forEach((x) => x.classList.remove('active')); b.classList.add('active'); });
@@ -604,8 +651,8 @@ const rowName = (r) => (r.source ? (r.name || r.repo) : `${r.owner}/${r.repo}`);
 const shortName = (r) => (r.source ? (r.name || r.repo) : r.repo);
 const nameOfKey = (k) => { const r = config.repos.find((x) => keyOf(x) === k); return r ? rowName(r) : k.split('#')[0]; };
 function localDescribe(r) {
-  if (!r.source) return { type: 'github', label: 'GitHub', host: 'github.com', ref: `${r.owner}/${r.repo}` };
-  return { type: r.source.type, label: r.source.type, host: '', ref: '' };
+  if (!r.source) return { type: 'github', label: 'GitHub', host: 'github.com', ref: `${r.owner}/${r.repo}`, canChoose: true };
+  return { type: r.source.type, label: r.source.type, host: '', ref: '', canChoose: false };
 }
 const SUM_TEXT = { pinned: 'checksum pinned by the listing', published: 'checksum published', none: 'no checksum published' };
 function sourceLine(r, key, s) {
@@ -672,7 +719,8 @@ function statusView(s) {
     case 'available': return s.present ? { text: 'Update available', cls: 'c-up' } : { text: 'Available to install', cls: 'c-up' };
     case 'installed': return datedStatus({ ...s, lastAction: 'installed' });
     case 'updated': return datedStatus({ ...s, lastAction: 'updated' });
-    case 'failed': return { text: s.reason || 'Failed', cls: 'c-bad' };
+    // Not an error to read but a decision to make: the row's button becomes "Choose…".
+    case 'failed': return s.chooseFile ? { text: 'Choose a download', cls: 'c-warn', tip: s.reason } : { text: s.reason || 'Failed', cls: 'c-bad' };
     default: return s.present ? { text: 'Not checked', cls: 'c-muted' } : { text: 'Not installed', cls: 'c-warn' };
   }
 }
@@ -913,7 +961,7 @@ function renderRepos() {
 
     // Status
     const sv = statusView(s);
-    const stTxt = el('span', 'txt', sv.text); stTxt.title = sv.text;
+    const stTxt = el('span', 'txt', sv.text); stTxt.title = sv.tip || sv.text;
     const stEl = el('span', 'status st ' + sv.cls); stEl.append(el('span', 'dot'), stTxt);
     row.appendChild(stEl);
 
@@ -934,10 +982,14 @@ function renderRepos() {
     // Actions
     const act = el('div', 'row-actions');
     const runningFail = s.ph === 'failed' && /is running/.test(s.reason || '');
-    const label = runningFail ? 'Retry' : primaryAction(s);
+    // A row that needs a file chosen says so right here, where its status and button
+    // already are: no banner, and no error text to decode.
+    const choose = s.ph === 'failed' && !!s.chooseFile;
+    const label = choose ? 'Choose…' : runningFail ? 'Retry' : primaryAction(s);
     const b = el('button', 'primary rowbtn', label); b.disabled = busy;
     if (runningFail) b.title = 'Close the app and retry the update';
-    b.onclick = () => (runningFail ? closeAndRetry(r, key) : label === 'Check' ? checkApps([key]) : runBatch([key]));
+    if (choose) b.title = 'Choose which file of the latest version to download';
+    b.onclick = () => (choose ? openChooser(r) : runningFail ? closeAndRetry(r, key) : label === 'Check' ? checkApps([key]) : runBatch([key]));
     act.appendChild(b);
     const kb = el('button', 'kebab ghost', '⋯'); kb.title = 'More';
     kb.onclick = (ev) => { ev.stopPropagation(); openMenu(r, kb); };
@@ -1027,11 +1079,20 @@ function openMenu(r, anchor) {
   item('Preview selected file', async () => {
     try {
       const p = await window.api.previewAsset(key);
+      if (p.needsChoice) {
+        // No file can be picked: put the row in the same "Choose…" state a Check would.
+        st[key] = { ...(st[key] || {}), ph: 'failed', reason: p.reason, chooseFile: true };
+        renderRepos();
+        return msg(`${shortName(r)} needs a download chosen.`, 'bad');
+      }
       st[key] = { ...(st[key] || {}), fileHost: p.host, checksum: p.checksum };
       renderRepos();
-      msg(`${rowName(r)} @ ${p.tag} → ${p.asset} — ${p.url} — listed by ${p.listedBy}; ${SUM_TEXT[p.checksum] || ''}${p.requires && p.requires.length ? '; needs ' + p.requires.join(', ') : ''}`, 'info');
+      msg(`${rowName(r)} @ ${p.tag} → ${p.asset}${p.chosen ? ' (your choice)' : ''} — ${p.url} — listed by ${p.listedBy}; ${SUM_TEXT[p.checksum] || ''}${p.requires && p.requires.length ? '; needs ' + p.requires.join(', ') : ''}`, 'info');
     } catch (e) { msg(clean(e), 'bad'); }
   });
+  // Only where the source publishes a list of files to choose from (not WinGet or Homebrew,
+  // whose listing names the one file itself). Main refuses the others too.
+  if ((srcInfo[key] || localDescribe(r)).canChoose) item(r.asset ? 'Change download…' : 'Choose download…', () => openChooser(r));
   if (r.type === 'portable') item('Open folder', () => window.api.openFolder(key));
   sep();
   item('Edit…', () => startEdit(r));
@@ -1053,6 +1114,88 @@ function openMenu(r, anchor) {
   menuEl.style.left = `${Math.max(8, window.scrollX + rect.right - menuEl.offsetWidth)}px`;
   setTimeout(() => document.addEventListener('click', closeMenu), 0);
 }
+
+// --- choose download ---
+// ⋯ → "Choose download…", and the "Choose…" button of a row that cannot pick a file by itself.
+// Lists the files of the app's latest version, best fit for this computer first, each with why
+// it does or does not suit it. "Use this file" saves that choice at once and closes; the main
+// process remembers the file by its name without the version, so later versions use the same one.
+// The window only ever sends back a position in the list it was given.
+let chooser = null; // { r, key, listId } while the dialog is open
+const fmtSize = (n) => (!n ? '' : n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
+function closeChooser() { chooser = null; if ($('chooser').open) $('chooser').close(); }
+async function openChooser(r) {
+  if (busy) return msg('Wait for the current check or update to finish.', 'bad');
+  const key = keyOf(r);
+  msg(`Reading the files in the latest version of ${shortName(r)}…`, 'info');
+  let data;
+  try { data = await window.api.fileChoices(key); }
+  catch (e) { return msg(clean(e), 'bad'); }
+  msg('', '');
+  chooser = { r, key, listId: data.listId };
+  const sub = $('chooserSub');
+  sub.textContent = `${rowName(r)} ${data.version} · ${typeLabel(data.type)} for ${data.system}. Your choice is remembered for later versions too. `;
+  // What needs saying about this list as a whole, if anything, in the same line.
+  const note = data.saved && !data.hasCurrent ? 'Your saved choice fits no file in this version, so choose again.'
+    : !data.saved && !data.hasAuto ? 'No file clearly fits this computer, so none is picked automatically.'
+    : data.tie ? 'Several files fit equally well, so the automatic pick is close to a guess.' : '';
+  if (note) sub.appendChild(el('b', null, note));
+  const list = $('chooserList');
+  list.replaceChildren();
+  if (!data.files.length) list.appendChild(el('div', 'empty', 'The latest version has no files to download.'));
+  let grouped = false;
+  data.files.forEach((f) => {
+    if (f.tone === 'off' && !grouped) { grouped = true; list.appendChild(el('div', 'ch-group', 'Not for this computer')); }
+    const card = el('div', 'ch-file' + (f.tone === 'off' ? ' off' : '') + (f.current || (f.auto && !data.saved) ? ' picked' : ''));
+    const name = el('span', 'ch-name', f.name);
+    if (f.auto) name.appendChild(el('span', 'src-badge auto', 'Automatic pick'));
+    if (f.current) name.appendChild(el('span', 'src-badge yours', 'Your choice'));
+    const size = fmtSize(f.size);
+    card.append(name, el('span', 'ch-why' + (f.tone === 'warn' ? ' warn' : ''), size ? `${size} · ${f.note}` : f.note));
+    if (f.choosable && !f.current) {
+      const use = el('button', null, 'Use this file');
+      use.onclick = () => saveChoice(f.index);
+      card.appendChild(use);
+    }
+    list.appendChild(card);
+  });
+  $('chooserAuto').hidden = !data.saved;
+  $('chooserStatus').textContent = ''; $('chooserStatus').className = '';
+  $('chooser').showModal();
+}
+// index null: forget the choice and go back to the automatic pick.
+async function saveChoice(index) {
+  if (!chooser) return;
+  const { r, key, listId } = chooser;
+  const buttons = [...$('chooser').querySelectorAll('button')];
+  buttons.forEach((b) => { b.disabled = true; });
+  try {
+    await window.api.chooseFile(listId, index);
+  } catch (e) {
+    // Still open, so the reason is shown where the user is looking.
+    buttons.forEach((b) => { b.disabled = false; });
+    $('chooserStatus').textContent = clean(e); $('chooserStatus').className = 'bad';
+    return;
+  }
+  buttons.forEach((b) => { b.disabled = false; });
+  closeChooser();
+  // The choice was saved by the main process: re-read the list so the next save from this
+  // window cannot write the old value back over it.
+  st[key] = { ...(st[key] || {}), ph: 'idle', chooseFile: false, reason: null };
+  await reloadConfig();
+  msg(index === null ? `${shortName(r)} picks its download automatically again.` : `Download chosen for ${shortName(r)}.`, 'ok');
+  checkApps([key]);
+}
+$('chooserAuto').onclick = () => saveChoice(null);
+$('chooserClose').onclick = closeChooser;
+// Esc closes a <dialog> by itself; clicking the dimmed page around it should too. A click on
+// the dialog's own padding also reports the dialog as its target, so go by where it landed.
+$('chooser').addEventListener('click', (e) => {
+  const b = $('chooser').getBoundingClientRect();
+  if (e.target === $('chooser') && (e.clientX < b.left || e.clientX > b.right || e.clientY < b.top || e.clientY > b.bottom)) closeChooser();
+});
+$('chooser').addEventListener('close', () => { chooser = null; });
+// --- end of the choose download block ---
 
 // --- config ops ---
 async function saveConfig() {
@@ -1493,7 +1636,7 @@ async function closeAndRetry(r, key) {
 async function checkApps(keys) {
   if (busy) return;
   holdVisible(); // before the statuses change, so rows do not vanish from a filtered list mid-run
-  busy = true; keys.forEach((k) => (st[k] = { ...(st[k] || {}), ph: 'checking' })); renderRepos();
+  busy = true; keys.forEach((k) => (st[k] = { ...(st[k] || {}), ph: 'checking', chooseFile: false })); renderRepos();
   const retyped = { portable: [], installer: [] }; // type corrections — reported, never silent
   let stopped = null; // rate-limit / bad-token reason that ended the run early
   try {
@@ -1504,7 +1647,8 @@ async function checkApps(keys) {
         const s = st[k] || {};
         if (r.retyped && retyped[r.retyped.to]) retyped[r.retyped.to].push(nameOfKey(k));
         const prov = { ...(r.fileHost ? { fileHost: r.servedFrom || r.fileHost } : {}), ...(r.checksum ? { checksum: r.checksum } : {}) };
-        if (r.status === 'failed') st[k] = { ...s, ...prov, ph: 'failed', reason: r.reason };
+        // A row that needs a file chosen still knows its versions, so it keeps showing them.
+        if (r.status === 'failed') st[k] = { ...s, ...prov, ph: 'failed', reason: r.reason, chooseFile: !!r.chooseFile, ...(r.chooseFile ? { from: r.from || s.from, to: r.to || s.to } : {}) };
         else st[k] = { ...s, ...prov, ph: r.status === 'current' ? 'current' : 'available', from: r.from || s.from, to: r.to, present: s.present };
       }
       renderRepos();
@@ -1539,8 +1683,8 @@ async function runBatch(keys, force, autoClose = false) {
   if (busy || !keys.length) return;
   holdVisible(); // before the statuses change, so rows do not vanish from a filtered list mid-run
   busy = true;
-  keys.forEach((k) => (st[k] = { ...(st[k] || {}), ph: 'queued' })); renderRepos();
-  let done = 0, installed = 0, failed = 0;
+  keys.forEach((k) => (st[k] = { ...(st[k] || {}), ph: 'queued', chooseFile: false })); renderRepos();
+  let done = 0, installed = 0, failed = 0, needChoice = 0;
   const reopenErrors = [];
   async function reopen(k) {
     try { await window.api.openApp(k); }
@@ -1562,6 +1706,8 @@ async function runBatch(keys, force, autoClose = false) {
         installerPending = true;
         watchInstall(k, s.from, wasInstall, closed ? () => reopen(k) : undefined);
       }
+      // Nothing was attempted: the row asks for a file to be chosen, which is not a failure.
+      else if (r.chooseFile) { st[k] = { ...s, ph: 'failed', reason: r.reason, chooseFile: true, to: r.to || s.to }; needChoice++; }
       else { st[k] = { ...s, ph: 'failed', reason: r.reason }; failed++; }
       if (r && r.stopRun) { // same as checkApps: the rest would only fail the same way
         keys.slice(keys.indexOf(k) + 1).forEach((x) => { st[x] = { ...(st[x] || {}), ph: 'failed', reason: r.reason }; failed++; });
@@ -1579,8 +1725,9 @@ async function runBatch(keys, force, autoClose = false) {
   if (installed) parts.push(`${installed} installed`);
   if (waiting) parts.push(`${waiting} waiting for its installer window`);
   if (failed) parts.push(`${failed} failed`);
+  if (needChoice) parts.push(`${needChoice} need${needChoice === 1 ? 's' : ''} a download chosen`);
   if (reopenErrors.length) parts.push(`${reopenErrors.length} could not be re-opened: ${reopenErrors.join('; ')}`);
-  msg(parts.length ? parts.join(', ') + '.' : 'Nothing to update.', failed || reopenErrors.length ? 'bad' : 'ok');
+  msg(parts.length ? parts.join(', ') + '.' : 'Nothing to update.', failed || needChoice || reopenErrors.length ? 'bad' : 'ok');
 }
 
 window.api.onProgress(({ id, phase, pct }) => {

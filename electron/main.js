@@ -531,6 +531,20 @@ ipcMain.handle('config:save', (_e, cfg) => {
       if (!v.ok) throw new Error(`${k} schedule: ${v.error}`);
     }
   }
+  // A download choice (the per-app "asset" override) that is new or edited must be one the
+  // engine can read: a glob, or a /regular expression/ that compiles. Checked only when it
+  // changed, for the same reason as the schedules: a bad value already in a hand-edited
+  // config.json must not block saving every other setting. That one is handled where it is
+  // used instead — its row fails alone and offers Choose… to replace it.
+  const savedChoice = new Map((Array.isArray(previous.repos) ? previous.repos : []).map((r) => [`${r.owner}/${r.repo}#${r.type}`, r.asset]));
+  (cfg && Array.isArray(cfg.repos) ? cfg.repos : []).forEach((r, i) => {
+    if (!r || r.asset == null || savedChoice.get(`${r.owner}/${r.repo}#${r.type}`) === r.asset) return;
+    try {
+      core.compilePattern(r.asset);
+    } catch (err) {
+      throw new Error(`app ${i + 1}: its download choice ("asset") is not valid — ${err.message}`);
+    }
+  });
   const wasStartAtLogin = !!previous.startAtLogin;
   const wantsStartAtLogin = !!(cfg && cfg.startAtLogin);
   // The system's login list is written first, so a refusal (a development run, a system that
@@ -680,6 +694,7 @@ ipcMain.handle('sources:describe', () => {
         name: core.appName(r),
         fileHost: rec.fileHost || null,
         checksum: rec.checksum || null,
+        canChoose: sources.canChooseFile(r), // whether the row offers "Choose download…"
       };
     } catch (e) {
       out[key] = { type: 'unknown', label: 'Unknown source', host: '', ref: '', name: core.appName(r), error: e.message };
@@ -693,7 +708,16 @@ ipcMain.handle('asset:preview', async (_e, appKey) => {
   const repo = findEntry(appKey);
   const ctx = sources.makeCtx();
   const rel = await sources.getLatestRelease(repo, ctx);
-  const asset = sources.selectAsset(repo, rel, await hostInfo(repo));
+  let asset;
+  try {
+    asset = sources.selectAsset(repo, rel, await hostInfo(repo));
+  } catch (e) {
+    // An error keeps only its message across the bridge, so "this needs a choice" is an
+    // answer, not a rejection — the row can then offer Choose… exactly as it does after a
+    // Check, instead of the preview being the one place that shows a dead-end error.
+    if (e.chooseFile) return { tag: rel.tag_name, needsChoice: true, reason: e.chooseWhy };
+    throw e;
+  }
   const sum = await sources.resolveChecksum(repo, rel, asset, ctx);
   return {
     tag: rel.tag_name,
@@ -703,8 +727,85 @@ ipcMain.handle('asset:preview', async (_e, appKey) => {
     listedBy: rel.provenance.listedBy,
     checksum: sum.state,
     requires: asset.requires || null,
+    chosen: !!repo.asset, // the user's saved choice picked this file, not the automatic pick
   };
 });
+
+// --- Choose download ------------------------------------------------------------
+// ⋯ → "Choose download…" on a row: pick by hand which file of the latest release an app
+// uses, when the automatic pick is wrong or there is none. It gives the per-app `asset`
+// override a UI; before this the only way to set one was to hand-edit config.json.
+//
+// Two calls, both accepted from the main window's own page only:
+//   asset:choices  lists the latest release's files ranked for this machine. Main KEEPS
+//                  that listing.
+//   asset:choose   takes a position in the kept listing — never a file name, a pattern or
+//                  an address from the renderer — and saves that file's override.
+// What gets saved is built and proven main-side (sources.fileChoices), so the most a
+// misbehaving page could do is pick another of the files this app's own source lists.
+let fileList = null; // the listing last handed out: { id, key, rel, files }
+let nextFileListId = 0;
+
+function requireChooser(e) {
+  if (!fromWindow(e, win, mainPage)) throw new Error('only the main window can choose a download');
+}
+
+ipcMain.handle('asset:choices', async (e, appKey) => {
+  requireChooser(e);
+  if (typeof appKey !== 'string') throw new Error('app not found');
+  const entry = findEntry(appKey);
+  sources.requireFileList(entry); // refused before any request is made
+  const id = ++nextFileListId;
+  const rel = await sources.getLatestRelease(entry, sources.makeCtx());
+  const listing = sources.fileChoices(entry, rel, await hostInfo(entry));
+  // A slow answer to an earlier request must not replace the listing of a later one.
+  if (!fileList || id > fileList.id) fileList = { id, key: appKey, rel, files: listing.files };
+  return {
+    listId: id,
+    name: core.displayId(entry),
+    type: entry.type,
+    system: listing.system,
+    version: listing.version,
+    saved: listing.saved,
+    tie: listing.tie,
+    hasAuto: !!listing.auto,
+    hasCurrent: !!listing.current,
+    // The override each file would be saved as stays here; the window has no use for it.
+    files: listing.files.map((f, index) => ({ index, name: f.name, size: f.size, note: f.note, tone: f.tone, choosable: f.choosable, auto: f.auto, current: f.current })),
+  };
+});
+
+// choice: { listId, index }. index null means "go back to the automatic pick".
+ipcMain.handle('asset:choose', (e, choice) => {
+  requireChooser(e);
+  const { listId, index } = choice || {};
+  const held = fileList;
+  if (!held || listId !== held.id) throw new Error('that list of files is no longer current — open Choose download again');
+  const automatic = index === null;
+  const file = automatic ? null : Number.isSafeInteger(index) && index >= 0 ? held.files[index] : undefined;
+  if (file === undefined) throw new Error('that file is not in the list');
+  const cfg = readConfig();
+  const entry = (cfg.repos || []).find((x) => `${x.owner}/${x.repo}#${x.type}` === held.key);
+  if (!entry) throw new Error('app not found');
+  sources.requireFileList(entry);
+  if (automatic) {
+    delete entry.asset;
+  } else {
+    if (!file.choosable) throw new Error(file.note);
+    // Proven once more against the entry as it is on disk NOW: the override must select
+    // this file and only this file — no match, or more than one, is refused here rather
+    // than saved and discovered at the next Check.
+    let got = null;
+    try { got = sources.selectAsset({ ...entry, asset: file.pattern }, held.rel).name; } catch {}
+    if (got !== file.name) throw new Error('that file can no longer be chosen — open Choose download again');
+    entry.asset = file.pattern;
+  }
+  saveConfigFile(cfg);
+  fileList = null; // one listing, one choice — nothing left to replay
+  log(automatic ? `download choice cleared for ${held.key}` : `download choice for ${held.key}: ${file.name} (saved as ${file.pattern})`);
+  return { file: file ? file.name : null };
+});
+// --- end of Choose download ---
 
 // The source types this build knows, for the Settings "preferred sources" list. A
 // provider that cannot work here (wrong OS, missing runtime support) is listed as such.

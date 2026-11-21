@@ -295,18 +295,42 @@ async function handleRepo(repo, id, st, opts) {
 
   const base = { repo: id, id: key, from: fromV, to: core.normTag(latest), ...src };
 
-  // A plain GitHub check with the checksum setting off stays exactly what it was: the
-  // version comparison alone, no selection, no extra request.
+  // A selection failure that choosing a file by hand would fix (nothing fits automatically,
+  // or a saved choice stopped matching — see sources.selectAsset) is a row state, not an
+  // error: the row keeps its versions and the window offers "Choose…" on it. The reason is
+  // the plain-words one; the log keeps the original.
+  const needsChoice = (e) => {
+    if (opts.mode !== 'check' && !opts.dryRun) log(`SKIP ${key}: ${e.message}`);
+    return { ...base, status: 'failed', reason: e.chooseWhy, chooseFile: true };
+  };
+
+  // A plain GitHub check with the checksum setting off stays what it was: the version
+  // comparison, and no extra request. The one addition costs nothing — the release is
+  // already in hand: try the selection, so "needs a choice" is said at Check rather than
+  // discovered when the user presses Update. No installed flavor is looked up for it:
+  // flavor only re-ranks files, it never decides whether there is one. Any other selection
+  // failure stays the update's to raise, exactly as before.
   if (opts.mode === 'check' && gh && !opts.requireChecksum) {
+    try {
+      sources.selectAsset(repo, rel);
+    } catch (e) {
+      if (e.chooseFile) return needsChoice(e);
+    }
     return { ...base, status: 'updated', ...(retyped ? { retyped, note: retyped.note } : {}) };
   }
 
-  const pre = await preflight(repo, rel, ctx, {
-    gh,
-    tracked: !!tracked,
-    requireChecksum: !!opts.requireChecksum,
-    label: src.source && src.source.label,
-  });
+  let pre;
+  try {
+    pre = await preflight(repo, rel, ctx, {
+      gh,
+      tracked: !!tracked,
+      requireChecksum: !!opts.requireChecksum,
+      label: src.source && src.source.label,
+    });
+  } catch (e) {
+    if (e.chooseFile) return needsChoice(e);
+    throw e;
+  }
   const asset = pre.asset;
   let sum = pre.sum;
   if (pre.blocked) {

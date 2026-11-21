@@ -213,6 +213,92 @@ function pickAsset(assets, type, arch, flavor, platform, host) {
   return best;
 }
 
+// ---------------------------------------------------------------------------
+// Choosing a file by hand ("Choose download…").
+//
+// Auto-pick is a score, and some releases have no right answer to score: two .debs for
+// two Ubuntu releases, a tarball beside an AppImage, or nothing that names this platform
+// at all. The user picks once; what is saved is the per-entry `asset` override that
+// matchAsset already serves — the picked file's name with the version swapped for "*", so
+// the next release's equivalent file matches with no prompt. Nothing here is a second
+// mechanism: it only writes, and explains, the override that was hand-edited before.
+// ---------------------------------------------------------------------------
+
+// Files in a release that are never the build itself: checksums, signatures, update
+// feeds, SBOMs. Left out of the chooser so the list is only things that could install.
+const METADATA_ASSET =
+  /\.(sha\d*|sha\d*sum|md5|sig|asc|minisig|pem|crt|cert|blockmap|ya?ml|json|txt|sbom|spdx|intoto\.jsonl|sigstore)$|^(sha\d*sums|checksums|md5sums)\b/i;
+
+const escapeRe = (s) => String(s).replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
+
+// The override that pins exactly this name and nothing else: an anchored, escaped regex.
+// Needed when the name itself would be read as a glob ("weird*name.zip") or as a regex
+// ("/odd/"), and when two files differ only by letter case — a glob compares
+// case-insensitively, a /regex/ does not.
+const exactPattern = (name) => `/^${escapeRe(name)}$/`;
+
+// The override to remember for a chosen file: every occurrence of the release's version
+// in the name becomes "*". Falls back to the exact name when the version does not appear
+// (an unversioned file name stays stable on its own) or is too short to replace safely —
+// a bare "1" would turn half the name into wildcards.
+// names: every file name in the same release, so a wildcard that would also catch a
+// sibling is never returned.
+function assetPatternFor(name, tag, names) {
+  const n = String(name || '');
+  if (/[*?]/.test(n) || (n.length > 1 && n[0] === '/' && n[n.length - 1] === '/')) return exactPattern(n);
+  const only = (pattern) => !names || names.filter(compilePattern(pattern)).length === 1;
+  const raw = String(tag == null ? '' : tag).trim();
+  const ver = normTag(raw);
+  // Longest form first: "v1.2.3" before "1.2.3", so the "v" is not left stranded. Some
+  // projects write the version into file names with another separator than the tag uses
+  // (tag 1.2.3, file app_1_2_3.zip); without those forms such a file is pinned by its
+  // exact name and stops matching at the very next release.
+  const forms = [...new Set([raw, ver, ver.replace(/\./g, '_'), ver.replace(/\./g, '-')])].filter(
+    (v) => v && /\d/.test(v) && (v.length >= 3 || /\d\.\d/.test(v))
+  );
+  forms.sort((a, b) => b.length - a.length);
+  for (const v of forms) {
+    if (!n.toLowerCase().includes(v.toLowerCase())) continue;
+    const pattern = n.replace(new RegExp(escapeRe(v), 'gi'), '*');
+    // The wildcard must not swallow a sibling: if it matches more than the chosen file in
+    // THIS release, it would be ambiguous next release too. The exact name is the safe pin.
+    if (only(pattern)) return pattern;
+  }
+  return only(n) ? n : exactPattern(n);
+}
+
+// Every installable-looking file in a release, sorted into what the chooser needs to say
+// about it for one platform and package type. status:
+//   'ok'         this platform and package type would accept it (score is its rank)
+//   'other-type' fits the OTHER type (an installer while the app is portable, or vice versa)
+//   'unknown'    nothing marks it as a build for this platform
+//   'rejected'   named for another platform, or source/debug files
+// Whether a row may actually be chosen depends on where the app comes from, and whether
+// this machine's processor can run it is the registry's rule — both are added by
+// fileChoices in src/sources/index.js. This stays a pure reading of the names.
+function classifyAssets(assets, type, arch, flavor, platform, host) {
+  const table = assetTable(platform);
+  const all = (assets || []).filter((a) => a && a.name && !METADATA_ASSET.test(a.name));
+  const drop = table.id === 'darwin' ? new Set() : macCompanionZips(all.map((a) => a.name));
+  const a4 = arch || (typeof process !== 'undefined' && process.arch) || 'x64';
+  const other = type === 'installer' ? 'portable' : 'installer';
+  return all.map((a) => {
+    const score = drop.has(a.name) ? -Infinity : scoreAsset(a.name, type, a4, flavor, table, host);
+    const asOther = scoreAsset(a.name, other, a4, null, table, host) !== -Infinity;
+    let status = 'ok';
+    if (score === -Infinity) {
+      if (drop.has(a.name) || table.reject.test(a.name)) status = 'rejected';
+      else status = asOther ? 'other-type' : 'unknown';
+    } else if (asOther && table.typeScore(a.name, type, null) < 0 && table.typeScore(a.name, other, null) >= 0) {
+      // One extension serves both types on Windows (.exe), and there only the words in the
+      // name tell them apart: "App-Setup.exe" passes as a portable file with a penalty, and
+      // the chooser would have called it a fit. The name says which it is; believe it.
+      status = 'other-type';
+    }
+    return { asset: a, name: a.name, size: a.size || 0, score: score === -Infinity ? null : score, status };
+  });
+}
+
 // Always picks a WINDOWS asset regardless of the running OS. Kept so the Windows
 // behaviour (and its test suite) stays pinned and platform-independent.
 function pickWindowsAsset(assets, type, arch, flavor) {
@@ -507,6 +593,8 @@ module.exports = {
   matchAsset,
   pickAsset,
   pickWindowsAsset,
+  assetPatternFor,
+  classifyAssets,
   guessKind,
   installerCmd,
   validateConfig,

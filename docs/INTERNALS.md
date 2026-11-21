@@ -47,7 +47,10 @@ bonuses — are all in `src/platform/assets.js`, which is pure data so `core.js`
 
 Optional per-app overrides (rarely needed):
 - `"asset": "*-win-x64.zip"` (glob or `/regex/`) pins a specific file instead of auto-pick.
-- Portable: `"install": { "dir": "D:/Custom" }` to override the folder.
+  The app sets this itself from **⋯ → Choose download…** (below); hand-editing is no longer
+  the only way.
+- Portable: `"install": { "dir": "D:/Custom" }` to override the folder (it wins over a category).
+  With categories switched on this is the **Folder** field of **⋯ → Edit…** (see "Categories").
 - Installer: `"install": { "kind": "inno", "args": ["/VERYSILENT"] }` — required when detection
   can't identify an unusual installer (`kind` is `msi` | `nsis` | `inno` | `exe` | `pkg` | `deb` | `rpm`;
   `exe` has no switches of its own and runs only with `args`).
@@ -56,6 +59,52 @@ Optional per-app overrides (rarely needed):
 - `"tagPrefix": "desktop-v"` pins release lookup to one train, for repos that publish several
   products' releases in one place (e.g. bitwarden/clients also ships `web-v*`/`browser-v*`/
   `cli-v*` — without this, "latest release" can resolve to the wrong product entirely).
+
+### Choose download…
+
+Auto-pick is a score, and some releases have no right answer to score: two `.deb`s for two
+Ubuntu releases, a tarball beside an AppImage, or nothing that names this platform at all.
+**⋯ → Choose download…** on a row lists the latest release's files, best fit for this
+machine first, each with why it does or does not suit it (another system, another
+processor, installer vs portable, runs under emulation) and which one would be picked
+automatically. **Use this file** saves that choice and closes; **Pick automatically**
+removes it. (Ported from PlayingKarrde/git-updater `12043aa`, reworked for sources.)
+
+- **What is saved** is the `asset` override above — no second mechanism. The picked file's
+  name has the release's version replaced by `*` (`core.assetPatternFor`), so the next
+  release's equivalent file matches with no prompt: `OBS-Studio-32.2.2-Ubuntu-24.04-x86_64.deb`
+  → `OBS-Studio-*-Ubuntu-24.04-x86_64.deb`. A name without the version, or one whose
+  wildcard would also catch a sibling, is saved exactly; a name that would itself read as a
+  glob or regex is saved as an escaped, anchored `/regex/`.
+- **Which sources.** GitHub, GitLab and Gitea releases, and vendor folders
+  (`sources.canChooseFile`). Not WinGet or Homebrew: their listing resolves to the one
+  vendor file it hash-pins, chosen on stated facts rather than names, so there is no list
+  and no name to remember. The menu item is not shown there and main refuses the call.
+- **What may be chosen.** A GitHub entry takes its override literally, as it always has, so
+  any listed file except one of the other package type can be chosen — each with the
+  warning its row carries. Every other source only ever *narrows* what this machine and
+  this package type can use (`selectSourced`), so only those files have a button; the rest
+  are listed with the reason. `sources.fileChoices` proves each file's saved form by running
+  the real selection with it, so a choice can never be saved that the next Check refuses.
+- **Rows that need a choice.** When nothing fits automatically, or a saved choice stops
+  matching (the project renamed its files) or now matches several files, the selection
+  error carries `chooseFile` and a plain-words `chooseWhy` — but only when the chooser has
+  something to offer. The runner returns that as a failed result with `chooseFile: true`
+  and the row's versions, at Check as well as on Update, and the row shows **Choose a
+  download** with a **Choose…** button where its status and button already are. "Only ships
+  an installer / portable builds" keeps its own fix (change the type). A plain GitHub
+  check still makes no extra request for this: the selection is tried on the release
+  already in hand.
+- **IPC.** `asset:choices` and `asset:choose`, main window only (`fromWindow`). Main keeps
+  the listing it handed out; `asset:choose` takes `{ listId, index }` — a position in that
+  listing, never a file name, pattern or URL from the renderer — re-proves the override
+  against the entry on disk, and saves through `saveConfigFile`. An in-page `<dialog>` in
+  `ui/index.html`, not a window: nothing new to sandbox or sender-check.
+- **Bad values.** `config:save` rejects an `asset` that is new or edited and cannot be read
+  (an unclosed `/regex/`, a non-string). One already in a hand-edited `config.json` does not
+  block saving other settings or fail the whole run: its own row asks for a new choice.
+- **Private repositories.** Only the override is stored. Every run resolves it against the
+  release again, so the file still carries its API address for the token fallback.
 
 You can track the same repo as **both** portable and installed — each is a separate entry with
 its own update history.

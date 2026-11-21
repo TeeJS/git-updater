@@ -38,6 +38,10 @@ contextBridge.exposeInMainWorld('api', {
   favoritesOpen: () => ipcRenderer.invoke('favorites:open'),
   favoritesCopyRow: (appKey) => ipcRenderer.invoke('favorites:copy-row', appKey),
   previewAsset: (appKey) => ipcRenderer.invoke('asset:preview', appKey),
+  // Choose download: the list of files for one app, then a position in that list (null =
+  // back to the automatic pick). No file name or pattern crosses the bridge.
+  fileChoices: (appKey) => ipcRenderer.invoke('asset:choices', appKey),
+  chooseFile: (listId, index) => ipcRenderer.invoke('asset:choose', { listId, index }),
   check: (body) => ipcRenderer.invoke('check', body),
   update: (body) => ipcRenderer.invoke('update', body),
   onProgress: (cb) => ipcRenderer.on('update:progress', (_e, data) => cb(data)),
