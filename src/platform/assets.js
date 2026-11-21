@@ -33,11 +33,13 @@ const win = {
   },
   osBonus: (name) => (/win(dows|64|32)?/i.test(name) ? 4 : 0),
   archTokens(name) {
-    const isX64 = /(x64|amd64|x86[_-]?64|win64)/i.test(name);
+    // A bare "w64" / "w32" is an architecture too (Ghostscript: gs10080w64.exe, gs10080w32.exe;
+    // AIMP: aimp_5.10_w64.exe) — but only as its own token, never the tail of a word (mingw32).
+    const isX64 = /(x64|amd64|x86[_-]?64|win64|(?<![a-z])w64(?![a-z0-9]))/i.test(name);
     return {
       isX64,
       isArm: /(arm64|aarch64|arm)/i.test(name),
-      isX86: /(x86|ia32|win32|32-?bit)/i.test(name) && !isX64,
+      isX86: /(x86|ia32|win32|32-?bit|(?<![a-z])w32(?![a-z0-9]))/i.test(name) && !isX64,
       isUniversal: false,
     };
   },

@@ -564,7 +564,9 @@ ipcMain.handle('scan:run', async () => {
   if (!SCAN_PLATFORMS.has(process.platform)) return [];
   detect.clearCache();
   const tracked = new Set(readConfig().repos.map((r) => `${r.owner}/${r.repo}`.toLowerCase()));
-  return catalog.matchInstalled(await detect.allInstalled(), tracked); // filtered to this OS
+  // Packaged (MSIX) rows are package identities, not display names: the scan's name patterns
+  // are not written for them.
+  return catalog.matchInstalled((await detect.allInstalled()).filter((e) => !e.packaged), tracked); // filtered to this OS
 });
 // Add selected repos: [{repo: "owner/name", type: "portable"|"installer"}].
 ipcMain.handle('scan:add', (_e, items) => {
@@ -933,6 +935,10 @@ function addSourceItems(items) {
   let skipped = 0;
   for (const it of items) {
     const entry = sources.entryFromCandidate({ source: it.source, name: it.name }, it.type, { prerelease: !!it.prerelease });
+    // A curated app whose installed copy cannot be found by its name (a packaged Windows app
+    // is inventoried under its package identity) carries the name to look for instead.
+    const detectAs = catalog.detectFor(it.source, process.platform);
+    if (detectAs) entry.detect = detectAs;
     if (cfg.repos.some((r) => r.owner === entry.owner && r.repo === entry.repo && r.type === entry.type)) {
       skipped++;
       continue;
@@ -1001,6 +1007,7 @@ ipcMain.handle('popular:list', () => {
       id: a.id,
       name: a.name,
       category: a.category,
+      windowsOnly: catalog.isWindowsOnly(a.category), // the picker groups these in their own section
       sources: usable.map((s) => sources.provider(s.type).label),
       tracked: usable.some((s) => isTracked(tracked, s)),
     };
@@ -1048,10 +1055,13 @@ async function planItems(items) {
         const usable = (t) => info.types[t].ok && !(cfg.requireChecksum && info.types[t].checksum === 'none');
         // The preferred type when this source has it natively; else whichever type exists.
         // An emulated build is never chosen silently: it is offered, unticked, with the reason.
-        const native = order.find((t) => usable(t) && !info.types[t].emulated);
-        const any = native || order.find((t) => usable(t));
+        // A curated app can be limited to one form (see `type` in src/catalog.js).
+        const only = it.appId && (catalog.appById(it.appId) || {}).only;
+        const forms = only ? order.filter((t) => t === only) : order;
+        const native = forms.find((t) => usable(t) && !info.types[t].emulated);
+        const any = native || forms.find((t) => usable(t));
         if (!any) {
-          const first = info.types[order[0]];
+          const first = info.types[forms[0]];
           misses.push(`${listedBy}: ${first.ok ? 'no checksum published, and only files with a checksum are installed' : first.reason}`);
           continue;
         }

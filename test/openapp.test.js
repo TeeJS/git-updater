@@ -154,3 +154,28 @@ test('launch file: a manifest with no modes falls back rather than refusing', ()
   const files = ['myapp', 'data/blob'];
   assert.equal(core.pickLaunchFile(files, 'myapp', 'linux', () => false), 'myapp');
 });
+
+// --- win.parsePackageKeys: packaged (MSIX) apps, which the uninstall registry never lists ----
+
+test('parsePackageKeys: reads identity and version from each package key name', () => {
+  const KEY = 'HKEY_CURRENT_USER\\Software\\Classes\\Local Settings\\Software\\Microsoft\\Windows\\CurrentVersion\\AppModel\\Repository\\Packages';
+  const out = [
+    '',
+    KEY, // the key itself is not a package
+    `${KEY}\\MicrosoftCorporationII.Windows365_2.0.1601.0_x64__8wekyb3d8bbwe`,
+    `${KEY}\\Microsoft.VCLibs.140.00.UWPDesktop_14.0.33728.0_x64__8wekyb3d8bbwe`,
+    `${KEY}\\Microsoft.WindowsTerminal_1.23.12811.0_x64__8wekyb3d8bbwe`,
+    // A bundle also registers resource packages under the same identity and version.
+    `${KEY}\\Microsoft.WindowsTerminal_1.23.12811.0_neutral_split.scale-150_8wekyb3d8bbwe`,
+    `${KEY}\\NotAPackage`,
+    `${KEY}\\Bad_Name_x64__8wekyb3d8bbwe`,
+    '',
+  ].join('\r\n');
+  assert.deepEqual(win.parsePackageKeys(out), [
+    { name: 'MicrosoftCorporationII.Windows365', version: '2.0.1601.0', flavor: 'msix', packaged: true },
+    { name: 'Microsoft.VCLibs.140.00.UWPDesktop', version: '14.0.33728.0', flavor: 'msix', packaged: true },
+    { name: 'Microsoft.WindowsTerminal', version: '1.23.12811.0', flavor: 'msix', packaged: true },
+  ]);
+  assert.deepEqual(win.parsePackageKeys(''), [], 'a failed query is simply no rows');
+  assert.deepEqual(win.parsePackageKeys(undefined), []);
+});

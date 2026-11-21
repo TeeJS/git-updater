@@ -189,7 +189,7 @@ test('WinGet refuses a modified or missing indexed manifest', { skip: !available
   await assert.rejects(winget.getLatestRelease(packageSource('Unlisted.Package'), ctx), { unavailable: true });
 });
 
-test('WinGet executable and Burn installers require explicitly declared silent arguments that can become argv', { skip: !available.ok }, async (t) => {
+test('WinGet executables need declared silent arguments that can become argv; a Burn bundle with none gets the standard Burn ones', { skip: !available.ok }, async (t) => {
   const row = packages[0];
   const buffer = Buffer.from(`PackageIdentifier: ${row.id}
 PackageVersion: ${row.version}
@@ -200,6 +200,14 @@ Installers:
   InstallerUrl: https://vendor.example/bundle.exe
   InstallerSwitches:
     SilentWithProgress: -quiet -norestart
+- Architecture: x64
+  InstallerType: burn
+  InstallerUrl: https://vendor.example/bundle-no-flags.exe
+- Architecture: x64
+  InstallerType: burn
+  InstallerUrl: https://vendor.example/bundle-custom-only.exe
+  InstallerSwitches:
+    Custom: /install
 - Architecture: x64
   InstallerType: exe
   InstallerUrl: https://vendor.example/no-flags.exe
@@ -218,11 +226,213 @@ Installers:
     fs.rmdirSync(cacheDir);
   });
   const { ctx } = context({ cacheDir, replacements: [[row.url, buffer], [MICROSOFT_MANIFESTS, index]] });
-  const [burn, missing, complex] = (await winget.getLatestRelease(packageSource(row.id), ctx)).assets;
+  const [burn, bareBurn, customBurn, missing, complex] = (await winget.getLatestRelease(packageSource(row.id), ctx)).assets;
   assert.equal(burn.kind, 'exe');
-  assert.deepEqual(burn.installArgs, ['-quiet', '-norestart']);
+  assert.deepEqual(burn.installArgs, ['-quiet', '-norestart'], 'declared switches win');
+  // Microsoft.VCRedist.2015+ is exactly this: a Burn bundle with no InstallerSwitches at all.
+  assert.equal(bareBurn.unsupported, undefined);
+  assert.deepEqual(bareBurn.installArgs, ['/quiet', '/norestart'], 'the standard Burn switches WinGet itself uses');
+  assert.deepEqual(customBurn.installArgs, ['/quiet', '/norestart', '/install'], 'Custom is appended to the default');
   assert.match(missing.unsupported, /did not declare silent switches/);
-  assert.match(complex.unsupported, /switches require manual setup/);
+  // A quoted value cannot be split on spaces, so it is carried whole — never re-tokenised.
+  assert.equal(complex.unsupported, undefined);
+  assert.equal(complex.installArgs, undefined);
+  assert.equal(complex.installArgsRaw, '-quiet -log "C:\\Install Logs\\vendor.log"');
+});
+
+// The shapes below are taken from real manifests that used to be refused outright: AIMP, Evernote,
+// Grammarly and OneDrive (upgrade switches), VirtualBox and NVDA (--double-dash), Cursor
+// (/mergetasks=!runcode), OpenOffice (/PARAM1="/norestart"), the VC++ 2005 redistributable (a
+// nested command line) and CutePDF Writer (an installer inside a zip).
+test('WinGet switch strings: plain words become argv, quoted ones are carried verbatim, upgrade switches are kept apart', { skip: !available.ok }, async (t) => {
+  const row = packages[0];
+  const buffer = Buffer.from(`PackageIdentifier: ${row.id}
+PackageVersion: ${row.version}
+ManifestType: merged
+Installers:
+- Architecture: x64
+  InstallerType: nullsoft
+  InstallerUrl: https://vendor.example/evernote.exe
+  InstallerSwitches:
+    Custom: /currentuser
+    Upgrade: --updated
+- Architecture: x64
+  InstallerType: exe
+  InstallerUrl: https://vendor.example/aimp.exe
+  InstallerSwitches:
+    Silent: /AUTO /SILENT
+    Upgrade: /UPDATE
+- Architecture: x64
+  InstallerType: exe
+  InstallerUrl: https://vendor.example/virtualbox.exe
+  InstallerSwitches:
+    Silent: --silent
+    Custom: -msiparams REBOOT=ReallySuppress
+- Architecture: x64
+  InstallerType: inno
+  InstallerUrl: https://vendor.example/cursor.exe
+  InstallerSwitches:
+    Custom: /mergetasks=!runcode
+- Architecture: x64
+  InstallerType: nullsoft
+  InstallerUrl: https://vendor.example/openoffice.exe
+  InstallerSwitches:
+    Silent: /S /GUILEVEL=qn /PARAM1="/norestart"
+- Architecture: x64
+  InstallerType: exe
+  InstallerUrl: https://vendor.example/vcredist_x64.EXE
+  InstallerSwitches:
+    Silent: /Q /C:"msiexec /i ""vcredist.msi"" /quiet
+    Custom: /norestart"
+- Architecture: x64
+  InstallerType: exe
+  InstallerUrl: https://vendor.example/placeholder.exe
+  InstallerSwitches:
+    Silent: /S /LOG="<LOGPATH>"
+- Architecture: x64
+  InstallerType: exe
+  InstallerUrl: https://vendor.example/unbalanced.exe
+  InstallerSwitches:
+    Silent: /S /D="C:\\Apps
+- Architecture: x64
+  InstallerType: exe
+  InstallerUrl: https://vendor.example/piped.exe
+  InstallerSwitches:
+    Silent: /S "a" & calc
+- Architecture: x64
+  InstallerType: nullsoft
+  InstallerUrl: https://vendor.example/quoted-upgrade.exe
+  InstallerSwitches:
+    Silent: /S
+    Upgrade: /update="yes please"
+`);
+  const manifestSha256 = createHash('sha256').update(buffer).digest('hex');
+  const cacheDir = path.join(scratch, 'switch-test');
+  t.after(() => fs.rmSync(cacheDir, { recursive: true, force: true }));
+  const { ctx } = context({ cacheDir, replacements: [[row.url, buffer], [MICROSOFT_MANIFESTS, manifestIndex([{ ...row, manifestSha256 }])]] });
+  const [evernote, aimp, vbox, cursor, openoffice, vc2005, placeholder, unbalanced, piped, quotedUpgrade] =
+    (await winget.getLatestRelease(packageSource(row.id), ctx)).assets;
+
+  // Upgrade switches no longer make a package unusable: the first install gets the install
+  // switches, and the upgrade set is those plus the listing's own upgrade switch.
+  assert.equal(evernote.unsupported, undefined);
+  assert.deepEqual(evernote.installArgs, ['/S', '/currentuser']);
+  assert.deepEqual(evernote.upgradeArgs, ['/S', '/currentuser', '--updated']);
+  assert.deepEqual(aimp.installArgs, ['/AUTO', '/SILENT']);
+  assert.deepEqual(aimp.upgradeArgs, ['/AUTO', '/SILENT', '/UPDATE']);
+
+  // --double-dash switches and Inno's "!task" are ordinary words.
+  assert.deepEqual(vbox.installArgs, ['--silent', '-msiparams', 'REBOOT=ReallySuppress']);
+  assert.equal(vbox.upgradeArgs, undefined, 'no upgrade set unless the listing declares one');
+  assert.deepEqual(cursor.installArgs, ['/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/mergetasks=!runcode']);
+
+  // Quoted strings are never split.
+  assert.equal(openoffice.installArgs, undefined);
+  assert.equal(openoffice.installArgsRaw, '/S /GUILEVEL=qn /PARAM1="/norestart"');
+  assert.equal(vc2005.installArgsRaw, '/Q /C:"msiexec /i ""vcredist.msi"" /quiet /norestart"');
+  assert.deepEqual(quotedUpgrade.installArgs, ['/S'], 'each set takes the form it needs');
+  assert.equal(quotedUpgrade.upgradeArgsRaw, '/S /update="yes please"');
+
+  // Still refused: an unfilled WinGet placeholder, unbalanced quotes, shell metacharacters.
+  for (const a of [placeholder, unbalanced, piped]) {
+    assert.match(a.unsupported, /switches require manual setup/);
+    assert.equal(a.installArgs, undefined);
+    assert.equal(a.installArgsRaw, undefined);
+  }
+});
+
+test('WinGet installer inside a zip: the one named setup program is the installer; anything else is refused', { skip: !available.ok }, async (t) => {
+  const row = packages[0];
+  const buffer = Buffer.from(`PackageIdentifier: ${row.id}
+PackageVersion: ${row.version}
+ManifestType: merged
+Installers:
+- Architecture: x86
+  InstallerType: zip
+  NestedInstallerType: inno
+  NestedInstallerFiles:
+  - RelativeFilePath: CuteWriter.exe
+  InstallerUrl: https://vendor.example/CuteWriter.zip
+  InstallerSha256: ${'a'.repeat(64)}
+- Architecture: x64
+  InstallerType: zip
+  NestedInstallerType: msi
+  NestedInstallerFiles:
+  - RelativeFilePath: setup\\app-x64.msi
+  InstallerUrl: https://vendor.example/app.zip
+- Architecture: x64
+  InstallerType: zip
+  NestedInstallerType: nullsoft
+  NestedInstallerFiles:
+  - RelativeFilePath: ..\\outside.exe
+  InstallerUrl: https://vendor.example/traversal.zip
+- Architecture: x64
+  InstallerType: zip
+  NestedInstallerType: nullsoft
+  NestedInstallerFiles:
+  - RelativeFilePath: one.exe
+  - RelativeFilePath: two.exe
+  InstallerUrl: https://vendor.example/two.zip
+- Architecture: x64
+  InstallerType: zip
+  NestedInstallerType: exe
+  NestedInstallerFiles:
+  - RelativeFilePath: setup.exe
+  InstallerUrl: https://vendor.example/bare.zip
+- Architecture: x64
+  InstallerType: zip
+  NestedInstallerType: portable
+  NestedInstallerFiles:
+  - RelativeFilePath: tool.exe
+  InstallerUrl: https://vendor.example/portable.zip
+`);
+  const manifestSha256 = createHash('sha256').update(buffer).digest('hex');
+  const cacheDir = path.join(scratch, 'nested-test');
+  t.after(() => fs.rmSync(cacheDir, { recursive: true, force: true }));
+  const { ctx } = context({ cacheDir, replacements: [[row.url, buffer], [MICROSOFT_MANIFESTS, manifestIndex([{ ...row, manifestSha256 }])]] });
+  const [cute, msi, traversal, two, bare, portable] = (await winget.getLatestRelease(packageSource(row.id), ctx)).assets;
+
+  assert.equal(cute.unsupported, undefined);
+  assert.deepEqual([cute.type, cute.kind, cute.nested, cute.name], ['installer', 'inno', 'CuteWriter.exe', 'CuteWriter.zip']);
+  assert.equal(cute.digest, `sha256:${'a'.repeat(64)}`, 'the checksum is the zip\'s: that is the file downloaded');
+  assert.deepEqual([msi.kind, msi.nested], ['msi', 'setup/app-x64.msi']);
+  assert.match(traversal.unsupported, /zip \(nullsoft\) is unsupported/);
+  assert.equal(traversal.nested, undefined);
+  assert.match(two.unsupported, /is unsupported/);
+  assert.match(bare.unsupported, /did not declare silent switches/, 'a bare .exe in a zip still needs declared switches');
+  assert.deepEqual([portable.type, portable.kind, portable.nested], ['portable', 'zip', undefined], 'a zipped portable app is unchanged');
+});
+
+test('WinGet packaged apps (MSIX) are offered as installers with no switches at all', { skip: !available.ok }, async (t) => {
+  const row = packages[0];
+  const buffer = Buffer.from(`PackageIdentifier: ${row.id}
+PackageVersion: ${row.version}
+ManifestType: merged
+InstallerType: msix
+PackageFamilyName: MicrosoftCorporationII.Windows365_8wekyb3d8bbwe
+InstallerSwitches:
+  Silent: /quiet
+Installers:
+- Architecture: x64
+  InstallerUrl: https://res.cdn.example/WindowsApp_x64_Release_2.0.1601.0.msix
+- Architecture: arm64
+  InstallerType: appx
+  InstallerUrl: https://res.cdn.example/WindowsApp_arm64.appx
+- Architecture: x64
+  InstallerType: pwa
+  InstallerUrl: https://res.cdn.example/app.pwa
+`);
+  const manifestSha256 = createHash('sha256').update(buffer).digest('hex');
+  const cacheDir = path.join(scratch, 'msix-test');
+  t.after(() => fs.rmSync(cacheDir, { recursive: true, force: true }));
+  const { ctx } = context({ cacheDir, replacements: [[row.url, buffer], [MICROSOFT_MANIFESTS, manifestIndex([{ ...row, manifestSha256 }])]] });
+  const [msix, appx, pwa] = (await winget.getLatestRelease(packageSource(row.id), ctx)).assets;
+  assert.equal(msix.unsupported, undefined);
+  assert.deepEqual([msix.type, msix.kind, msix.arch, msix.name], ['installer', 'msix', 'x64', 'WindowsApp_x64_Release_2.0.1601.0.msix']);
+  assert.equal(msix.installArgs, undefined, 'a packaged app is never run with switches');
+  assert.equal(msix.installArgsRaw, undefined);
+  assert.deepEqual([appx.kind, appx.arch], ['msix', 'arm64']);
+  assert.match(pwa.unsupported, /installer type pwa is unsupported/);
 });
 
 test('WinGet distinguishes missing installer digests from invalid published digests', { skip: !available.ok }, async () => {

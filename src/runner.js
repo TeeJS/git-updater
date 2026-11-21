@@ -422,6 +422,12 @@ async function handleRepo(repo, id, st, opts) {
 
     emit('installing');
     let files; // portable manifest, for stale-file pruning
+    if (repo.type === 'installer' && asset.nested) {
+      // The listing delivers the setup program inside a zip. The zip is what was downloaded
+      // and verified; the one file it names is taken out and becomes the installer.
+      file = install.extractNestedInstaller(file, asset.nested, tmp);
+      stagedName = path.basename(file);
+    }
     if (repo.type === 'installer') {
       // Detect the installer's silent-install technology from its bytes. If it can't be
       // identified, FAIL rather than blindly running an unknown .exe with NSIS's /S switch.
@@ -443,19 +449,38 @@ async function handleRepo(repo, id, st, opts) {
         else return false;
         return true;
       };
+      // A packaged app (MSIX) is never run by git-updater: Windows installs it through its own
+      // App Installer window, which is where the user confirms it.
+      const packaged = asset.kind === 'msix' || (!asset.kind && /\.(msix|msixbundle|appx|appxbundle)$/i.test(stagedName));
       const interactiveResult = {
         ...base,
         status: 'failed',
-        reason: isWin
-          ? 'installer window opened — approve the UAC prompt and finish it, then Check'
-          : 'installer window opened — authorize and finish it, then Check',
+        reason: packaged
+          ? 'installer window opened — choose Install in the App Installer window, then Check'
+          : isWin
+            ? 'installer window opened — approve the UAC prompt and finish it, then Check'
+            : 'installer window opened — authorize and finish it, then Check',
       };
+      if (packaged) {
+        if (interactive(stagedName)) return interactiveResult;
+        if (opts.unattended) throw new Error(`needs you: ${core.appName(repo)} is installed through Windows' own App Installer window, so it was not run unattended. Update it from the window.`);
+        throw new Error(`${asset.name} is a packaged Windows app — open it to install it with App Installer`);
+      }
 
       // A manifest that states the installer technology beats sniffing the file's bytes.
       const stated = asset.kind && core.INSTALLER_SWITCHES[asset.kind] ? asset.kind : null;
       const kind = (repo.install && repo.install.kind) || stated || install.detectInstallerKind(file);
-      const declaredArgs = (repo.install && repo.install.args) || (Array.isArray(asset.installArgs) && asset.installArgs.length ? asset.installArgs : undefined);
-      if (!kind || (kind === 'exe' && !declaredArgs)) {
+      // The switches the listing declares. Its upgrade set (the install switches plus the
+      // ones it reserves for upgrades) applies only when a version is really on this machine
+      // — found in the OS inventory just now, not merely remembered from an earlier run.
+      const listed = installed && (asset.upgradeArgs || asset.upgradeArgsRaw)
+        ? { args: asset.upgradeArgs, raw: asset.upgradeArgsRaw }
+        : { args: asset.installArgs, raw: asset.installArgsRaw };
+      const pinnedArgs = repo.install && repo.install.args;
+      const declaredArgs = pinnedArgs || (Array.isArray(listed.args) && listed.args.length ? listed.args : undefined);
+      // A switch string that must reach the installer exactly as written (see installerCmd).
+      const rawArgs = !declaredArgs && typeof listed.raw === 'string' && listed.raw ? listed.raw : undefined;
+      if (!kind || (kind === 'exe' && !declaredArgs && !rawArgs)) {
         // Unidentifiable installer, or one with no silent switches declared for it: never
         // guess — run its own window instead.
         if (interactive(stagedName)) return interactiveResult;
@@ -467,7 +492,7 @@ async function handleRepo(repo, id, st, opts) {
       try {
         // Silent switches the listing declares are an argv array, used only when the user
         // has not pinned their own. Never a shell string.
-        install.installInstaller(file, { ...repo.install, kind, ...(declaredArgs ? { args: declaredArgs } : {}) });
+        install.installInstaller(file, { ...repo.install, kind, ...(declaredArgs ? { args: declaredArgs } : {}), rawArgs });
       } catch (e) {
         // Silent installs can't show a UAC prompt, so unelevated they fail — MSI with
         // exit 1603, EXE installers with an elevation spawn error. Fall back to the

@@ -243,6 +243,106 @@ test('preflight: an upgrade the listing forbids is blocked in check, dry-run AND
   }
 });
 
+// --- a listing's switches reach the installer (WinGet's install / upgrade / verbatim sets) ----
+
+const install = require('../src/install');
+// Runs one update of an installer-type entry against `over` (extra asset fields) and returns
+// what install.installInstaller was asked to run.
+async function installedWith(over, opts = {}) {
+  const seen = [];
+  const real = install.installInstaller;
+  install.installInstaller = (file, how) => { seen.push({ file, how, exists: fs.existsSync(file), bytes: fs.existsSync(file) ? fs.readFileSync(file) : null }); return { status: 0 }; };
+  try {
+    await withRelease(manifestRel({ type: 'installer', kind: 'nsis', ...over }), opts, async ({ entry, statePath }) => {
+      entry.type = 'installer';
+      delete entry.install;
+      if (opts.pinned) entry.install = { args: opts.pinned };
+      if (opts.bytes) github.downloadAsset = async (url, file) => { fs.writeFileSync(file, opts.bytes); };
+      const { results } = await runner.run({ repos: [entry] }, { statePath });
+      seen.result = results[0];
+    });
+  } finally {
+    install.installInstaller = real;
+  }
+  return seen;
+}
+
+test('installer switches: a first install gets the install set; an upgrade gets the listing\'s upgrade set', async () => {
+  const sets = { installArgs: ['/S', '/currentuser'], upgradeArgs: ['/S', '/currentuser', '--updated'] };
+  const fresh = await installedWith(sets);
+  assert.equal(fresh.length, 1, JSON.stringify(fresh.result));
+  assert.deepEqual(fresh[0].how.args, ['/S', '/currentuser']);
+  assert.equal(fresh[0].how.rawArgs, undefined);
+
+  const upgrade = await installedWith(sets, { installed: '8.0.0' });
+  assert.deepEqual(upgrade[0].how.args, ['/S', '/currentuser', '--updated'], 'an older version is on the machine');
+
+  // A listing with no upgrade set uses its install set both times.
+  const plain = await installedWith({ installArgs: ['/S'] }, { installed: '8.0.0' });
+  assert.deepEqual(plain[0].how.args, ['/S']);
+});
+
+test('installer switches: a verbatim string is handed over whole; switches pinned in config beat any listing', async () => {
+  const vc2005 = '/Q /C:"msiexec /i ""vcredist.msi"" /quiet /norestart"';
+  const raw = await installedWith({ kind: 'exe', installArgsRaw: vc2005 });
+  assert.equal(raw.length, 1, 'an .exe with a verbatim string runs silently instead of opening its window');
+  assert.equal(raw[0].how.kind, 'exe');
+  assert.equal(raw[0].how.args, undefined);
+  assert.equal(raw[0].how.rawArgs, vc2005);
+
+  const upgraded = await installedWith({ installArgs: ['/S'], upgradeArgsRaw: '/S /update="yes please"' }, { installed: '8.0.0' });
+  assert.equal(upgraded[0].how.rawArgs, '/S /update="yes please"');
+  assert.equal(upgraded[0].how.args, undefined);
+
+  const pinned = await installedWith({ installArgsRaw: vc2005, upgradeArgs: ['/S', '/update'] }, { installed: '8.0.0', pinned: ['/S', '/D=C:\\Mine'] });
+  assert.deepEqual(pinned[0].how.args, ['/S', '/D=C:\\Mine']);
+  assert.equal(pinned[0].how.rawArgs, undefined);
+});
+
+test('an installer delivered inside a zip: the named setup program is unpacked and that is what runs', async () => {
+  const zip = new AdmZip();
+  zip.addFile('CuteWriter.exe', Buffer.from('the-setup-program'));
+  zip.addFile('readme.txt', Buffer.from('hello'));
+  const seen = await installedWith({ kind: 'inno', nested: 'CuteWriter.exe' }, { bytes: zip.toBuffer() });
+  assert.equal(seen.length, 1, JSON.stringify(seen.result));
+  assert.equal(path.basename(seen[0].file), 'CuteWriter.exe', 'not the zip');
+  assert.equal(seen[0].exists, true);
+  assert.equal(seen[0].bytes.toString(), 'the-setup-program');
+  assert.equal(seen[0].how.kind, 'inno');
+
+  // A zip that does not hold the file it names fails that row instead of running anything.
+  const missing = await installedWith({ kind: 'inno', nested: 'Other.exe' }, { bytes: zip.toBuffer() });
+  assert.equal(missing.length, 0);
+  assert.equal(missing.result.status, 'failed');
+  assert.match(missing.result.reason, /does not contain the installer it names/);
+});
+
+test('a packaged app (MSIX) is never run: it is opened in Windows\' own App Installer window', async () => {
+  const seen = [];
+  const opened = [];
+  const real = install.installInstaller;
+  install.installInstaller = (...a) => { seen.push(a); return { status: 0 }; };
+  try {
+    await withRelease(manifestRel({ name: 'WindowsApp_x64.msix', type: 'installer', kind: 'msix' }), {}, async ({ entry, statePath }) => {
+      entry.type = 'installer';
+      delete entry.install;
+      const { results } = await runner.run({ repos: [entry] }, { statePath, openFile: (f) => opened.push(f) });
+      assert.equal(results[0].status, 'failed');
+      assert.match(results[0].reason, /^installer window opened — choose Install in the App Installer window/, 'the wording the window waits on');
+      assert.equal(opened.length, 1);
+      assert.equal(path.basename(opened[0]), 'WindowsApp_x64.msix');
+      assert.ok(fs.existsSync(opened[0]), 'the file outlives the staging cleanup');
+      // A scheduled run opens nothing and says why.
+      const again = await runner.run({ repos: [entry] }, { statePath, unattended: true, openFile: (f) => opened.push(f) });
+      assert.match(again.results[0].reason, /App Installer window, so it was not run unattended/);
+      assert.equal(opened.length, 1);
+    });
+    assert.equal(seen.length, 0, 'no installer process is ever started for it');
+  } finally {
+    install.installInstaller = real;
+  }
+});
+
 test('preflight: dry-run honours "only install files that have a checksum"', async () => {
   await withWorld({}, async ({ entry, statePath, calls }) => {
     const { results } = await runner.run({ requireChecksum: true, repos: [entry] }, { dryRun: true, statePath });

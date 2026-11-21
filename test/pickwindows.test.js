@@ -123,3 +123,24 @@ test('guessKind: msi vs exe', () => {
   assert.equal(core.guessKind('setup-x64.msi'), 'msi');
   assert.equal(core.guessKind('setup-x64.exe'), 'nsis');
 });
+
+// --- a bare "w64" / "w32" names an architecture (Ghostscript, AIMP) ---------------------------
+
+test('w64 and w32 are read as x64 and x86, but only as their own token', () => {
+  const { archTokens } = require('../src/platform/assets').TABLES.win32;
+  assert.deepEqual(archTokens('gs10080w64.exe'), { isX64: true, isArm: false, isX86: false, isUniversal: false });
+  assert.deepEqual(archTokens('gs10080w32.exe'), { isX64: false, isArm: false, isX86: true, isUniversal: false });
+  assert.equal(archTokens('aimp_5.10.2418_w64.exe').isX64, true);
+  // The tail of a word is not an architecture, and neither is a longer number.
+  for (const name of ['tool-mingw32-setup.exe', 'glfw64.zip', 'app-w640.exe', 'review32.exe']) {
+    const t = archTokens(name);
+    assert.equal(t.isX64 || t.isX86, false, name);
+  }
+});
+
+test('Ghostscript: each Windows machine gets the installer built for it', () => {
+  const assets = ['ghostpcl-10.08.0-win32.zip', 'ghostpcl-10.08.0-win64.zip', 'gs10080w32.exe', 'gs10080w64.exe', 'ghostscript-10.08.0.tar.gz', 'SHA512SUMS']
+    .map((name) => ({ name, browser_download_url: `https://github.invalid/${name}` }));
+  assert.equal(core.pickAsset(assets, 'installer', 'x64', null, 'win32').name, 'gs10080w64.exe');
+  assert.equal(core.pickAsset(assets, 'installer', 'ia32', null, 'win32').name, 'gs10080w32.exe');
+});

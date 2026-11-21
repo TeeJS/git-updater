@@ -65,10 +65,38 @@ function parseHive(stdout) {
   return out;
 }
 
-// Every installed program, from the three uninstall hives queried in parallel.
+// Packaged (MSIX / Store) apps are not in the uninstall registry at all. Windows keeps the
+// current user's packages as one registry key each, named by the package's full name:
+//
+//   ...\AppModel\Repository\Packages\MicrosoftCorporationII.Windows365_2.0.1601.0_x64__8wekyb3d8bbwe
+//                                     <identity name>               _<version>_<arch>_<resource>_<publisher id>
+//
+// Listing that key (no /s — only the key names are wanted) is the same benign reg.exe read as
+// the hives above. The record's name is the package's IDENTITY, a machine identifier, and it is
+// flagged `packaged` so src/detect.js never matches it loosely against an app's display name.
+const PACKAGES_KEY = 'HKCU\\Software\\Classes\\Local Settings\\Software\\Microsoft\\Windows\\CurrentVersion\\AppModel\\Repository\\Packages';
+
+// Parse `reg query <PACKAGES_KEY>` output into [{ name, version, flavor: 'msix', packaged }].
+// Exported for tests: pure string in, records out.
+function parsePackageKeys(stdout) {
+  const out = [];
+  const seen = new Set();
+  for (const line of String(stdout || '').split(/\r?\n/)) {
+    const m = line.trim().match(/\\Repository\\Packages\\([a-z0-9][a-z0-9.-]*)_(\d+(?:\.\d+){1,3})_[a-z0-9]+_[^_\\]*_[a-z0-9]{13}$/i);
+    if (!m) continue;
+    const key = `${m[1].toLowerCase()}@${m[2]}`;
+    if (seen.has(key)) continue; // a bundle registers one key per resource package
+    seen.add(key);
+    out.push({ name: m[1], version: m[2], flavor: 'msix', packaged: true });
+  }
+  return out;
+}
+
+// Every installed program: the three uninstall hives, plus the user's packaged apps, queried
+// in parallel. A failed query yields '' and so no rows — never an error.
 async function installedApps() {
-  const outs = await Promise.all(HIVES.map((h) => run('reg', ['query', h, '/s'])));
-  return outs.flatMap(parseHive);
+  const [packages, ...hives] = await Promise.all([run('reg', ['query', PACKAGES_KEY]), ...HIVES.map((h) => run('reg', ['query', h, '/s']))]);
+  return [...hives.flatMap(parseHive), ...parsePackageKeys(packages)];
 }
 
 // Parse `tasklist /fo csv /nh` into [{ name, pid }]. Exported for tests.
@@ -92,4 +120,4 @@ function killProcess(pid, force) {
   spawnSync('taskkill', force ? ['/PID', String(pid), '/F', '/T'] : ['/PID', String(pid)], { windowsHide: true });
 }
 
-module.exports = { installedApps, runningProcesses, killProcess, parseHive, parseTasklist, cleanIconPath };
+module.exports = { installedApps, runningProcesses, killProcess, parseHive, parsePackageKeys, parseTasklist, cleanIconPath };

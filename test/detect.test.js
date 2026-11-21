@@ -78,3 +78,31 @@ test('nameMatches: survives empty and junk input', () => {
   assert.equal(nameMatches('bedrock-panel', undefined, 'linux'), false);
   assert.equal(nameMatches('---', 'bedrock-panel', 'linux'), false);
 });
+
+// --- packaged (MSIX) apps: found by package identity only ------------------------------------
+
+test('a packaged app matches only a needle that is its package identity', async () => {
+  const detect = require('../src/detect');
+  const platform = require('../src/platform');
+  const real = platform.installedApps;
+  platform.installedApps = async () => [
+    { name: 'MicrosoftCorporationII.Windows365', version: '2.0.1601.0', flavor: 'msix', packaged: true },
+    { name: 'Microsoft.WindowsTerminal', version: '1.23.12811.0', flavor: 'msix', packaged: true },
+    { name: 'Windows Terminal Preview', version: '1.24.0', flavor: 'exe' },
+  ];
+  detect.clearCache();
+  try {
+    assert.equal(await detect.installedVersion('MicrosoftCorporationII.Windows365'), '2.0.1601.0');
+    assert.equal(await detect.installedVersion('microsoftcorporationii.windows365'), '2.0.1601.0', 'case does not matter');
+    assert.equal(await detect.installedFlavor('MicrosoftCorporationII.Windows365'), 'msix');
+    // Never loosely: these needles would token-match the identity if it were a display name.
+    assert.equal(await detect.installedVersion('Windows365'), null);
+    assert.equal(await detect.installedVersion('Windows App'), null);
+    // "terminal" still finds the ordinary registry row, and only that one.
+    assert.equal(await detect.installedVersion('terminal'), '1.24.0', 'not the packaged 1.23 beside it');
+    assert.equal(await detect.installedVersion('Microsoft.WindowsTerminal'), '1.23.12811.0');
+  } finally {
+    platform.installedApps = real;
+    detect.clearCache();
+  }
+});

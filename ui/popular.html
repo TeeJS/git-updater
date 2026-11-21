@@ -60,6 +60,10 @@
   .pack .acts { display: flex; gap: .35rem; flex-wrap: wrap; margin-top: auto; padding-top: .4rem; }
   .sec { font: 600 12px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--faint); margin: 1rem 0 .5rem; }
   .sec:first-child { margin-top: 0; }
+  .sec .why { font: 400 12px var(--sans); letter-spacing: 0; text-transform: none; }
+  /* The Windows-only runtimes sit under their own heading, below every ordinary category. */
+  #viewApps .sec { margin-top: .3rem; padding-top: .8rem; border-top: 1px solid var(--border); }
+  #viewApps .sec:first-child { padding-top: 0; border-top: 0; }
   .newpack { display: flex; gap: .45rem; flex-wrap: wrap; align-items: center; margin-bottom: .2rem; }
   .newpack input { flex: 1; min-width: 12rem; }
   button.act { font: 600 13px var(--sans); cursor: pointer; border-radius: 8px; padding: .42rem .8rem; border: 1px solid var(--border); background: #21262d; color: var(--text); }
@@ -85,7 +89,7 @@
 <div id="status">Loading…</div>
 
 <div class="body">
-  <div id="viewApps" class="cats"></div>
+  <div id="viewApps"></div>
   <div id="viewPacks" class="hidden"></div>
   <div id="viewReview" class="hidden"></div>
 </div>
@@ -112,34 +116,49 @@ let planFrom = 'apps';     // which view Back returns to
 const chosen = new Set();  // indexes of plan rows that will be added
 
 // --- Popular apps -----------------------------------------------------------------
+const WINDOWS_ONLY = 'Windows only';
 function renderApps() {
   const box = $('viewApps'); box.innerHTML = '';
   const q = $('filter').value.trim().toLowerCase();
-  const cats = new Map();
+  // Two groups: the ordinary categories, then the Windows-only runtimes (.NET, VC++). Main only
+  // sends those on Windows, so on macOS and Linux the second group is empty and never drawn.
+  const groups = [new Map(), new Map()];
   for (const a of apps) {
-    if (q && !a.name.toLowerCase().includes(q) && !a.category.toLowerCase().includes(q)) continue;
+    if (q && !a.name.toLowerCase().includes(q) && !a.category.toLowerCase().includes(q) && !(a.windowsOnly && WINDOWS_ONLY.toLowerCase().includes(q))) continue;
+    const cats = groups[a.windowsOnly ? 1 : 0];
     if (!cats.has(a.category)) cats.set(a.category, []);
     cats.get(a.category).push(a);
   }
-  for (const [name, list] of cats) {
-    const sec = el('section', 'cat' + (list.length > 24 ? ' long' : ''));
-    sec.appendChild(el('h2', null, name));
-    list.sort((x, y) => x.name.localeCompare(y.name));
-    for (const a of list) {
-      const row = el('label', 'item' + (a.tracked ? ' tracked' : ''));
-      const cb = el('input'); cb.type = 'checkbox';
-      cb.checked = a.tracked || picked.has(a.id); cb.disabled = a.tracked;
-      cb.onchange = () => { cb.checked ? picked.add(a.id) : picked.delete(a.id); sync(); };
-      row.appendChild(cb);
-      row.appendChild(el('span', 'nm', a.name));
-      // Where it can come from on this computer — shown before anything is picked.
-      row.appendChild(el('span', 'src', a.tracked ? 'in your list' : a.sources.join(' · ')));
-      row.title = a.tracked ? `${a.name} is already in your list` : `${a.name} — available from ${a.sources.join(', ')}`;
-      sec.appendChild(row);
+  groups.forEach((cats, windowsOnly) => {
+    if (!cats.size) return;
+    if (windowsOnly) {
+      const h = el('div', 'sec', WINDOWS_ONLY);
+      h.appendChild(el('span', 'why', ' — runtimes that other Windows apps need'));
+      box.appendChild(h);
     }
-    box.appendChild(sec);
-  }
-  if (!cats.size) box.appendChild(el('p', null, 'Nothing matches that filter.'));
+    const grid = el('div', 'cats');
+    for (const [name, list] of cats) {
+      const sec = el('section', 'cat' + (list.length > 24 ? ' long' : ''));
+      sec.appendChild(el('h2', null, name));
+      // Numeric, so ".NET Desktop Runtime 8" sorts before "10" and Java 8 before Java 11.
+      list.sort((x, y) => x.name.localeCompare(y.name, undefined, { numeric: true, sensitivity: 'base' }));
+      for (const a of list) {
+        const row = el('label', 'item' + (a.tracked ? ' tracked' : ''));
+        const cb = el('input'); cb.type = 'checkbox';
+        cb.checked = a.tracked || picked.has(a.id); cb.disabled = a.tracked;
+        cb.onchange = () => { cb.checked ? picked.add(a.id) : picked.delete(a.id); sync(); };
+        row.appendChild(cb);
+        row.appendChild(el('span', 'nm', a.name));
+        // Where it can come from on this computer — shown before anything is picked.
+        row.appendChild(el('span', 'src', a.tracked ? 'in your list' : a.sources.join(' · ')));
+        row.title = a.tracked ? `${a.name} is already in your list` : `${a.name} — available from ${a.sources.join(', ')}`;
+        sec.appendChild(row);
+      }
+      grid.appendChild(sec);
+    }
+    box.appendChild(grid);
+  });
+  if (!groups[0].size && !groups[1].size) box.appendChild(el('p', null, 'Nothing matches that filter.'));
 }
 
 // --- Review: the same step for the picker and for a pack ----------------------------

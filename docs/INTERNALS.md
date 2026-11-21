@@ -190,6 +190,26 @@ stores which apps, never which files, so it resolves per platform; an imported p
 rebuilt from the fields `validatePack` recognises (a shortcut id, or a provider's own
 identity fields) and adds nothing until its review list is confirmed.
 
+A row may also say `platforms` (where its GitHub repo ships builds), `type` (the only form it is
+added in — Ghostscript is installer-only, because the release's zips are other products) and
+`detect` (the inventory name to look for when the app's own name cannot find it — a packaged
+Windows app is listed under its package identity). Rows in the `.NET` and `VC++ Redistributables`
+categories are Windows runtimes: the picker shows them under "Windows only" and they are not
+offered on macOS or Linux. A `CATALOG` row with no shortcut is not in the picker, but is still
+found by name from the Add box.
+
+**How a WinGet installer is run** (`src/sources/winget.js`, `src/core.js` `installerCmd`):
+
+- Plain switches (`/S`, `--silent`, `/mergetasks=!runcode`, `NAME=value`) become an argv array.
+- A switch string that quotes a value or nests a second command line (the VC++ 2005
+  redistributable, OpenOffice) is passed to the installer verbatim, never split and never through
+  a shell. Unfilled WinGet placeholders, unbalanced quotes and shell metacharacters are refused.
+- A manifest's `Upgrade` switches are added only when a version of the app is found installed.
+- A Burn bundle that declares no switches gets WinGet's own default, `/quiet /norestart`.
+- An installer inside a zip is unpacked (the one file the manifest names) and that file is run.
+- A packaged app (MSIX) is never run: it is opened in Windows' App Installer window, and found
+  afterwards in the per-user package registry (`src/platform/win.js` `parsePackageKeys`).
+
 ## Verification & transactional installs
 
 Downloads are verified against GitHub's asset digest, or a checksums file shipped in the release
@@ -437,7 +457,8 @@ versions live in `<root>\app-<version>\`. A flat unzip-and-run install simply *b
 launcher on its first update — its files are never touched again.
 
 - *Check all* also checks git-updater's own releases (`GITUPDATER_SELFUPDATE_OWNER`/`_REPO`
-  override the repo) and shows a banner with **Update** (and a dismiss × for the session).
+  override the repo) and shows it in the header, right after the version: an **Update to <version>** button, or
+  "up to date" in the accent colour. There is no banner and nothing to dismiss.
 - **Update** runs entirely in the running process: download to `%LOCALAPPDATA%\git-updater\
   self-update\<tag>\`, verify (digest or checksums file), extract into a stage dir under the
   root, rename that fresh folder to `app-<tag>` — the same "fresh install" rename every tracked
@@ -447,7 +468,7 @@ launcher on its first update — its files are never touched again.
   There is no launcher-and-sibling layout; `electron-updater` (Squirrel.Mac) checks
   `latest-mac.yml` on our GitHub releases, and on **Update** downloads+verifies the signed
   `.zip`, swaps the `.app` bundle via its own helper after the app quits, and relaunches. The
-  banner is identical — `selfupdate:check` returns `canApply: true` on macOS, and the same
+  header status is identical — `selfupdate:check` returns `canApply: true` on macOS, and the same
   `update:progress` stream and `last-apply.json` marker are reused. `selfupdate:openRelease`
   remains as a fallback link. `electron/main.js` reaches all of this behind an `IS_MAC` guard,
   so electron-updater never loads on Windows or Linux.
