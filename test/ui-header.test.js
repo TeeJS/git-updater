@@ -145,3 +145,24 @@ test('Popular apps: My favorites button, the skipped-entries note, and Save as p
   const preload = fs.readFileSync(path.join(__dirname, '..', 'electron', 'preload.js'), 'utf8');
   for (const api of ['favoritesStatus', 'favoritesOpen', 'favoritesCopyRow']) assert.ok(preload.includes(`${api}:`), api);
 });
+
+// At the 720px minimum width the released v0.3.0-beta.6 put the header on two lines, the filters
+// on two lines, and left the app name 60px. Measured in the real app: 72px header -> 32px, two
+// filter rows -> one, name 60px -> about 155px. These pin the rules that do it.
+test('near the minimum width the header and the filter bar are tightened, not wrapped', () => {
+  const narrow = (html.match(/@media \(max-width: 850px\) \{\n([\s\S]*?)\n  \}/) || [])[1] || '';
+  assert.match(narrow, /#scanPc \.wide \{ display: none; \}/, '"Scan this PC" reads "Scan"; the tooltip says the rest');
+  assert.match(html, /id="scanPc" title="[^"]+">Scan<span class="wide"> this PC<\/span><\/button>/);
+  assert.match(narrow, /\.topbar \.top-actions button \{[^}]*font-size: 12\.5px; \}/);
+  assert.match(narrow, /\.findbar \.searchbox \{ flex-basis: 6rem; min-width: 6rem; \}/);
+  assert.match(narrow, /#filterStatus \{ max-width: 8rem; \}/);
+  assert.doesNotMatch(narrow, /display: none[^}]*\}\s*\.top-actions button|#openSettings|#packsBtn|#browseAll/, 'no button is hidden');
+});
+
+test('near the minimum width the app name gets the spare room of the fixed columns', () => {
+  const rule = (html.match(/@container \(max-width: 680px\) \{\s*\.table-header,\s*\.app-row \{ grid-template-columns: ([^;]+);/) || [])[1] || '';
+  const fixed = rule.split(/\s+/).filter((c) => /^\d+px$/.test(c)).map((c) => parseInt(c, 10));
+  assert.equal(fixed.length, 6, rule);
+  assert.ok(fixed.reduce((a, b) => a + b, 0) <= 440, 'the six fixed columns leave the name at least 150px in a 644px list');
+  assert.match(rule, /minmax\(0, 1fr\)/);
+});
