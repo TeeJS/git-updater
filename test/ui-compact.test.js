@@ -39,9 +39,10 @@ test('every compact style needs body.compact, so the ordinary list is drawn as b
   assert.match(html, /\.wrap \{ max-width: 900px; margin: 0 auto; \}/, 'the ordinary list does not fill the window');
 });
 
-test('"no checksum" can no longer wrap and make a row taller', () => {
+test('"no checksum" can neither wrap (a taller row) nor run over the column beside it', () => {
   assert.match(html, /\.app-src \{ white-space: nowrap; \}/);
-  assert.match(html, /\.sum-none \{ flex: none; white-space: nowrap;/);
+  assert.match(html, /\.app-src \.where \{ flex-shrink: 100; \}/, 'the host gives way first');
+  assert.match(html, /\.sum-none \{ flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;/);
 });
 
 test('a compact line shows the versions, and says what is happening instead while it is', () => {

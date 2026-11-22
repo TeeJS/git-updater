@@ -161,7 +161,10 @@
   .src-badge.s-unknown { color: var(--red); border-color: var(--red); }
   /* One line, always: the host gives way (…) before "no checksum" wraps and makes the row taller. */
   .app-src { white-space: nowrap; }
-  .sum-none { flex: none; white-space: nowrap; color: var(--accent); }
+  /* The host gives way first (flex-shrink 100), then the note itself ends in …: it is never drawn
+     over the Current column beside it, which is what happened in a narrow window. */
+  .app-src .where { flex-shrink: 100; }
+  .sum-none { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--accent); }
   .pref-list { display: flex; flex-wrap: wrap; gap: .35rem; flex: 1; min-width: 12rem; }
   .pref-chip { display: inline-flex; align-items: center; gap: .25rem; padding: .15rem .2rem .15rem .55rem; border: 1px solid var(--border); border-radius: 999px; font-size: 12.5px; color: var(--text); background: #0d1117; }
   .pref-chip button { padding: 0 .35rem; border: 0; background: transparent; color: var(--muted); font-size: 12px; line-height: 18px; }
