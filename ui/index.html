@@ -185,6 +185,12 @@
     .table-header > .name-header { flex-direction: column; align-items: flex-start; gap: 0; }
     .name-header .name-sep { display: none; }
   }
+  /* The window near its 720px minimum. The fixed columns give up their spare width so the app
+     name, the one column that cannot be guessed from the others, gets about 155px instead of 60px. */
+  @container (max-width: 680px) {
+    .table-header,
+    .app-row { grid-template-columns: 22px minmax(0, 1fr) 80px 62px 130px 48px 96px; column-gap: 6px; }
+  }
   .badge { display: inline-block; font: 600 .72rem var(--sans); padding: .12rem .5rem; border-radius: 999px; border: 1px solid transparent; }
   .badge.portable { color: var(--blue); background: rgba(88,166,255,.12); border-color: rgba(88,166,255,.3); }
   .badge.installer { color: var(--accent); background: rgba(227,161,60,.13); border-color: rgba(227,161,60,.35); }
@@ -290,9 +296,30 @@
   .top-actions { margin-left: auto; display: flex; align-items: center; gap: .4rem; flex-wrap: nowrap; white-space: nowrap; }
   /* Slightly tighter than other buttons so the header stays on one line at the 720px minimum window width. */
   .top-actions button { padding-left: .65rem; padding-right: .65rem; }
+  /* The window near its 720px minimum: the header and the search-and-filters bar each stay on ONE line. Nothing
+     is removed, only tightened: smaller gaps and padding, "Scan this PC" reads "Scan" (its tooltip
+     says the rest), the search box and the Status list give up width they were not using. */
+  @media (max-width: 850px) {
+    .brand { gap: .45rem; }
+    .brand h1 { font-size: 1.15rem; }
+    .topbar .top-actions { gap: .3rem; }
+    .topbar .top-actions button { padding-left: .4rem; padding-right: .4rem; font-size: 12.5px; }
+    #scanPc .wide { display: none; }
+    .findbar { gap: .4rem .5rem; }
+    .findbar .searchbox { flex-basis: 6rem; min-width: 6rem; }
+    .findbar .filter { gap: .3rem; }
+    #filterStatus { max-width: 8rem; }
+  }
   .settings-btn { font-size: .85rem; color: var(--muted); }
   .settings-btn:hover:not(:disabled) { color: var(--text); }
   .back-btn { color: var(--muted); }
+  /* Settings is a long page: Back, the title and the status line ("Saved.", or why something was
+     refused) stay at the top of the window however far it is scrolled. The negative margins let
+     the bar cover the page's own padding, so nothing shows through above or beside it. */
+  #settingsScreen > .topbar { position: sticky; top: 0; z-index: 5; flex-wrap: nowrap; margin: -1rem -1.25rem .8rem; padding: .7rem 1.25rem .6rem;
+                              background: var(--bg); border-bottom: 1px solid var(--border); }
+  #settingsScreen .msg-slot { flex: 1; min-width: 0; }
+  #settingsScreen .msg-slot #msg { min-height: 0; margin: 0; overflow-wrap: anywhere; }
   .screen-title { font-size: 1.15rem; }
   .settings-group { margin-bottom: .9rem; }
   .settings-group > .sec-h { margin-bottom: .7rem; }
@@ -365,7 +392,7 @@
     </span>
     <div class="top-actions">
       <label class="scan-label compact-switch" title="One line per app, in as many columns as the window has room for"><input type="checkbox" id="compactView" aria-label="Compact view"> <span>Compact</span></label>
-      <button type="button" id="scanPc" title="Find apps already installed on this PC that git-updater can keep up to date">Scan this PC</button>
+      <button type="button" id="scanPc" title="Find apps already installed on this PC that git-updater can keep up to date">Scan<span class="wide"> this PC</span></button>
       <button type="button" id="packsBtn" title="Add a named set of apps in one go">Packs</button>
       <button type="button" id="browseAll" class="primary" title="Pick apps from a categorized list">Popular apps</button>
       <button type="button" id="openSettings" class="ghost settings-btn" title="Open Settings"><span aria-hidden="true">⚙</span> Settings</button>
@@ -469,8 +496,8 @@
     <header class="topbar">
       <button type="button" id="settingsBack" class="ghost back-btn" title="Back to the list (Esc)">&larr; Back</button>
       <h1 class="screen-title">Settings</h1>
+      <div class="msg-slot"></div>
     </header>
-    <div class="msg-slot"></div>
 
     <section class="panel settings-group" aria-labelledby="sg-apps">
       <h2 class="sec-h" id="sg-apps">Apps and display</h2>

@@ -147,3 +147,12 @@ test('force close sits directly after auto-close, warns about unsaved work, and 
   assert.ok(main.includes('forceClose: autoClose && !!cfg.forceClose'), 'scheduled and sign-in updates follow it too');
   assert.ok(!/body\.forceClose/.test(main));
 });
+
+test('Back, the title and the status line stay at the top of Settings however far it is scrolled', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const page = fs.readFileSync(path.join(__dirname, '..', 'ui', 'index.html'), 'utf8');
+  assert.match(page, /#settingsScreen > \.topbar \{ position: sticky; top: 0;[^}]*background: var\(--bg\);/, 'pinned, and opaque so the page does not show through');
+  const bar = page.slice(page.indexOf('<div id="settingsScreen"'), page.indexOf('</header>', page.indexOf('<div id="settingsScreen"')));
+  assert.ok(bar.includes('id="settingsBack"') && bar.includes('class="msg-slot"'), '"Saved." lands in the pinned bar, so it is seen from any setting');
+});
