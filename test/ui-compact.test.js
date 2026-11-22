@@ -30,7 +30,7 @@ test('every compact style needs body.compact, so the ordinary list is drawn as b
   for (const rule of rules) {
     const selector = rule.slice(0, rule.indexOf('{'));
     // Classes that exist only on compact rows, the switch itself, and the menu line need no guard.
-    if (/^\s*\.(cv|compact-switch|menu \.menu-info)\b/.test(selector) || /\.compact-switch span\s*$/.test(selector)) continue;
+    if (/^\s*(\.(cv|compact-switch|menu \.menu-info)\b|#compactSortDir)/.test(selector) || /\.compact-switch span\s*$/.test(selector)) continue;
     for (const part of selector.split(',')) assert.match(part, /body\.compact /, rule.trim());
   }
   assert.match(css, /body\.compact \.wrap \{ max-width: none; \}/, 'the full window width');
@@ -58,6 +58,8 @@ test('a compact line shows the versions, and says what is happening instead whil
   assert.equal(text(compactVersions({ ph: 'idle' }, { cls: 'c-warn', text: 'Not installed' })), 'Not installed');
   assert.equal(text(compactVersions({ ph: 'idle', present: true }, { cls: 'c-muted', text: 'Not checked' })), 'Unknown');
   assert.equal(text(compactVersions({ ph: 'downloading', from: '1.2.0', to: '1.3.0' }, { cls: 'c-work', text: 'Downloading 40%' })), 'Downloading 40%');
+  assert.equal(text(compactVersions({ ph: 'current', from: '1.27.0.0', to: '1.27.0', present: true }, { cls: 'c-ok', text: 'Installed' })), '1.27.0.0',
+    'up to date with a version spelled differently: no arrow, there is nothing to install');
   const failed = compactVersions({ ph: 'failed', reason: 'download failed', from: '1.2.0' }, { cls: 'c-bad', text: 'download failed' });
   assert.equal(text(failed), 'download failed');
   assert.match(failed.cls, /c-bad/);
@@ -69,4 +71,33 @@ test('what the compact line leaves out is in the tooltip and the menu: type, sou
   assert.match(menu, /if \(compactOn\(\)\) \{\s*const src = sourceLine\(r, key, s\);\s*menuEl\.appendChild\(el\('div', 'menu-info'/);
   assert.match(menu, /if \(compactOn\(\)\) item\(r\.autoUpdate \? 'Turn auto-update off' : 'Turn auto-update on'/);
   assert.equal((menu.match(/compactOn\(\)/g) || []).length, 2, 'nothing else in the menu changes');
+});
+
+test('compact view can be sorted: the same sort as the column headers, from a list in the toolbar', () => {
+  const toolbar = html.slice(html.indexOf('<div class="toolbar">'), html.indexOf('id="openAddWindow"'));
+  assert.match(toolbar, /<label class="filter" id="compactSort" hidden>Sort\s*<select id="compactSortBy"/, 'in the toolbar row, so it costs no extra line; hidden in the full list');
+  const opts = [];
+  const els = {};
+  const $ = (id) => els[id] || (els[id] = { id, hidden: false, value: '', textContent: '', disabled: false, replaceChildren(...o) { this.options = o; }, setAttribute() {}, classList: { toggle() {} } });
+  let rendered = 0, saved = 0;
+  const ctx = { $, el: () => ({ append() {} }), config: { compactView: true, sortColumn: 'app', sortDirection: 'asc' }, busy: false, document: { body: { classList: { toggle() {} } } },
+    Option: function (text, value) { this.text = text; this.value = value; }, SORT_COLUMNS: ['owner', 'app', 'type', 'current', 'available', 'status', 'auto'],
+    catsOn: () => false, renderRepos: () => { rendered++; }, saveConfig: () => { saved++; }, Object };
+  vm.runInNewContext(block + '\nthis.syncCompactSort = syncCompactSort;', ctx);
+  ctx.syncCompactSort();
+  assert.deepEqual($('compactSortBy').options.map((o) => o.value), ['app', 'owner', 'type', 'current', 'available', 'status', 'auto'], 'every column the headers sort by');
+  assert.equal($('compactSortBy').value, 'app');
+  assert.equal($('compactSortDir').textContent, '↑');
+  $('compactSortBy').value = 'status'; $('compactSortBy').onchange();
+  assert.deepEqual([ctx.config.sortColumn, ctx.config.sortDirection, rendered, saved], ['status', 'asc', 1, 1]);
+  $('compactSortDir').onclick();
+  assert.equal(ctx.config.sortDirection, 'desc', 'the arrow button reverses it');
+  // With categories on there is an order of your own to go back to.
+  ctx.catsOn = () => true; ctx.syncCompactSort();
+  assert.equal($('compactSortBy').options[0].text, 'Your order');
+  $('compactSortBy').value = ''; $('compactSortBy').onchange();
+  assert.equal(ctx.config.sortColumn, undefined);
+  // The full list keeps its headers and does not show this.
+  ctx.config.compactView = false; ctx.syncCompactSort();
+  assert.equal($('compactSort').hidden, true);
 });

@@ -273,6 +273,7 @@
   body.compact .st { gap: 0; }
   .cv { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 500 12.5px var(--mono); font-variant-numeric: tabular-nums; color: var(--muted); text-align: right; }
   .cv .to { color: var(--blue); }
+  #compactSortDir { padding: .3rem .55rem; min-width: 2rem; }
   .cv.say { font: 400 12.5px var(--sans); }
   body.compact .rowbtn { padding: .14rem .55rem; font-size: 12.5px; }
   body.compact .kebab { padding: .1rem .4rem; font-size: 15px; margin-left: 0; }
@@ -312,6 +313,8 @@
     .findbar .searchbox { flex-basis: 6rem; min-width: 6rem; }
     .findbar .filter { gap: .3rem; }
     #filterStatus { max-width: 8rem; }
+    #compactSortBy { max-width: 6.5rem; }
+    .toolbar { gap: .4rem; }
   }
   .settings-btn { font-size: .85rem; color: var(--muted); }
   .settings-btn:hover:not(:disabled) { color: var(--text); }
@@ -439,6 +442,11 @@
         <div id="msgHome"><div id="msg" role="status"></div></div>
         <span class="count"><button type="button" class="linklike" id="count" title="Show only the apps with an update" hidden></button></span>
       </div>
+      <!-- Compact view has no column headers to click, so its sort is here. Hidden in the full list. -->
+      <label class="filter" id="compactSort" hidden>Sort
+        <select id="compactSortBy" aria-label="Sort the list by"></select>
+        <button type="button" id="compactSortDir" title="Reverse the order"></button>
+      </label>
       <button id="openAddWindow" type="button">Add an app</button>
       <button id="checkAll">Check all</button>
       <button id="updateSel" disabled>Update selected</button>
@@ -1064,6 +1072,7 @@ function renderSortHeaders() {
     if (catsOn() && active && config.sortDirection === 'desc') button.title = 'Click to go back to your own order';
     else button.removeAttribute('title');
   });
+  syncCompactSort();
 }
 document.querySelectorAll('.table-header [data-sort]').forEach((header) => {
   header.querySelector('button').onclick = async () => {
@@ -1109,7 +1118,9 @@ function compactVersions(s, sv) {
   // already says Install, and "Not installed → " would push the version off the line.
   const fresh = !s.from && !s.present && !!s.to;
   const out = el('span', 'cv', fresh ? '' : cur);
-  if (s.to && s.to !== s.from) out.append(fresh ? '' : ' → ', el('span', 'to', s.to));
+  // The arrow means "there is something to install". An app that is up to date can still have a
+  // version that is merely spelled differently (1.27.0.0 installed, 1.27.0 published).
+  if (s.to && s.to !== s.from && s.ph === 'available') out.append(fresh ? '' : ' → ', el('span', 'to', s.to));
   out.title = `${sv.text}\nCurrent: ${cur}${s.to ? `\nAvailable: ${s.to}` : ''}`;
   return out;
 }
@@ -1123,6 +1134,37 @@ function compactTip(r, key, s, sv) {
 $('compactView').onchange = () => {
   if ($('compactView').checked) config.compactView = true; else delete config.compactView;
   syncCompact();
+  renderRepos();
+  saveConfig();
+};
+// Sorting in compact view: the same sort as the column headers (config.sortColumn and
+// sortDirection), chosen from a list because there are no headers to click. With categories on,
+// "Your order" is the unsorted list, the one apps are dragged into.
+const SORT_NAMES = { app: 'App', owner: 'Owner', type: 'Type', current: 'Current version', available: 'Available version', status: 'Status', auto: 'Auto-update' };
+function syncCompactSort() {
+  $('compactSort').hidden = !compactOn();
+  if (!compactOn()) return;
+  const by = $('compactSortBy');
+  const sorted = SORT_COLUMNS.includes(config.sortColumn);
+  const own = catsOn() || !sorted; // offered where it means something, and shown whenever it is what is on screen
+  by.replaceChildren(...(own ? [new Option('Your order', '')] : []), ...Object.keys(SORT_NAMES).map((k) => new Option(SORT_NAMES[k], k)));
+  by.value = sorted ? config.sortColumn : '';
+  const dir = $('compactSortDir');
+  dir.textContent = config.sortDirection === 'desc' ? '↓' : '↑';
+  dir.disabled = !sorted;
+  dir.setAttribute('aria-label', config.sortDirection === 'desc' ? 'Sorted downwards. Reverse the order' : 'Sorted upwards. Reverse the order');
+}
+$('compactSortBy').onchange = () => {
+  if (busy) return syncCompactSort();
+  const col = $('compactSortBy').value;
+  if (col) { config.sortColumn = col; config.sortDirection = 'asc'; }
+  else { delete config.sortColumn; delete config.sortDirection; }
+  renderRepos();
+  saveConfig();
+};
+$('compactSortDir').onclick = () => {
+  if (busy || !SORT_COLUMNS.includes(config.sortColumn)) return;
+  config.sortDirection = config.sortDirection === 'desc' ? 'asc' : 'desc';
   renderRepos();
   saveConfig();
 };
