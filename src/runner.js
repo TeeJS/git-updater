@@ -247,7 +247,14 @@ async function handleRepo(repo, id, st, opts) {
   const gh = sources.isGithub(repo);
   const ctx = sources.makeCtx();
   const rel = await sources.getLatestRelease(repo, ctx);
-  const src = where(repo);
+  // `newerWithoutFile`: GitHub's newest release has no file for this machine, so an earlier
+  // release that does is the one being compared and installed (see src/sources/github.js).
+  // Carried on every result so the row can say why it is not showing the newest version.
+  const newerWithoutFile = rel.skipped ? core.normTag(rel.skipped.tag) : null;
+  const src = { ...where(repo), ...(newerWithoutFile ? { newerWithoutFile } : {}) };
+  if (newerWithoutFile && opts.mode !== 'check' && !opts.dryRun) {
+    log(`NOTE ${key}: ${newerWithoutFile} has no file for this machine; using ${core.normTag(rel.tag_name)}, the newest release that does`);
+  }
   // Correct the type before anything reads it. Check-time only: an update run installs,
   // and changing what gets installed mid-run is worse than the clear error it replaces.
   // It has to happen ahead of the comparison below, or an entry whose installed version

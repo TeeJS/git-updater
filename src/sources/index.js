@@ -205,7 +205,13 @@ async function getLatestRelease(entry, ctx) {
     const a = p.available(ctx || makeCtx());
     if (a && a.ok === false) throw new Error(`${p.label} is not available here: ${a.reason}`);
   }
-  const rel = await p.getLatestRelease(source, ctx || makeCtx(), { prerelease: entry.prerelease, tagPrefix: entry.tagPrefix });
+  const c = ctx || makeCtx();
+  // GitHub only: lets the provider pass over a release that has no file for this entry (see
+  // src/sources/github.js and hasFileFor below).
+  const usable = source.type === 'github'
+    ? (release) => hasFileFor(entry, release, machine({ platform: c.platform, arch: c.arch }))
+    : undefined;
+  const rel = await p.getLatestRelease(source, c, { prerelease: entry.prerelease, tagPrefix: entry.tagPrefix, usable });
   if (!rel || !rel.tag_name) throw new Error(`${p.label} returned no version for this app`);
   if (source.type !== 'github') {
     // Nothing from a non-GitHub listing is fetched over plain HTTP — the hard limit.
@@ -338,6 +344,24 @@ function pick(entry, rel, h) {
   }
   const chosen = selectSourced(entry, rel, h);
   return isEmulated(chosen, h) ? { ...chosen, emulated: true } : chosen;
+}
+
+// Does this GitHub release have anything for this machine that the entry could be given?
+// Asked only to decide whether a release should be passed over for an earlier one, so it is
+// deliberately generous: it says no ONLY when the release has no file of either package type
+// for this platform (tesseract 5.5.4: no files at all). Everything else keeps the release
+// and the message it already produces:
+//   - the release ships only the OTHER type  -> "change its type" / the automatic retype;
+//   - a pinned file pattern stopped matching -> "Choose a download", from this release's files.
+const OTHER_TYPE = /only ships (portable builds|an installer)/;
+function hasFileFor(entry, release, h) {
+  const auto = { ...entry, asset: undefined };
+  try {
+    pick(auto, release, h);
+    return true;
+  } catch (e) {
+    return OTHER_TYPE.test(e.message);
+  }
 }
 
 function selectSourced(entry, rel, h) {

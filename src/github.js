@@ -302,7 +302,29 @@ async function findByTagPrefix(owner, repo, prefix, includePrerelease) {
 // /releases/latest excludes prereleases + drafts; opts.prerelease uses /releases[0] (first non-draft).
 // opts.tagPrefix restricts either mode to one release train within a multi-product repo.
 // On 404, distinguish a missing repo (deleted/renamed) from a repo with no matching releases.
+//
+// opts.usable(release) — optional: does this release have a file the caller could install?
+// The latest release is the answer whenever it does, or when no test is given: exactly as
+// before, with no extra request. When it does not, the newest earlier release that does is
+// returned instead, carrying `skipped` (the release passed over) so the caller can say so.
+// When no recent release has one either, the latest is returned and the caller fails on it
+// with the message it always gave.
 async function getLatestRelease(owner, repo, opts = {}) {
+  const latest = await newestRelease(owner, repo, opts);
+  if (typeof opts.usable !== 'function' || opts.usable(latest)) return latest;
+  // Looking further back is a courtesy: if that request fails, the latest release stands. A
+  // rate limit is the exception — it ends the whole run, so it must be heard.
+  let earlier = null;
+  try {
+    earlier = await findRecentRelease(owner, repo, opts, opts.usable);
+  } catch (e) {
+    if (e.rateLimited) throw e;
+  }
+  if (!earlier || earlier.tag_name === latest.tag_name) return latest;
+  return { ...earlier, skipped: { tag: latest.tag_name, url: latest.html_url } };
+}
+
+async function newestRelease(owner, repo, opts) {
   try {
     if (opts.tagPrefix) {
       return await findByTagPrefix(owner, repo, opts.tagPrefix, opts.prerelease);
@@ -321,6 +343,21 @@ async function getLatestRelease(owner, repo, opts = {}) {
     }
     throw e;
   }
+}
+
+// Some projects attach their files to only SOME releases. tesseract-ocr/tesseract puts its
+// Windows installer on 5.5.0 and 5.5.3, and nothing at all on 5.5.1, 5.5.2 or 5.5.4. Taking
+// /releases/latest alone, such an app shows "Update" for a release there is nothing to install
+// from, and every update fails. This finds the newest release, within the same rules as
+// newestRelease (prerelease, tag prefix), that `accept` says has something usable. One API
+// call, made only when the latest release had nothing. -> the release, or null.
+const RECENT_RELEASES = 30;
+async function findRecentRelease(owner, repo, opts, accept) {
+  const list = await ghJson(`${API}/repos/${owner}/${repo}/releases?per_page=${RECENT_RELEASES}`);
+  return (list || []).find((r) =>
+    !r.draft && (opts.prerelease || !r.prerelease) &&
+    (!opts.tagPrefix || String(r.tag_name || '').startsWith(opts.tagPrefix)) &&
+    accept(r)) || null;
 }
 
 // Current core API quota. /rate_limit itself does not count against the limit. Pass a token
@@ -523,7 +560,7 @@ const TOKEN_CREATE_URL = 'https://github.com/settings/personal-access-tokens/new
 }).toString();
 
 module.exports = {
-  getLatestRelease, listAssets, downloadAsset, verifyDigest, fetchChecksumFromRelease, setFetch, setToken, rateLimit, TOKEN_CREATE_URL, openPrivateAsset,
+  getLatestRelease, findRecentRelease, listAssets, downloadAsset, verifyDigest, fetchChecksumFromRelease, setFetch, setToken, rateLimit, TOKEN_CREATE_URL, openPrivateAsset,
   // shared with the source providers (src/sources/)
   doFetch, withNetRetry, fetchWithPolicy, checkHop, setRedirectResolver, assertHttpsUrl, safeUrl, UA, SUMS_FILE, DEFAULT_MAX_BYTES,
 };
