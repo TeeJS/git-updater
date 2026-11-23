@@ -866,7 +866,18 @@ function statusGroup(s) {
   if (['current', 'installed', 'updated'].includes(s.ph)) return s.ph === 'updated' || (s.ph === 'current' && s.lastAction === 'updated') ? 'Updated' : 'Installed';
   return statusView(s).text;
 }
+// GitHub's newest release has no file for this computer, so the row shows the newest release
+// that does (see src/sources/github.js). Said wherever the row's status or version is explained,
+// so "why is this not the newest version?" has an answer on the row itself.
+const passedOverNote = (s) => (s.newerWithoutFile && s.to
+  ? `Version ${s.newerWithoutFile} is out, but it has no file for this computer. ${s.to} is the newest version that does.`
+  : '');
 function statusView(s) {
+  const v = statusViewOf(s);
+  const note = ['current', 'available', 'installed', 'updated'].includes(s.ph) ? passedOverNote(s) : '';
+  return note ? { ...v, tip: `${v.tip || v.text}\n${note}` } : v;
+}
+function statusViewOf(s) {
   switch (s.ph) {
     case 'loading': return { text: 'Loading…', cls: 'c-work' };
     case 'checking': return { text: 'Checking…', cls: 'c-work' };
@@ -903,7 +914,7 @@ function mergeBackgroundResults(st, results) {
   for (const r of results || []) {
     const s = st[r.id];
     if (!s || s.ph !== 'idle' || r.status === 'failed') continue;
-    st[r.id] = { ...s, ph: r.status === 'current' ? 'current' : 'available', from: r.from || s.from, to: r.to };
+    st[r.id] = { ...s, ph: r.status === 'current' ? 'current' : 'available', from: r.from || s.from, to: r.to, ...(r.newerWithoutFile ? { newerWithoutFile: r.newerWithoutFile } : {}) };
     n++;
   }
   return n;
@@ -1121,7 +1132,7 @@ function compactVersions(s, sv) {
   // The arrow means "there is something to install". An app that is up to date can still have a
   // version that is merely spelled differently (1.27.0.0 installed, 1.27.0 published).
   if (s.to && s.to !== s.from && s.ph === 'available') out.append(fresh ? '' : ' → ', el('span', 'to', s.to));
-  out.title = `${sv.text}\nCurrent: ${cur}${s.to ? `\nAvailable: ${s.to}` : ''}`;
+  out.title = `${sv.tip || sv.text}\nCurrent: ${cur}${s.to ? `\nAvailable: ${s.to}` : ''}`;
   return out;
 }
 const typeLabelOf = (r) => (r.type === 'installer' ? 'Installer' : 'Portable');
@@ -1212,7 +1223,7 @@ function renderRepos() {
 
     // Available
     const av = s.to ? el('span', 'available-version ver avail', s.to) : el('span', 'available-version ver dash', '—');
-    if (s.to) av.title = s.to;
+    if (s.to) av.title = passedOverNote(s) || s.to;
     row.appendChild(av);
 
     // Status
@@ -2384,6 +2395,7 @@ async function checkApps(keys) {
   holdVisible(); // before the statuses change, so rows do not vanish from a filtered list mid-run
   busy = true; keys.forEach((k) => (st[k] = { ...(st[k] || {}), ph: 'checking', chooseFile: false })); renderRepos();
   const retyped = { portable: [], installer: [] }; // type corrections — reported, never silent
+  const passedOver = []; // apps whose newest release has no file for this computer — said, never silent
   let stopped = null; // rate-limit / bad-token reason that ended the run early
   try {
     for (const k of keys) {
@@ -2392,10 +2404,11 @@ async function checkApps(keys) {
       if (r) {
         const s = st[k] || {};
         if (r.retyped && retyped[r.retyped.to]) retyped[r.retyped.to].push(nameOfKey(k));
+        if (r.newerWithoutFile && r.status !== 'failed') passedOver.push(`${nameOfKey(k)} ${r.newerWithoutFile} has no file for this computer, so ${r.to} is the newest version that can be installed.`);
         const prov = { ...(r.fileHost ? { fileHost: r.servedFrom || r.fileHost } : {}), ...(r.checksum ? { checksum: r.checksum } : {}) };
         // A row that needs a file chosen still knows its versions, so it keeps showing them.
         if (r.status === 'failed') st[k] = { ...s, ...prov, ph: 'failed', reason: r.reason, chooseFile: !!r.chooseFile, ...(r.chooseFile ? { from: r.from || s.from, to: r.to || s.to } : {}) };
-        else st[k] = { ...s, ...prov, ph: r.status === 'current' ? 'current' : 'available', from: r.from || s.from, to: r.to, present: s.present };
+        else st[k] = { ...s, ...prov, ph: r.status === 'current' ? 'current' : 'available', from: r.from || s.from, to: r.to, present: s.present, newerWithoutFile: r.newerWithoutFile || null };
       }
       renderRepos();
       // Rate-limited (or a bad token): every remaining call would fail the same way and
@@ -2410,7 +2423,7 @@ async function checkApps(keys) {
     // system package manager already installed rather than replacing it. Going installer,
     // updates stop landing in the portable folder and start asking for authorization.
     // Either way the user can only decide whether they want it if we tell them.
-    const parts = [];
+    const parts = [...passedOver];
     if (retyped.portable.length)
       parts.push(
         `${retyped.portable.join(', ')} switched to Portable — ${retyped.portable.length > 1 ? 'these publish' : 'this publishes'} no installer, so the portable copy installs alongside any existing one.`

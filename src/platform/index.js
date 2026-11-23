@@ -66,6 +66,14 @@ async function launchTargetFor(name, flavor) {
   return p.launchTargetFor ? p.launchTargetFor(name, flavor) : null;
 }
 
+// Optional: the programs the operating system has on record apart from its installed-apps
+// inventory, as full paths. Only Windows has such a list (the "App Paths" registry); it names
+// the program of an app whose inventory row does not. [] means "nothing to add".
+async function registeredPrograms() {
+  const p = impl();
+  return p.registeredPrograms ? p.registeredPrograms() : [];
+}
+
 // Optional per-platform launch. Windows and macOS hand the path to the OS shell, which
 // does the right thing with an .exe or an .app. Linux has no such single gesture: a
 // .desktop entry is a launch descriptor that xdg-open will happily open in a text editor,
@@ -90,6 +98,7 @@ module.exports = {
   copyTree,
   verifyPayload,
   launchTargetFor,
+  registeredPrograms,
   launchApp,
   installedApps: (...a) => current.installedApps(...a),
   runningProcesses: (...a) => current.runningProcesses(...a),

@@ -35,9 +35,13 @@ function canonicalRef(source) {
 const pageUrl = (source) =>
   `https://github.com/${encodeURIComponent(source.owner)}/${encodeURIComponent(source.repo)}/releases`;
 
-// opts carries the per-entry release-selection settings (prerelease, tagPrefix).
+// opts carries the per-entry release-selection settings (prerelease, tagPrefix), and
+// `usable(release)`: does this release have a file this entry could install on this machine?
+// With it, a latest release that has no such file is passed over for the newest one that does
+// (tesseract-ocr/tesseract: an installer on 5.5.3, nothing on 5.5.4) and the result carries
+// `skipped`, naming the release passed over. See getLatestRelease in src/github.js.
 async function getLatestRelease(source, ctx, opts = {}) {
-  const rel = await github.getLatestRelease(source.owner, source.repo, { prerelease: opts.prerelease, tagPrefix: opts.tagPrefix });
+  const rel = await github.getLatestRelease(source.owner, source.repo, { prerelease: opts.prerelease, tagPrefix: opts.tagPrefix, usable: opts.usable });
   return {
     ...rel,
     html_url: rel.html_url || pageUrl(source),

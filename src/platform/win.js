@@ -99,6 +99,43 @@ async function installedApps() {
   return [...hives.flatMap(parseHive), ...parsePackageKeys(packages)];
 }
 
+// "App Paths" is where a program registers its own exe with Windows — it is what makes
+// `chrome` work from Win+R — as one key per program whose default value is the full path:
+//
+//   ...\App Paths\chrome.exe   (Default)   C:\Program Files\Google\Chrome\Application\chrome.exe
+//
+// It matters because the uninstall registry does not always say where an app lives: an MSI
+// install of Google Chrome records neither a DisplayIcon nor an InstallLocation, so nothing
+// there names chrome.exe. src/detect.js uses these paths to tell which running processes are
+// an app's own. The same benign reg.exe read as the hives above.
+const APP_PATHS = [
+  'HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths',
+  'HKLM\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\App Paths',
+  'HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths',
+];
+
+// Parse `reg query <App Paths> /s /ve` output into the registered exe paths. The value's
+// label is "(Default)" only on an English Windows, so any parenthesised label is taken. The
+// FILE is what is kept, not the key: the key "WinMerge.exe" registers WinMergeU.exe.
+// `env` expands %ProgramFiles%-style references. Exported for tests: pure.
+function parseAppPaths(stdout, env = process.env) {
+  const out = new Set();
+  for (const line of String(stdout || '').split(/\r?\n/)) {
+    const m = line.match(/^\s+\([^)]*\)\s+REG_(?:EXPAND_)?SZ\s+(.+)$/);
+    if (!m) continue;
+    const lookup = (name) => Object.keys(env).find((k) => k.toLowerCase() === name.toLowerCase());
+    const file = m[1].trim().replace(/^"(.*)"$/, '$1').replace(/%([^%]+)%/g, (all, name) => (lookup(name) ? env[lookup(name)] : all)).trim();
+    if (/^[a-z]:\\.+\.exe$/i.test(file)) out.add(file);
+  }
+  return [...out];
+}
+
+// Every program registered in App Paths, as full paths. A failed query yields no rows.
+async function registeredPrograms() {
+  const outs = await Promise.all(APP_PATHS.map((key) => run('reg', ['query', key, '/s', '/ve'])));
+  return [...new Set(outs.flatMap((text) => parseAppPaths(text)))];
+}
+
 // Parse `tasklist /fo csv /nh` into [{ name, pid }]. Exported for tests.
 function parseTasklist(stdout) {
   return stdout
@@ -120,4 +157,4 @@ function killProcess(pid, force) {
   spawnSync('taskkill', force ? ['/PID', String(pid), '/F', '/T'] : ['/PID', String(pid)], { windowsHide: true });
 }
 
-module.exports = { installedApps, runningProcesses, killProcess, parseHive, parsePackageKeys, parseTasklist, cleanIconPath };
+module.exports = { installedApps, registeredPrograms, runningProcesses, killProcess, parseHive, parsePackageKeys, parseAppPaths, parseTasklist, cleanIconPath };
