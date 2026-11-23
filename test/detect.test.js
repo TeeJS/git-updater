@@ -72,6 +72,51 @@ test('nameMatches: two-letter names still match themselves', () => {
   assert.equal(nameMatches('e', 'ed', 'linux'), false, 'one character never identifies an app');
 });
 
+// Reported on Notepad++: the row said "Not installed" with Notepad++ installed, offered Install,
+// and Windows refused the repeat install with exit 1625. Both names are that PC's own rows.
+test('nameMatches: a bracketed note on an installed name is not part of the name', () => {
+  assert.ok(nameMatches('Notepad++ (x64)', 'notepad-plus-plus', 'win32'), 'the MSI install');
+  assert.ok(nameMatches('Notepad++ (64-bit x64)', 'notepad-plus-plus', 'win32'), 'the EXE install');
+  assert.ok(nameMatches('Notepad++', 'notepad-plus-plus', 'win32'), 'as it always did without the note');
+  assert.ok(nameMatches('Brave (Nightly) (x64)', 'brave-browser', 'win32'), 'however many notes');
+  // A name that already matched as written is not touched by this.
+  assert.ok(nameMatches('7-Zip 26.02 (x64 edition)', '7zip', 'win32'));
+  assert.ok(nameMatches('PowerToys (Preview) x64', 'PowerToys', 'win32'));
+  // Removing a note never makes a different app match, and what is left must still be a name.
+  assert.equal(nameMatches('Some Viewer (Notepad++ plugin)', 'notepad-plus-plus', 'win32'), false);
+  assert.equal(nameMatches('Paint (x64)', 'notepad-plus-plus', 'win32'), false);
+  assert.equal(nameMatches('N (x64)', 'notepad-plus-plus', 'win32'), false, 'one character never identifies an app');
+  // The other rules still apply to what is left: tokens, and on Linux the direction.
+  assert.equal(nameMatches('ed (GNU)', 'bedrock-panel', 'linux'), false);
+  assert.equal(nameMatches('git (snap)', 'git-updater', 'linux'), false);
+  assert.ok(nameMatches('joplin (snap)', 'joplin', 'linux'));
+});
+
+test('sameApp: a helper is still judged by its whole name, brackets included', () => {
+  const { sameApp } = require('../src/detect');
+  assert.ok(sameApp('Notepad++ (x64)', 'notepad-plus-plus', 'win32'));
+  assert.equal(sameApp('Brave (Updater)', 'brave-browser', 'win32'), false, 'the note says it is not the app');
+  assert.equal(sameApp('Claude (URL Handler)', 'claude-code', 'win32'), false);
+});
+
+test('installedVersion: Notepad++ is found, and its newest install decides the installer type', async () => {
+  const detect = require('../src/detect');
+  const platform = require('../src/platform');
+  const real = platform.installedApps;
+  platform.installedApps = async () => [
+    { name: 'Notepad++ (64-bit x64)', version: '8.9.8', flavor: 'exe', path: 'C:\\Program Files\\Notepad++\\notepad++.exe' },
+    { name: 'Notepad++ (x64)', version: '8.9.9.1', flavor: 'msi' },
+  ];
+  detect.clearCache();
+  try {
+    assert.equal(await detect.installedVersion('notepad-plus-plus'), '8.9.9.1', 'not "Not installed"');
+    assert.equal(await detect.installedFlavor('notepad-plus-plus'), 'msi', 'so an update does not land a third copy beside these');
+  } finally {
+    platform.installedApps = real;
+    detect.clearCache();
+  }
+});
+
 test('nameMatches: survives empty and junk input', () => {
   assert.equal(nameMatches('', 'bedrock-panel', 'linux'), false);
   assert.equal(nameMatches(null, 'bedrock-panel', 'linux'), false);

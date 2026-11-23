@@ -78,7 +78,24 @@ function tokenRuns(name) {
 // from any host — which is why the platform is a parameter and not process.platform.
 // `plat`, not `platform`: the module of that name is this file's IO layer, and shadowing
 // it inside the one pure function here is how that stops being obvious.
+//
+// An installed name often ends in a bracketed note — "(x64)", "(64-bit x64)", "(Preview)" —
+// and the note is not part of the name. It mattered for exactly one shape: Windows lists
+// Notepad++ as "Notepad++ (x64)", whose letters are "notepad" + "x64", while the entry is
+// notepad-plus-plus. Bare "Notepad++" matched (it is the entry's first token); with the note
+// it matched nothing, so an installed Notepad++ read as "Not installed", Install was offered
+// again, and Windows refused the repeat install (exit 1625). So the name is also tried with
+// its bracketed notes removed. On a PC with 314 installed names, 116 of them bracketed, this
+// changed the answer for that one app and no other.
+const withoutNotes = (name) => String(name || '').replace(/\([^)]*\)/g, ' ');
+
 function nameMatches(name, needle, plat) {
+  if (matchesAsWritten(name, needle, plat)) return true;
+  const plain = withoutNotes(name);
+  return plain !== String(name || '') && matchesAsWritten(plain, needle, plat);
+}
+
+function matchesAsWritten(name, needle, plat) {
   const n = norm(name);
   const t = norm(needle);
   if (n.length < 2 || t.length < 2) return false;
