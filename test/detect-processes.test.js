@@ -78,13 +78,14 @@ test('git-updater is never one of an app\'s processes', () => {
 });
 
 // Runs `fn` against a made-up machine: `procs` running, `apps` in the installed inventory.
-async function onMachine({ procs, apps = [] }, fn) {
-  const real = { runningProcesses: platform.runningProcesses, installedApps: platform.installedApps, killProcess: platform.killProcess, launchTargetFor: platform.launchTargetFor };
+async function onMachine({ procs, apps = [], registered = [] }, fn) {
+  const real = { runningProcesses: platform.runningProcesses, installedApps: platform.installedApps, killProcess: platform.killProcess, launchTargetFor: platform.launchTargetFor, registeredPrograms: platform.registeredPrograms };
   const killed = [];
   let alive = procs.slice();
   platform.runningProcesses = async () => alive.slice();
   platform.installedApps = async () => apps;
   platform.launchTargetFor = async () => null;
+  platform.registeredPrograms = async () => registered;
   platform.killProcess = (pid, force) => { killed.push({ pid, force }); alive = alive.filter((p) => p.pid !== pid); };
   detect.clearCache();
   try {
@@ -141,4 +142,66 @@ test('the main program comes only from the inventory row that is the app itself'
     await detect.closeApp('Microsoft Edge', { force: true });
     assert.deepEqual(killed, [{ pid: '1', force: true }], 'Edge only: not the WebView2 runtime other apps are using');
   });
+});
+
+// Found on a real PC: an MSI install of Google Chrome records no icon and no folder in the
+// uninstall registry, so nothing there names chrome.exe — and "chrome" is only one word of
+// "Google Chrome". Windows' App Paths list does name it.
+test('App Paths names the program of an app whose inventory row does not', async () => {
+  const apps = [{ name: 'Google Chrome', version: '157.0.8103.79', flavor: 'msi' }];
+  const registered = [
+    'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+    'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+    'C:\\Program Files\\Audacity 4\\bin\\Audacity4.exe',
+    'C:\\Program Files\\BraveSoftware\\Brave-Browser\\Application\\brave.exe',
+    'C:\\Program Files\\WinMerge\\WinMergeU.exe',
+    'C:\\Program Files\\Microsoft Office\\root\\Office16\\WINWORD.EXE',
+    'C:\\Program Files\\Java\\bin\\javaw.exe',
+  ];
+  await onMachine({ procs: [], apps, registered }, async () => {
+    assert.deepEqual(await detect.mainPrograms('Google Chrome'), ['chrome.exe']);
+    assert.deepEqual(await detect.mainPrograms('Microsoft Edge'), ['msedge.exe']);
+    assert.deepEqual(await detect.mainPrograms('audacity'), ['Audacity4.exe'], 'a version on the folder and a bin folder are set aside');
+    assert.deepEqual(await detect.mainPrograms('brave-browser'), ['brave.exe']);
+    assert.deepEqual(await detect.mainPrograms('winmerge'), ['WinMergeU.exe']);
+    // The folder must be the app's OWN: a vendor, or a folder further up, owns nothing.
+    assert.deepEqual(await detect.mainPrograms('Google'), [], 'the folder is Chrome\'s, not all of Google\'s');
+    assert.deepEqual(await detect.mainPrograms('Microsoft'), []);
+    assert.deepEqual(await detect.mainPrograms('Microsoft Office'), [], 'Word is two folders below it');
+    assert.deepEqual(await detect.mainPrograms('Chrome Application'), []);
+    assert.deepEqual(await detect.mainPrograms('Java'), [], 'a shared host is never an app\'s program');
+  });
+  const procs = [{ name: 'chrome.exe', pid: '1' }, { name: 'msedge.exe', pid: '2' }, { name: 'Google.exe', pid: '3' }];
+  await onMachine({ procs, apps, registered }, async (killed) => {
+    assert.equal(await detect.isRunning('Google Chrome'), true);
+    await detect.closeApp('Google Chrome');
+    assert.deepEqual(killed, [{ pid: '1', force: false }]);
+  });
+  await onMachine({ procs, apps }, async () => {
+    assert.equal(await detect.isRunning('Google Chrome'), false, 'without that record, one word of the name is still not enough');
+  });
+});
+
+test('parseAppPaths: the registered file, whatever the key or the label is called', () => {
+  const { parseAppPaths } = require('../src/platform/win');
+  const out = [
+    'HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\chrome.exe',
+    '    (Default)    REG_SZ    C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+    '',
+    'HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\WinMerge.exe',
+    '    (Standard)    REG_SZ    "C:\\Program Files\\WinMerge\\WinMergeU.exe"',
+    'HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\wordpad.exe',
+    '    (Default)    REG_EXPAND_SZ    "%ProgramFiles%\\Windows NT\\Accessories\\WORDPAD.EXE"',
+    'HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\empty.exe',
+    '    (Default)    REG_SZ    ',
+    'HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\notanexe',
+    '    (Default)    REG_SZ    C:\\Somewhere\\readme.txt',
+    '    (Default)    REG_SZ    C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+  ].join('\r\n');
+  assert.deepEqual(parseAppPaths(out, { ProgramFiles: 'C:\\Program Files' }), [
+    'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+    'C:\\Program Files\\WinMerge\\WinMergeU.exe',
+    'C:\\Program Files\\Windows NT\\Accessories\\WORDPAD.EXE',
+  ]);
+  assert.deepEqual(parseAppPaths(''), []);
 });

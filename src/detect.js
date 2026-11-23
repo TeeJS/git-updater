@@ -119,6 +119,7 @@ function sameApp(name, needle, plat) {
 let cache = null; // cleared after installs so fresh versions show
 function clearCache() {
   cache = null;
+  registered = null;
 }
 
 // Every installed app: [{ name, version, flavor }]. One inventory pass per run.
@@ -276,8 +277,47 @@ function isTheApp(rowName, needle) {
   return false;
 }
 
+// The inventory does not always name a program: an MSI install of Google Chrome records
+// neither an icon nor a folder. Windows has a second record, "App Paths", where programs
+// register their own exe (see src/platform/win.js). A registered program is the app's when it
+// lives in the app's OWN folder — the path ends with the app's whole name, once the generic
+// last folders and any version are set aside:
+//
+//   C:\Program Files\Google\Chrome\Application\chrome.exe   -> "Google Chrome"   yes
+//   C:\Program Files\Audacity 4\bin\Audacity4.exe           -> "audacity"        yes
+//   C:\Program Files\Google\Chrome\Application\chrome.exe   -> "Google"          no: the folder
+//                                                              is Chrome's, not all of Google's
+const GENERIC_FOLDER = /^(?:application|app|bin|binaries|x64|x86|win64|win32|64bit|32bit)$/i;
+
+function inOwnFolder(file, needle) {
+  const t = norm(needle);
+  if (t.length < 3) return false;
+  const folders = String(file || '').replace(/^[a-z]:/i, '').split(/[\\/]+/).filter(Boolean).slice(0, -1);
+  while (folders.length && GENERIC_FOLDER.test(folders[folders.length - 1])) folders.pop();
+  const words = folders.flatMap((folder) => tokens(folder));
+  while (words.length && DECORATION.test(words[words.length - 1])) words.pop();
+  let run = '';
+  for (let i = words.length - 1; i >= 0; i--) {
+    run = words[i] + run;
+    if (run === t) return true;
+    if (run.length >= t.length) return false;
+  }
+  return false;
+}
+
+let registered = null; // App Paths, read once per run like the inventory (see clearCache)
+async function registeredPrograms() {
+  if (!registered) registered = await platform.registeredPrograms();
+  return registered;
+}
+
 async function mainPrograms(needle) {
   const paths = [];
+  try {
+    for (const file of await registeredPrograms()) if (inOwnFolder(file, needle)) paths.push(file);
+  } catch {
+    // No such record here (or it failed): the inventory and the name rules still apply.
+  }
   try {
     const rows = (await matchEntries(needle)).filter((row) => row.packaged || isTheApp(row.name, needle));
     for (const row of rows) if (row.path) paths.push(row.path);
