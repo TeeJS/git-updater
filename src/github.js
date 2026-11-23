@@ -47,6 +47,9 @@ function hostOf(url) {
   try { return new URL(url).host; } catch { return String(url); }
 }
 
+// Did a download's body end before the size its server declared? (Electron's net.fetch.)
+const isCutShort = (err) => /\bERR_CONTENT_LENGTH_MISMATCH\b/.test(String((err && err.message) || ''));
+
 // A URL for messages and logs: no credentials, no query string (either can carry a token).
 function safeUrl(url) {
   try {
@@ -463,24 +466,34 @@ async function downloadAsset(url, destPath, onProgress, maxBytes = DEFAULT_MAX_B
     if (maxBytes != null && declared && declared > maxBytes) throw new Error(`asset too large: ${declared} bytes (cap ${maxBytes}) — ${LIMIT_HINT}`);
     let seen = 0;
     let lastPct = -1;
-    await pipeline(
-      Readable.fromWeb(res.body),
-      async function* (source) {
-        for await (const chunk of source) {
-          seen += chunk.length;
-          if (maxBytes != null && seen > maxBytes) throw new Error(`asset exceeded size cap ${maxBytes} bytes — ${LIMIT_HINT}`);
-          if (onProgress && declared) {
-            const pct = Math.floor((seen / declared) * 100);
-            if (pct !== lastPct) {
-              lastPct = pct;
-              onProgress(pct);
+    try {
+      await pipeline(
+        Readable.fromWeb(res.body),
+        async function* (source) {
+          for await (const chunk of source) {
+            seen += chunk.length;
+            if (maxBytes != null && seen > maxBytes) throw new Error(`asset exceeded size cap ${maxBytes} bytes — ${LIMIT_HINT}`);
+            if (onProgress && declared) {
+              const pct = Math.floor((seen / declared) * 100);
+              if (pct !== lastPct) {
+                lastPct = pct;
+                onProgress(pct);
+              }
             }
+            yield chunk;
           }
-          yield chunk;
-        }
-      },
-      fs.createWriteStream(destPath)
-    );
+        },
+        fs.createWriteStream(destPath)
+      );
+    } catch (err) {
+      // The server promised a size and closed the connection before sending it all. Chromium
+      // reports that as a bare "net::ERR_CONTENT_LENGTH_MISMATCH", which is what the row then
+      // showed (media.inkscape.org, 2026-11-23: 113 of 162 MB, every time, with its cache
+      // answering 503 for the rest). Only the wording changes: it was not retried before and
+      // is not now — the same request to the same server gives the same short file.
+      if (isCutShort(err)) throw new Error(`${hostOf(res.url || finalUrl || url)} cut the download short — try again later`);
+      throw err;
+    }
     return destPath;
   }, url);
 }

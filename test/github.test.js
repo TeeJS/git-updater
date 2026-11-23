@@ -282,6 +282,56 @@ test('downloadAsset enforces the configured cap while streaming and accepts unli
   }
 });
 
+// Reported on Inkscape, 2026-11-23: the row showed a bare "net::ERR_CONTENT_LENGTH_MISMATCH".
+// media.inkscape.org declared 170323968 bytes, sent 118489088 and closed the connection.
+test('downloadAsset says in plain words when the server cut the download short', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gu-download-short-'));
+  const realFetch = global.fetch;
+  let requests = 0;
+  // What Electron's net.fetch does: the response arrives, then the body fails part-way with
+  // a plain Error that carries no code and no cause.
+  const cutShort = (failure, url = '') => async () => {
+    requests++;
+    return {
+      ok: true,
+      url,
+      headers: { get: (h) => (h === 'content-length' ? '170323968' : null) },
+      body: new ReadableStream({
+        start(controller) { controller.enqueue(Uint8Array.from([1, 2, 3, 4])); },
+        pull(controller) { controller.error(failure); },
+      }),
+    };
+  };
+  try {
+    const file = path.join(dir, 'inkscape.msi');
+    const address = 'https://media.inkscape.org/dl/resources/file/inkscape-1.4.4_x64.msi?sig=secret';
+    global.fetch = cutShort(new Error('net::ERR_CONTENT_LENGTH_MISMATCH'));
+    await assert.rejects(() => github.downloadAsset(address, file, null, null), (e) => {
+      assert.equal(e.message, 'media.inkscape.org cut the download short — try again later');
+      assert.ok(!/net::|ERR_|sig=|secret/.test(e.message), 'no browser error code, and nothing from the address but its host');
+      return true;
+    });
+    assert.equal(requests, 1, 'not retried: the same server would send the same short file');
+
+    // After a redirect, the host named is the one the file actually came from.
+    global.fetch = cutShort(new Error('net::ERR_CONTENT_LENGTH_MISMATCH'), 'https://cdn.example.net/files/inkscape.msi');
+    await assert.rejects(() => github.downloadAsset(address, file, null, null), /^Error: cdn\.example\.net cut the download short — try again later$/);
+
+    // Any other failure while reading is passed on exactly as it was.
+    global.fetch = cutShort(new Error('net::ERR_INTERNET_DISCONNECTED'));
+    await assert.rejects(() => github.downloadAsset(address, file, null, null), /^Error: net::ERR_INTERNET_DISCONNECTED$/);
+    global.fetch = async () => ({
+      ok: true,
+      headers: { get: () => null },
+      body: new ReadableStream({ start(controller) { controller.enqueue(Uint8Array.from([1, 2, 3, 4])); controller.close(); } }),
+    });
+    await assert.rejects(() => github.downloadAsset(address, file, null, 3), /asset exceeded size cap 3 bytes/);
+  } finally {
+    global.fetch = realFetch;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('downloadAsset refuses a download whose declared size is over the cap before reading it', async () => {
   const realFetch = global.fetch;
   global.fetch = async () => ({ ok: true, headers: { get: (h) => (h === 'content-length' ? '1000' : null) }, body: null });
