@@ -4,6 +4,8 @@
 // (a signed MS utility, benign read, NO shell — Node has no native registry API).
 // Running processes come from tasklist.exe, closed with taskkill.exe, both likewise.
 
+const fs = require('fs');
+const path = require('path');
 const { spawnSync } = require('child_process');
 const { run } = require('./exec');
 
@@ -136,6 +138,44 @@ async function registeredPrograms() {
   return [...new Set(outs.flatMap((text) => parseAppPaths(text)))];
 }
 
+// The Start Menu is the one place nearly every installed program records where it lives, even
+// when the registry does not: an MSI install of NAPS2, Zoom, PuTTY or Tailscale writes neither
+// a DisplayIcon nor an InstallLocation nor an App Paths key, but each puts a shortcut here.
+// Two folders hold them, one for all users and one for this user:
+//
+//   %ProgramData%\Microsoft\Windows\Start Menu\Programs
+//   %APPDATA%\Microsoft\Windows\Start Menu\Programs
+//
+// This only LISTS the shortcut files, as [{ name, file }] — a plain directory read. What a
+// shortcut points at is read by the caller (Electron's shell.readShortcutLink, in-process).
+const START_MENU_ROOTS = ['ProgramData', 'APPDATA'];
+const START_MENU_DEPTH = 4;
+
+async function startMenuShortcuts(env = process.env) {
+  const out = [];
+  const walk = async (dir, depth) => {
+    let entries;
+    try {
+      entries = await fs.promises.readdir(dir, { withFileTypes: true });
+    } catch {
+      return; // no such folder, or not readable: nothing to add
+    }
+    for (const entry of entries) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (depth > 1) await walk(full, depth - 1);
+      } else if (/\.lnk$/i.test(entry.name)) {
+        out.push({ name: entry.name.replace(/\.lnk$/i, ''), file: full });
+      }
+    }
+  };
+  for (const wanted of START_MENU_ROOTS) {
+    const key = Object.keys(env).find((k) => k.toLowerCase() === wanted.toLowerCase());
+    if (key && env[key]) await walk(path.join(env[key], 'Microsoft', 'Windows', 'Start Menu', 'Programs'), START_MENU_DEPTH);
+  }
+  return out;
+}
+
 // Parse `tasklist /fo csv /nh` into [{ name, pid }]. Exported for tests.
 function parseTasklist(stdout) {
   return stdout
@@ -157,4 +197,4 @@ function killProcess(pid, force) {
   spawnSync('taskkill', force ? ['/PID', String(pid), '/F', '/T'] : ['/PID', String(pid)], { windowsHide: true });
 }
 
-module.exports = { installedApps, registeredPrograms, runningProcesses, killProcess, parseHive, parsePackageKeys, parseAppPaths, parseTasklist, cleanIconPath };
+module.exports = { installedApps, registeredPrograms, startMenuShortcuts, runningProcesses, killProcess, parseHive, parsePackageKeys, parseAppPaths, parseTasklist, cleanIconPath };

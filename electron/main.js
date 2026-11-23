@@ -610,6 +610,12 @@ async function launchApp(appKey) {
       const rel = core.pickLaunchFile(shallowFiles(t.location, 2), core.appName(r), process.platform);
       if (rel) target = path.join(t.location, rel);
     }
+    // Last resort, Windows only: the app's Start Menu shortcut. Chrome, NAPS2, Zoom, PuTTY and
+    // Tailscale have no program and no folder on record, and each has a shortcut that points
+    // at one. shell.readShortcutLink is an in-process read — no shell, no new process.
+    if (!target && process.platform === 'win32') {
+      target = await detect.startMenuProgram(core.detectName(r), core.appName(r), (file) => shell.readShortcutLink(file).target);
+    }
   }
 
   if (!target) throw new Error(`couldn't find ${core.appName(r)}'s program to open — try Open folder`);
