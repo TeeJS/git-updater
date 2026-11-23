@@ -170,5 +170,8 @@ test('procMatches: closing one app never closes a different known app', () => {
   assert.equal(procMatches('Claude', 'claude-code'), false, 'the desktop app keeps running');
   assert.ok(procMatches('Claude', 'Claude'));
   assert.ok(procMatches('Claude Helper', 'Claude'), 'its helper processes are still part of it');
-  assert.ok(procMatches('obs', 'obs-studio'));
+  // One word of the app's name is no longer enough (test/detect-processes.test.js): `obs` is
+  // OBS Studio's process only when the system records it as the app's main program.
+  assert.equal(procMatches('obs', 'obs-studio'), false);
+  assert.ok(procMatches('obs', 'obs-studio', ['obs']));
 });
