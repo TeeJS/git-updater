@@ -74,6 +74,14 @@ async function registeredPrograms() {
   return p.registeredPrograms ? p.registeredPrograms() : [];
 }
 
+// Optional: the shortcuts in the Start Menu, as [{ name, file }]. Windows only; it is the
+// last place "Open App" looks for an app whose inventory row names no program and no folder.
+// [] means "nothing to add".
+async function startMenuShortcuts() {
+  const p = impl();
+  return p.startMenuShortcuts ? p.startMenuShortcuts() : [];
+}
+
 // Optional per-platform launch. Windows and macOS hand the path to the OS shell, which
 // does the right thing with an .exe or an .app. Linux has no such single gesture: a
 // .desktop entry is a launch descriptor that xdg-open will happily open in a text editor,
@@ -99,6 +107,7 @@ module.exports = {
   verifyPayload,
   launchTargetFor,
   registeredPrograms,
+  startMenuShortcuts,
   launchApp,
   installedApps: (...a) => current.installedApps(...a),
   runningProcesses: (...a) => current.runningProcesses(...a),

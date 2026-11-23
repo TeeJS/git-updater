@@ -172,22 +172,118 @@ async function installedFlavor(needle) {
   return hits[hits.length - 1].flavor || null;
 }
 
+// Is this recorded "program" really the app's installer? Yes when it sits in a folder named
+// "Package Cache" (where a setup keeps its own copy), or its file name says setup or install.
+// Only an .exe is ever judged, so a macOS bundle or a Linux launcher is never caught by name.
+const isSetupFile = (file) => {
+  const full = String(file || '');
+  if (!/\.exe$/i.test(full)) return false;
+  return /[\\/]Package Cache[\\/]/i.test(full) || /setup|install/i.test(full.split(/[\\/]/).pop());
+};
+
 // Where to launch an installed app from — the highest-versioned matching entry's own
 // path (a Windows exe from DisplayIcon, or a macOS .app bundle) and its install directory
 // (Windows InstallLocation). null when nothing matches. The Electron side confirms the
 // path exists and, failing that, hunts the directory (see electron/main.js). Used by
 // "Open App"; installer apps only (portables launch from their own file manifest).
+//
+// Two things the registry does that this has to see through, both found on PowerToys, whose
+// "Open App" opened its SETUP ("Modify Setup: Uninstall / Cancel"):
+//
+//   1. The recorded program can be the installer. A setup that stays on disk for Modify and
+//      Uninstall writes ITSELF as the app's icon — PowerToysSetup-0.102.3101.0-x64.exe in
+//      "Package Cache", OneDriveSetup.exe. Such a file is not the app's program (isSetupFile).
+//   2. One app can have two rows, and the install folder is on the other one. PowerToys has
+//      the visible "PowerToys (Preview) x64" (the setup's icon, no folder) and a hidden
+//      "PowerToys (Preview)" (no icon, C:\Program Files\PowerToys). So when the chosen row
+//      has no folder, the newest row that has one supplies it.
 async function launchTarget(needle) {
   const hits = await matchEntries(needle);
   if (!hits.length) return null;
   hits.sort((a, b) => cmpVersion(a.version, b.version));
   const best = hits[hits.length - 1];
-  if (best.path || best.location) return { path: best.path || null, location: best.location || null };
+  const program = best.path && !isSetupFile(best.path) ? best.path : null;
+  const withFolder = best.location ? best : hits.slice().reverse().find((h) => h.location);
+  const location = withFolder ? withFolder.location : null;
+  if (program || location) return { path: program, location };
   // Nothing launchable on the row itself. Windows puts a program path in the uninstall
   // registry, but dpkg, rpm, flatpak and snap all inventory PACKAGES, so the platform
   // layer has to go and find the program. Asked only for the one app being opened,
   // because it costs a subprocess.
   return (await platform.launchTargetFor(best.name, best.flavor)) || { path: null, location: null };
+}
+
+// --- the Start Menu, as Open App's last resort ---------------------------------------------
+//
+// Some installed apps have NOTHING launchable on record: the row for Google Chrome, NAPS2,
+// Zoom, PuTTY or Tailscale carries no icon and no install folder, and OneDrive's only names
+// its setup. Open App said "couldn't find the program" for all six. Each has a Start Menu
+// shortcut that points at the real program, so that is asked last — only when launchTarget
+// produced nothing, so an app that opens today opens the same file it always did.
+//
+// A shortcut is the app's when its NAME is: the app's own name, or the name of its installed
+// row, compared with versions and bracketed notes dropped ("Zoom Workplace" for the row
+// "Zoom Workplace (64-bit)"). The one named exactly like the app is tried first.
+
+// A name with its bracketed notes and decoration words removed: "PowerToys (Preview) x64"
+// -> "powertoys", "Zoom Workplace (64-bit)" -> "zoom workplace".
+const plainName = (s) =>
+  tokens(String(s || '').replace(/\([^)]*\)/g, ' '))
+    .filter((word) => !DECORATION.test(word))
+    .join(' ');
+
+// Can this shortcut target be opened as the app? It must be a program, and not one that only
+// makes sense with the arguments the shortcut carried (which are not used): a setup, an
+// uninstaller, an updater ("Update.exe --processStart App.exe"), or a shared host (javaw, cmd).
+function isAppProgram(file) {
+  if (typeof file !== 'string' || !/\.exe$/i.test(file) || isSetupFile(file)) return false;
+  const name = bare(file.split(/[\\/]/).pop());
+  return !INSTALLER_PROGRAM.test(name) && !SHARED_PROGRAM.test(name);
+}
+
+// Choose the program behind an app's Start Menu shortcut, or null.
+//   links       [{ name, file }]     every shortcut (platform.startMenuShortcuts)
+//   own         the app's own names  (its display name, its detect name)
+//   rows        the names of its installed rows
+//   readTarget  file -> the path the shortcut points at (may throw, may return nothing)
+// Pure apart from the two callbacks, so it is tested without a Start Menu.
+function pickShortcut(links, own, rows, readTarget, exists = fs.existsSync) {
+  const exact = new Set((own || []).map(norm).filter(Boolean));
+  const mine = new Set((own || []).map(plainName).filter(Boolean));
+  const theirs = new Set((rows || []).map(plainName).filter(Boolean));
+  const rank = (name) => {
+    if (exact.has(norm(name))) return 0;
+    const plain = plainName(name);
+    if (!plain) return -1;
+    if (mine.has(plain)) return 1;
+    return theirs.has(plain) ? 2 : -1;
+  };
+  const ranked = (links || [])
+    .map((link, order) => ({ link, order, rank: rank(link.name) }))
+    .filter((entry) => entry.rank >= 0)
+    .sort((a, b) => a.rank - b.rank || a.order - b.order);
+  for (const { link } of ranked) {
+    let target = null;
+    try {
+      target = readTarget(link.file);
+    } catch {
+      // An unreadable shortcut is skipped, like one that points nowhere.
+    }
+    if (isAppProgram(target) && exists(target)) return target;
+  }
+  return null;
+}
+
+// The program an app's Start Menu shortcut points at, or null. Never throws.
+async function startMenuProgram(needle, appName, readTarget, exists = fs.existsSync) {
+  try {
+    const links = await platform.startMenuShortcuts();
+    if (!links.length) return null;
+    const rows = (await matchEntries(needle)).filter((row) => !row.packaged).map((row) => row.name);
+    return pickShortcut(links, [appName, needle], rows, readTarget, exists);
+  } catch {
+    return null;
+  }
 }
 
 // --- running-process detection (for a proactive "close the app" warning) ------
@@ -513,6 +609,9 @@ module.exports = {
   installedDate,
   installedFlavor,
   launchTarget,
+  isSetupFile,
+  pickShortcut,
+  startMenuProgram,
   isRunning,
   closeApp,
   clearCache,
