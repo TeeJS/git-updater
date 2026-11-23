@@ -258,7 +258,15 @@ function switchForm(text) {
   return null;
 }
 
-// -> { installArgs | installArgsRaw, upgradeArgs? | upgradeArgsRaw? } | { unsupported } | {}
+// A plain .exe whose listing declares no silent switches but states, in InstallModes, that it
+// installs silently is one that needs no switches to do so: Discord's Squirrel setup is the
+// common case. WinGet itself has no default switches for the exe type, so it runs exactly these
+// with nothing added; `switchless` tells the runner to do the same. A bare .exe that does not
+// state silent mode is still refused: there the missing switches are a gap, not a statement.
+const SILENT_MODES = ['silent', 'silentWithProgress'];
+const statesSilentMode = (info) => Array.isArray(info.InstallModes) && info.InstallModes.some((mode) => SILENT_MODES.includes(mode));
+
+// -> { installArgs | installArgsRaw, upgradeArgs? | upgradeArgsRaw?, switchless? } | { unsupported } | {}
 // `Upgrade` switches are WinGet's: they are added to the install switches when a version of the
 // app is already on the machine (the runner decides that), never on a first install.
 function installerArguments(info, kind) {
@@ -268,13 +276,15 @@ function installerArguments(info, kind) {
   const silent = text(switches.Silent) || text(switches.SilentWithProgress) || (burn ? BURN_SILENT : '');
   const custom = text(switches.Custom);
   const upgrade = text(switches.Upgrade);
-  if (kind === 'exe' && !silent) return { unsupported: 'WinGet did not declare silent switches for this executable' };
-  if (!silent && !custom && !upgrade) return {};
-  const defaults = silent ? [] : installerCmd(kind, '').args;
+  const switchless = kind === 'exe' && !silent && statesSilentMode(info);
+  if (kind === 'exe' && !silent && !switchless) return { unsupported: 'WinGet did not declare silent switches for this executable' };
+  if (!silent && !custom && !upgrade) return switchless ? { switchless: true } : {};
+  const defaults = silent || switchless ? [] : installerCmd(kind, '').args;
   const defaultSwitches = kind === 'msi' ? defaults.slice(2) : defaults;
   const base = [silent || defaultSwitches.join(' '), custom].filter(Boolean).join(' ').trim();
-  const out = {};
-  for (const [key, line] of [['install', base], ['upgrade', upgrade && `${base} ${upgrade}`]]) {
+  const out = switchless ? { switchless: true } : {};
+  // A switchless installer has no base, so an upgrade line is the Upgrade switches alone.
+  for (const [key, line] of [['install', base], ['upgrade', upgrade && [base, upgrade].filter(Boolean).join(' ')]]) {
     if (!line) continue;
     const form = switchForm(line);
     if (!form) return { unsupported: 'WinGet installer switches require manual setup' };
@@ -372,7 +382,7 @@ function installerAsset(installer, common) {
   if (!kind) asset.unsupported = `WinGet installer type ${wrapped && info.NestedInstallerType ? `zip (${info.NestedInstallerType})` : info.InstallerType || 'unknown'} is unsupported`;
   else if (!arch) asset.unsupported = `WinGet architecture ${info.Architecture || 'unknown'} is unsupported`;
   else if (!safeName || downloadUrl.protocol !== 'https:' || downloadUrl.username || downloadUrl.password) asset.unsupported = 'WinGet did not publish a usable HTTPS download';
-  else if (info.InstallModes?.length && !info.InstallModes.some((mode) => mode === 'silent' || mode === 'silentWithProgress')) {
+  else if (info.InstallModes?.length && !statesSilentMode(info)) {
     asset.unsupported = 'WinGet installer does not support unattended installation';
   }
   return asset;

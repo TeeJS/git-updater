@@ -368,7 +368,10 @@ const INSTALLER_SWITCHES = {
 // process with the arguments passed through untouched (no re-quoting) and the program path
 // quoted. Windows only: the kinds that have a `raw` form are the Windows ones. An argv array
 // (the user's own pinned switches, or a listing's plain ones) always wins over it.
-function installerCmd(kind, file, argsOverride, rawSwitches) {
+// `switchless` is a listing's statement that this .exe installs silently with no switches at all
+// (WinGet's InstallModes: silent with no InstallerSwitches — Discord's setup). It is the only way
+// a plain .exe runs with an empty argument list; anything declared still wins over it.
+function installerCmd(kind, file, argsOverride, rawSwitches, switchless = false) {
   const spec = INSTALLER_SWITCHES[kind];
   if (!spec) {
     throw new Error(`unknown installer kind "${kind}" (known: ${Object.keys(INSTALLER_SWITCHES).join(', ')})`);
@@ -382,6 +385,7 @@ function installerCmd(kind, file, argsOverride, rawSwitches) {
     if (/"/.test(file)) throw new Error('the installer path cannot be quoted safely');
     return { exe, args: [spec.raw(file, rawSwitches.trim())], verbatim: true };
   }
+  if (!defaultArgs && switchless === true && kind === 'exe') return { exe, args: [] };
   if (!defaultArgs) throw new Error(`installer kind "${kind}" has no silent switches of its own — it needs explicit ones`);
   return { exe, args: defaultArgs };
 }

@@ -216,6 +216,31 @@ Installers:
   InstallerUrl: https://vendor.example/quoted-flags.exe
   InstallerSwitches:
     Silent: '-quiet -log "C:\\Install Logs\\vendor.log"'
+- Architecture: x64
+  InstallerType: exe
+  InstallerUrl: https://vendor.example/DiscordSetup.exe
+  InstallModes:
+  - interactive
+  - silent
+- Architecture: x64
+  InstallerType: exe
+  InstallerUrl: https://vendor.example/switchless-custom.exe
+  InstallModes:
+  - silent
+  InstallerSwitches:
+    Custom: --no-launch
+- Architecture: x64
+  InstallerType: exe
+  InstallerUrl: https://vendor.example/switchless-upgrade.exe
+  InstallModes:
+  - silentWithProgress
+  InstallerSwitches:
+    Upgrade: --update
+- Architecture: x64
+  InstallerType: exe
+  InstallerUrl: https://vendor.example/interactive-only.exe
+  InstallModes:
+  - interactive
 `);
   const manifestSha256 = createHash('sha256').update(buffer).digest('hex');
   const index = manifestIndex([{ ...row, manifestSha256 }]);
@@ -226,7 +251,8 @@ Installers:
     fs.rmdirSync(cacheDir);
   });
   const { ctx } = context({ cacheDir, replacements: [[row.url, buffer], [MICROSOFT_MANIFESTS, index]] });
-  const [burn, bareBurn, customBurn, missing, complex] = (await winget.getLatestRelease(packageSource(row.id), ctx)).assets;
+  const [burn, bareBurn, customBurn, missing, complex, discord, switchlessCustom, switchlessUpgrade, interactiveOnly] =
+    (await winget.getLatestRelease(packageSource(row.id), ctx)).assets;
   assert.equal(burn.kind, 'exe');
   assert.deepEqual(burn.installArgs, ['-quiet', '-norestart'], 'declared switches win');
   // Microsoft.VCRedist.2015+ is exactly this: a Burn bundle with no InstallerSwitches at all.
@@ -238,6 +264,20 @@ Installers:
   assert.equal(complex.unsupported, undefined);
   assert.equal(complex.installArgs, undefined);
   assert.equal(complex.installArgsRaw, '-quiet -log "C:\\Install Logs\\vendor.log"');
+  // Discord.Discord's real shape: an .exe with no switches whose InstallModes say it installs
+  // silently. WinGet runs it with nothing added, so git-updater does too.
+  assert.equal(discord.unsupported, undefined);
+  assert.equal(discord.switchless, true);
+  assert.equal(discord.installArgs, undefined);
+  assert.equal(discord.installArgsRaw, undefined);
+  assert.deepEqual(switchlessCustom.installArgs, ['--no-launch'], 'Custom is all there is to run');
+  assert.equal(switchlessCustom.switchless, true);
+  assert.equal(switchlessUpgrade.installArgs, undefined, 'a first install still runs with nothing added');
+  assert.deepEqual(switchlessUpgrade.upgradeArgs, ['--update'], 'the upgrade set is the Upgrade switches alone');
+  assert.equal(switchlessUpgrade.switchless, true);
+  assert.equal(missing.switchless, undefined, 'no InstallModes is no statement: still refused');
+  assert.match(interactiveOnly.unsupported, /does not support unattended installation/);
+  assert.equal(interactiveOnly.switchless, undefined);
 });
 
 // The shapes below are taken from real manifests that used to be refused outright: AIMP, Evernote,

@@ -154,6 +154,11 @@ test('core: the exe installer kind never runs without explicit switches', () => 
   assert.throws(() => core.installerCmd('exe', 'S.exe', []), /needs explicit ones/);
   assert.deepEqual(core.installerCmd('exe', 'S.exe', ['/S']), { exe: 'S.exe', args: ['/S'] });
   assert.deepEqual(core.installerCmd('exe', 'B.exe', ['-quiet', '-norestart']), { exe: 'B.exe', args: ['-quiet', '-norestart'] });
+  // Only a listing's explicit "needs no switches" statement runs a plain .exe with none.
+  assert.deepEqual(core.installerCmd('exe', 'DiscordSetup.exe', undefined, undefined, true), { exe: 'DiscordSetup.exe', args: [] });
+  assert.deepEqual(core.installerCmd('exe', 'S.exe', ['/S'], undefined, true), { exe: 'S.exe', args: ['/S'] }, 'declared switches still win');
+  assert.throws(() => core.installerCmd('exe', 'S.exe', undefined, undefined, 'yes'), /needs explicit ones/, 'only a real true counts');
+  assert.deepEqual(core.installerCmd('nsis', 'S.exe', undefined, undefined, true), { exe: 'S.exe', args: ['/S'] }, 'a kind with its own switches keeps them');
 });
 
 test('https-redirects with an injected resolver (the Electron path): hops validated, final address fetched directly', async () => {

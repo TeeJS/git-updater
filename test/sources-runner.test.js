@@ -299,6 +299,25 @@ test('installer switches: a verbatim string is handed over whole; switches pinne
   assert.equal(pinned[0].how.rawArgs, undefined);
 });
 
+test('installer switches: a listing that states its .exe needs none runs it with nothing added (Discord)', async () => {
+  const bare = await installedWith({ kind: 'exe', switchless: true });
+  assert.equal(bare.length, 1, `runs silently instead of opening its window: ${JSON.stringify(bare.result)}`);
+  assert.equal(bare[0].how.kind, 'exe');
+  assert.equal(bare[0].how.switchless, true);
+  assert.equal(bare[0].how.args, undefined);
+  assert.equal(bare[0].how.rawArgs, undefined);
+
+  // Switches pinned in config still win, and the flag no longer applies.
+  const pinned = await installedWith({ kind: 'exe', switchless: true }, { pinned: ['-s'] });
+  assert.deepEqual(pinned[0].how.args, ['-s']);
+  assert.equal(pinned[0].how.switchless, false);
+
+  // The flag means nothing for a kind that has switches of its own.
+  const nsis = await installedWith({ kind: 'nsis', switchless: true });
+  assert.equal(nsis[0].how.kind, 'nsis');
+  assert.equal(nsis[0].how.switchless, false);
+});
+
 test('an installer delivered inside a zip: the named setup program is unpacked and that is what runs', async () => {
   const zip = new AdmZip();
   zip.addFile('CuteWriter.exe', Buffer.from('the-setup-program'));
