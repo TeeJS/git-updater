@@ -120,6 +120,7 @@ let cache = null; // cleared after installs so fresh versions show
 function clearCache() {
   cache = null;
   registered = null;
+  folderPrograms.clear();
 }
 
 // Every installed app: [{ name, version, flavor }]. One inventory pass per run.
@@ -204,6 +205,8 @@ async function launchTarget(needle) {
 //   1. its name IS the app's name                        Joplin.exe for joplin
 //   2. its name STARTS WITH the app's name, on a word    PowerToys.Awake.exe, deskflow-core.exe,
 //      boundary — the app's own helpers                  "Claude Helper" for Claude
+//      (and, where the app's folder is known, only a     git-bash.exe yes, git-town.exe no:
+//      program that exists in it — see helperPrograms)   it is not in C:/Program Files/Git
 //   3. it is the app's main program, as the operating    brave.exe for brave-browser, obs64.exe for
 //      system records it (see mainPrograms)              obs-studio, msedge.exe for Microsoft Edge
 // and never when it is git-updater itself (see isSelf), nor when its name is a different known
@@ -217,25 +220,29 @@ async function launchTarget(needle) {
 // chops a longer name mid-token. A 15-character prefix of the needle is the truncation it is.
 const bare = (s) => String(s || '').trim().toLowerCase().replace(/\.(exe|app)$/, '');
 
-function procMatches(procName, needle, programs = []) {
+// Which of the rules above makes this process the app's: 'name', 'helper', 'program',
+// 'truncated' — or null when none does. Pure.
+function procMatchKind(procName, needle, programs = []) {
   const pn = norm(procName);
   const t = norm(needle);
-  if (pn.length < 2 || t.length < 2) return false;
-  if (pn !== t && catalog.ownedByAnother(procName, needle)) return false;
-  if (pn === t) return true;
+  if (pn.length < 2 || t.length < 2) return null;
+  if (pn !== t && catalog.ownedByAnother(procName, needle)) return null;
+  if (pn === t) return 'name';
+  // The main program, by its exact file name: "notepad++" is not "notepad".
+  const raw = bare(procName);
+  if (programs.some((name) => bare(name) === raw)) return 'program';
   // The app's name, then more words: a leading run of the process's tokens spells the name.
   const p = tokens(procName);
   let lead = '';
   for (let i = 0; i < p.length - 1; i++) {
     lead += p[i];
-    if (lead === t) return true;
+    if (lead === t) return 'helper';
     if (lead.length >= t.length) break;
   }
-  // The main program, by its exact file name: "notepad++" is not "notepad".
-  const raw = bare(procName);
-  if (programs.some((name) => bare(name) === raw)) return true;
-  return pn.length >= 15 && t.startsWith(pn);
+  return pn.length >= 15 && t.startsWith(pn) ? 'truncated' : null;
 }
+
+const procMatches = (procName, needle, programs) => procMatchKind(procName, needle, programs) !== null;
 
 // The program an installed app is started from, as the operating system records it: the exe
 // named by the uninstall registry's DisplayIcon on Windows, the .app bundle on macOS, whatever
@@ -289,21 +296,31 @@ function isTheApp(rowName, needle) {
 //                                                              is Chrome's, not all of Google's
 const GENERIC_FOLDER = /^(?:application|app|bin|binaries|x64|x86|win64|win32|64bit|32bit)$/i;
 
-function inOwnFolder(file, needle) {
+// The app's own folder, from a folder path the system recorded for it — or null when that path
+// is not the app's own. "Own" is the test above: the path ends with the app's whole name once
+// the generic last folders and a version are set aside. What comes back is that folder, so
+// ...\Google\Chrome\Application gives ...\Google\Chrome.
+function ownFolder(dir, needle) {
   const t = norm(needle);
-  if (t.length < 3) return false;
-  const folders = String(file || '').replace(/^[a-z]:/i, '').split(/[\\/]+/).filter(Boolean).slice(0, -1);
-  while (folders.length && GENERIC_FOLDER.test(folders[folders.length - 1])) folders.pop();
-  const words = folders.flatMap((folder) => tokens(folder));
+  if (t.length < 3) return null;
+  const text = String(dir || '');
+  const parts = text.split(/[\\/]+/).filter(Boolean);
+  while (parts.length && GENERIC_FOLDER.test(parts[parts.length - 1])) parts.pop();
+  const words = parts.filter((part) => !/^[a-z]:$/i.test(part)).flatMap((part) => tokens(part));
   while (words.length && DECORATION.test(words[words.length - 1])) words.pop();
   let run = '';
   for (let i = words.length - 1; i >= 0; i--) {
     run = words[i] + run;
-    if (run === t) return true;
-    if (run.length >= t.length) return false;
+    if (run === t) {
+      const sep = text.includes('\\') ? '\\' : '/';
+      return (/^[\\/]/.test(text) ? sep : '') + parts.join(sep);
+    }
+    if (run.length >= t.length) return null;
   }
-  return false;
+  return null;
 }
+const folderOf = (file) => String(file || '').replace(/[\\/]+[^\\/]*$/, '');
+const inOwnFolder = (file, needle) => ownFolder(folderOf(file), needle) !== null;
 
 let registered = null; // App Paths, read once per run like the inventory (see clearCache)
 async function registeredPrograms() {
@@ -311,16 +328,30 @@ async function registeredPrograms() {
   return registered;
 }
 
-async function mainPrograms(needle) {
+// What the system has on record about an installed app, for telling its processes apart:
+//   programs  the file names of its main program(s)        ['chrome.exe']
+//   folders   its own install folder(s), where one is known ['C:\\Program Files\\Git']
+async function appRecord(needle) {
   const paths = [];
+  const folders = new Set();
+  const own = (dir) => { const folder = ownFolder(dir, needle); if (folder) folders.add(folder); };
   try {
-    for (const file of await registeredPrograms()) if (inOwnFolder(file, needle)) paths.push(file);
+    for (const file of await registeredPrograms()) {
+      if (!inOwnFolder(file, needle)) continue;
+      paths.push(file);
+      own(folderOf(file));
+    }
   } catch {
     // No such record here (or it failed): the inventory and the name rules still apply.
   }
   try {
     const rows = (await matchEntries(needle)).filter((row) => row.packaged || isTheApp(row.name, needle));
-    for (const row of rows) if (row.path) paths.push(row.path);
+    for (const row of rows) {
+      if (row.path) paths.push(row.path);
+      if (row.path) own(folderOf(row.path));
+      // InstallLocation is a folder — except when an installer wrote its exe there instead.
+      if (row.location) own(/\.exe$/i.test(row.location) ? folderOf(row.location) : row.location);
+    }
     if (!paths.length && rows.length) {
       // Nothing launchable on the rows themselves (a Linux package): ask the platform.
       rows.sort((a, b) => cmpVersion(a.version, b.version));
@@ -335,7 +366,59 @@ async function mainPrograms(needle) {
     .map((file) => String(file).split(/[\\/]/).pop())
     // A Linux launcher is often a .desktop entry: that is not a program, so it names no process.
     .filter((name) => name && !/\.desktop$/i.test(name) && !INSTALLER_PROGRAM.test(bare(name)) && !SHARED_PROGRAM.test(bare(name)));
-  return [...new Set(names)];
+  return { programs: [...new Set(names)], folders: [...folders] };
+}
+const mainPrograms = async (needle) => (await appRecord(needle)).programs;
+
+// A "helper" match rests on the name alone, and a name can be someone else's: `git-town.exe`
+// starts with "git" and is no part of Git for Windows. Where the app's own folder is known, a
+// helper must also be a program that EXISTS in that folder: git-bash.exe is in
+// C:\Program Files\Git, git-town.exe is not.
+//
+// -> the program names found in the folders (lower case, no .exe), or null when that cannot
+// be said: no folder on record, a folder that cannot be read, or one too large to list. null
+// leaves the name rule as it is; it never turns a helper away.
+const FOLDER_DEPTH = 6; // Git keeps git-remote-https.exe at mingw64\libexec\git-core
+const FOLDER_BUDGET = 60000; // entries looked at, across one app's folders
+const folderPrograms = new Map(); // folder -> Set | null, for this run (see clearCache)
+
+async function programsIn(folder) {
+  if (folderPrograms.has(folder)) return folderPrograms.get(folder);
+  const names = new Set();
+  let budget = FOLDER_BUDGET;
+  let complete = true;
+  const walk = async (dir, depth) => {
+    let list;
+    try {
+      list = await fs.promises.readdir(dir, { withFileTypes: true });
+    } catch {
+      if (depth === 0) complete = false; // the folder itself is gone or unreadable
+      return;
+    }
+    for (const entry of list) {
+      if (--budget < 0) { complete = false; return; }
+      if (entry.isDirectory()) {
+        if (depth < FOLDER_DEPTH) await walk(`${dir}/${entry.name}`, depth + 1);
+      } else if (/\.exe$/i.test(entry.name) || !entry.name.includes('.')) {
+        names.add(bare(entry.name));
+      }
+    }
+  };
+  await walk(folder, 0);
+  const result = complete && names.size ? names : null;
+  folderPrograms.set(folder, result);
+  return result;
+}
+
+async function helperPrograms(folders) {
+  let all = null;
+  for (const folder of folders || []) {
+    const names = await programsIn(folder);
+    if (!names) continue;
+    all = all || new Set();
+    for (const name of names) all.add(name);
+  }
+  return all;
 }
 
 // git-updater's own processes are never an app's, whatever the app is called. Its program
@@ -349,27 +432,43 @@ function isSelf(proc) {
   return t[0] === 'git' && t[1] === 'updater';
 }
 
-async function matchProcs(needle, programs) {
+// The processes in `procs` that are the app's: the name rules, minus git-updater itself, minus
+// any helper that is not a program in the app's own folder (where that folder is known).
+// `record` is appRecord(needle); it is passed in so one close asks the system once.
+async function ownProcesses(procs, needle, record) {
   if (norm(needle).length < 3) return [];
-  const mains = programs || (await mainPrograms(needle));
-  return (await platform.runningProcesses()).filter((p) => !isSelf(p) && procMatches(p.name, needle, mains));
+  const known = record || (await appRecord(needle));
+  const hits = [];
+  for (const proc of procs) {
+    if (isSelf(proc)) continue;
+    const kind = procMatchKind(proc.name, needle, known.programs);
+    if (kind) hits.push({ proc, kind });
+  }
+  if (!hits.some((hit) => hit.kind === 'helper')) return hits.map((hit) => hit.proc);
+  const inFolder = await helperPrograms(known.folders);
+  return hits.filter((hit) => hit.kind !== 'helper' || !inFolder || inFolder.has(bare(hit.proc.name))).map((hit) => hit.proc);
 }
 
-// Is one of the app's processes running? See procMatches for what counts; override per app
+async function matchProcs(needle, record) {
+  if (norm(needle).length < 3) return [];
+  return ownProcesses(await platform.runningProcesses(), needle, record || (await appRecord(needle)));
+}
+
+// Is one of the app's processes running? See procMatchKind for what counts; override per app
 // with `process`.
-async function isRunning(needle, programs) {
-  return (await matchProcs(needle, programs)).length > 0;
+async function isRunning(needle, record) {
+  return (await matchProcs(needle, record)).length > 0;
 }
 
 // Close the running processes for `needle` — graceful by default (WM_CLOSE on Windows,
 // SIGTERM elsewhere), or forced. Waits briefly for exit.
 // ponytail: kill by PID; force can lose unsaved work, so the UI double-confirms it.
 async function closeApp(needle, opts = {}) {
-  const programs = await mainPrograms(needle); // once: the wait below asks several times
-  const procs = await matchProcs(needle, programs);
+  const record = await appRecord(needle); // once: the wait below asks several times
+  const procs = await matchProcs(needle, record);
   for (const p of procs) platform.killProcess(p.pid, !!opts.force);
-  for (let i = 0; i < 15 && (await isRunning(needle, programs)); i++) await wait(200); // up to ~3s to exit
-  return { closed: procs.length, stillRunning: await isRunning(needle, programs) };
+  for (let i = 0; i < 15 && (await isRunning(needle, record)); i++) await wait(200); // up to ~3s to exit
+  return { closed: procs.length, stillRunning: await isRunning(needle, record) };
 }
 
 // --- host distro --------------------------------------------------------------
@@ -404,7 +503,10 @@ module.exports = {
   nameMatches,
   sameApp,
   procMatches,
+  procMatchKind,
   mainPrograms,
+  appRecord,
+  ownProcesses,
   isSelf,
   osRelease,
   installedVersion,

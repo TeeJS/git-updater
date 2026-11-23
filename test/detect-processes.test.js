@@ -205,3 +205,67 @@ test('parseAppPaths: the registered file, whatever the key or the label is calle
   ]);
   assert.deepEqual(parseAppPaths(''), []);
 });
+
+// A helper is matched by name alone, and a name can be someone else's: git-town.exe starts
+// with "git" and is no part of Git for Windows. Where the app's own folder is on record, a
+// helper must also be a program that exists in that folder.
+test('a helper must be a program in the app\'s own folder, where that folder is known', async () => {
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'gu-own-'));
+  const gitDir = path.join(root, 'Git');
+  fs.mkdirSync(path.join(gitDir, 'mingw64', 'libexec', 'git-core'), { recursive: true });
+  fs.writeFileSync(path.join(gitDir, 'git-bash.exe'), '');
+  fs.writeFileSync(path.join(gitDir, 'mingw64', 'libexec', 'git-core', 'git-remote-https.exe'), '');
+  fs.writeFileSync(path.join(gitDir, 'ReleaseNotes.html'), '');
+  const procs = [
+    { name: 'git.exe', pid: '1' }, { name: 'git-bash.exe', pid: '2' }, { name: 'git-remote-https.exe', pid: '3' },
+    { name: 'git-town.exe', pid: '4' }, { name: 'git-updater.exe', pid: '5' },
+  ];
+  const names = async () => (await detect.ownProcesses(procs, 'git')).map((p) => p.name);
+  try {
+    // The folder is on record (the uninstall registry's InstallLocation).
+    await onMachine({ procs, apps: [{ name: 'Git', version: '2.50.1', flavor: 'exe', location: gitDir }] }, async (killed) => {
+      assert.deepEqual((await detect.appRecord('git')).folders, [gitDir]);
+      assert.deepEqual(await names(), ['git.exe', 'git-bash.exe', 'git-remote-https.exe'], 'Git\'s own, however deep; not git-town');
+      await detect.closeApp('git', { force: true });
+      assert.deepEqual(killed.map((k) => k.pid), ['1', '2', '3']);
+    });
+    // Recorded through App Paths instead: the same answer.
+    await onMachine({ procs, registered: [path.join(gitDir, 'git-bash.exe')] }, async () => {
+      assert.deepEqual(await names(), ['git.exe', 'git-bash.exe', 'git-remote-https.exe']);
+    });
+    // Nothing on record: the name rule stands as it was. The check never turns a helper away
+    // on a guess.
+    await onMachine({ procs }, async () => {
+      assert.deepEqual(await names(), ['git.exe', 'git-bash.exe', 'git-remote-https.exe', 'git-town.exe']);
+    });
+    // A recorded folder that is not the app's OWN (its path does not end with the app's name)
+    // says nothing about the app.
+    await onMachine({ procs, apps: [{ name: 'Git', version: '2.50.1', flavor: 'exe', location: root }] }, async () => {
+      assert.deepEqual((await detect.appRecord('git')).folders, []);
+      assert.deepEqual(await names(), ['git.exe', 'git-bash.exe', 'git-remote-https.exe', 'git-town.exe']);
+    });
+    // A recorded folder that is gone, or has no programs in it, cannot be read as "not there".
+    await onMachine({ procs, apps: [{ name: 'Git', version: '2.50.1', flavor: 'exe', location: path.join(root, 'missing', 'Git') }] }, async () => {
+      assert.deepEqual(await names(), ['git.exe', 'git-bash.exe', 'git-remote-https.exe', 'git-town.exe']);
+    });
+    fs.mkdirSync(path.join(root, 'empty', 'Git'), { recursive: true });
+    await onMachine({ procs, apps: [{ name: 'Git', version: '2.50.1', flavor: 'exe', location: path.join(root, 'empty', 'Git') }] }, async () => {
+      assert.deepEqual(await names(), ['git.exe', 'git-bash.exe', 'git-remote-https.exe', 'git-town.exe']);
+    });
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('procMatchKind says which rule matched; the main program is never treated as a mere helper', () => {
+  const { procMatchKind } = detect;
+  assert.equal(procMatchKind('Joplin.exe', 'joplin'), 'name');
+  assert.equal(procMatchKind('git-bash.exe', 'git'), 'helper');
+  assert.equal(procMatchKind('chrome.exe', 'Google Chrome', ['chrome.exe']), 'program');
+  assert.equal(procMatchKind('bambu-studio.exe', 'Bambu Studio', ['bambu-studio.exe']), 'name');
+  assert.equal(procMatchKind('deskflow-core.exe', 'deskflow', ['deskflow-core.exe']), 'program', 'recorded as the main program: no folder check');
+  assert.equal(procMatchKind('notepad.exe', 'notepad-plus-plus'), null);
+});
