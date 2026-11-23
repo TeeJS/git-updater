@@ -442,7 +442,7 @@ const WIN_INSTALLER_CODES = {
 };
 
 function installInstaller(filePath, install, opts = {}) {
-  const { exe, args, verbatim } = installerCmd(install.kind, filePath, install.args, install.rawArgs);
+  const { exe, args, verbatim } = installerCmd(install.kind, filePath, install.args, install.rawArgs, install.switchless === true);
   const command = [exe, ...args].join(' ');
   if (opts.dryRun) return { command, dryRun: true };
   log(`  installer (${install.kind}): ${command}`);

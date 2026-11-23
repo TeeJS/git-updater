@@ -525,7 +525,10 @@ async function handleRepo(repo, id, st, opts) {
       const declaredArgs = pinnedArgs || (Array.isArray(listed.args) && listed.args.length ? listed.args : undefined);
       // A switch string that must reach the installer exactly as written (see installerCmd).
       const rawArgs = !declaredArgs && typeof listed.raw === 'string' && listed.raw ? listed.raw : undefined;
-      if (!kind || (kind === 'exe' && !declaredArgs && !rawArgs)) {
+      // A listing that states its .exe installs silently with no switches at all (see
+      // statesSilentMode in src/sources/winget.js): it is run with nothing added, as WinGet does.
+      const switchless = kind === 'exe' && asset.kind === 'exe' && asset.switchless === true && !declaredArgs && !rawArgs;
+      if (!kind || (kind === 'exe' && !declaredArgs && !rawArgs && !switchless)) {
         // Unidentifiable installer, or one with no silent switches declared for it: never
         // guess — run its own window instead.
         if (interactive(stagedName)) return interactiveResult;
@@ -537,7 +540,7 @@ async function handleRepo(repo, id, st, opts) {
       try {
         // Silent switches the listing declares are an argv array, used only when the user
         // has not pinned their own. Never a shell string.
-        install.installInstaller(file, { ...repo.install, kind, ...(declaredArgs ? { args: declaredArgs } : {}), rawArgs });
+        install.installInstaller(file, { ...repo.install, kind, ...(declaredArgs ? { args: declaredArgs } : {}), rawArgs, switchless });
       } catch (e) {
         // Silent installs can't show a UAC prompt, so unelevated they fail — MSI with
         // exit 1603, EXE installers with an elevation spawn error. Fall back to the
