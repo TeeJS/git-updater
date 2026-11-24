@@ -33,7 +33,8 @@ function pickTargets(repos, installed) {
 function classify(result) {
   if (!result) return 'failed';
   if (result.status === 'updated') return 'updated';
-  if (result.status === 'current') return 'current';
+  // An app that updates itself was left to its own updater on purpose: nothing for the user.
+  if (result.status === 'current' || result.status === 'self') return 'current';
   const reason = String(result.reason || '');
   // A file has to be chosen by hand (see sources.selectAsset): nothing went wrong, and an
   // unattended run cannot answer it — so "needs you", not "could not be updated".

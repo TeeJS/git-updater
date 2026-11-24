@@ -107,6 +107,13 @@ test('brew: what cannot be installed or updated says why', () => {
   assert.match(brew.toRelease(cask('vlc'), arm()).provenance.note, /also updates itself/);
 });
 
+// Homebrew's own marker for an app with its own updater: the engine leaves such an app alone
+// (src/selfupdating.js), the way `brew upgrade` does by default.
+test('brew: a cask marked auto_updates says so on the release, and one that is not does not', () => {
+  assert.equal(brew.toRelease(cask('vlc'), arm()).updatesItself, true);
+  assert.equal(brew.toRelease(cask('kicad'), arm()).updatesItself, undefined);
+});
+
 // Three real casks from Sol's review: a variation overrides far more than the file.
 test('brew: a variation that DISABLES the cask is honoured (adrive on Intel)', () => {
   assert.equal(only(brew.toRelease(cask('adrive'), arm())).unsupported, undefined, 'Apple silicon is fine');

@@ -168,14 +168,21 @@ function pickLaunchPath(files, name) {
   return best(desktops) || best(bins) || null;
 }
 
+// The files a deb or rpm package owns, as absolute paths. [] for anything else (a Flatpak or
+// Snap keeps its files in its own sandbox). Also read by src/selfupdating.js, which looks in
+// this list for an app's own updater.
+async function packageFiles(name, flavor) {
+  if (flavor === 'deb') return (await run('dpkg', ['-L', name])).split('\n').map((f) => f.trim()).filter(Boolean);
+  if (flavor === 'rpm') return (await run('rpm', ['-ql', name])).split('\n').map((f) => f.trim()).filter(Boolean);
+  return [];
+}
+
 // Returns { path, location } the way the Windows registry reader does, or null when the
 // package owns nothing launchable (a library, a font, a -data package).
 async function launchTargetFor(name, flavor) {
   let files = [];
-  if (flavor === 'deb') {
-    files = (await run('dpkg', ['-L', name])).split('\n');
-  } else if (flavor === 'rpm') {
-    files = (await run('rpm', ['-ql', name])).split('\n');
+  if (flavor === 'deb' || flavor === 'rpm') {
+    files = await packageFiles(name, flavor);
   } else if (flavor === 'flatpak' || flavor === 'snap') {
     // Both keep their own launcher on PATH and their own .desktop in a well-known place;
     // the exported desktop entry is the supported way in and handles the sandbox setup
@@ -271,6 +278,7 @@ module.exports = {
   runningProcesses,
   killProcess,
   launchTargetFor,
+  packageFiles,
   launchApp,
   pickLaunchPath,
   parseExec,

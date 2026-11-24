@@ -189,6 +189,14 @@ async function installedFlavor(needle) {
   return hits[hits.length - 1].flavor || null;
 }
 
+// Every inventory record of the installed app, highest version first: [{ name, version,
+// flavor, path?, location?, uninstall? }]. [] when not installed. src/selfupdating.js looks in
+// the folders these name for an updater of the app's own.
+async function installedCopies(needle) {
+  const hits = await matchEntries(needle);
+  return hits.slice().sort((a, b) => cmpVersion(b.version, a.version));
+}
+
 // Is this recorded "program" really the app's installer? Yes when it sits in a folder named
 // "Package Cache" (where a setup keeps its own copy), or its file name says setup or install.
 // Only an .exe is ever judged, so a macOS bundle or a Linux launcher is never caught by name.
@@ -635,6 +643,7 @@ module.exports = {
   installedVersion,
   installedDate,
   installedFlavor,
+  installedCopies,
   launchTarget,
   isSetupFile,
   pickShortcut,

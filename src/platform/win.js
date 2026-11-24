@@ -46,6 +46,9 @@ function parseHive(stdout) {
       };
       if (icon && /\.exe$/i.test(icon) && !/unins/i.test(icon)) rec.path = icon;
       if (cur.InstallLocation) rec.location = cur.InstallLocation.replace(/[\\/]+$/, '');
+      // Kept for src/selfupdating.js: a Squirrel app registers its own updater as the
+      // uninstaller ("…\Update.exe" --uninstall), which is how it is told apart.
+      if (/\bUpdate\.exe"?\s+--uninstall\b/i.test(cur.UninstallString || '')) rec.uninstall = cur.UninstallString;
       if (/^\d{8}$/.test(cur.InstallDate || '')) {
         const d = cur.InstallDate;
         const iso = `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`;

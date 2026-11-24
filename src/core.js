@@ -659,7 +659,8 @@ function validateConfig(json) {
 // Run summary.
 // ---------------------------------------------------------------------------
 
-// results: [{ repo, status:'updated'|'current'|'failed', from?, to?, reason?, note? }]
+// results: [{ repo, status:'updated'|'current'|'self'|'failed', from?, to?, reason?, note? }]
+// 'self' is an app that updates itself, left to its own updater (src/selfupdating.js).
 function buildSummary(results) {
   const counts = { updated: 0, current: 0, failed: 0 };
   const lines = [];
@@ -667,6 +668,8 @@ function buildSummary(results) {
     counts[r.status] = (counts[r.status] || 0) + 1;
     if (r.status === 'updated') {
       lines.push(`  ✓ ${r.repo}  ${r.from || '—'} → ${r.to}${r.note ? '  (' + r.note + ')' : ''}`);
+    } else if (r.status === 'self') {
+      lines.push(`  ~ ${r.repo}  ${r.from || '—'} (updates itself; ${r.to} is out, left to its own updater)`);
     } else if (r.status === 'current') {
       // A type correction lands here whenever the app turns out to be installed already,
       // which is the common case for one the user tracked with the wrong type. Dropping
@@ -676,7 +679,7 @@ function buildSummary(results) {
       lines.push(`  ✗ ${r.repo}  ${r.reason}`);
     }
   }
-  const header = `updated ${counts.updated}, current ${counts.current}, failed ${counts.failed}`;
+  const header = `updated ${counts.updated}, current ${counts.current}, failed ${counts.failed}${counts.self ? `, update themselves ${counts.self}` : ''}`;
   return { text: [header, ...lines].join('\n'), counts };
 }
 
