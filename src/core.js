@@ -155,7 +155,7 @@ const { assetTable, macCompanionZips } = require('./platform/assets');
 // ALREADY installed (Windows 'msi' | 'exe', Linux 'deb' | 'rpm', or null) — strongly
 // prefer the same flavor so an update upgrades in place instead of installing a
 // duplicate side-by-side. table: from assetTable(), defaults to the running platform.
-// host: the running distro as { id, versionId } from /etc/os-release (Linux only; null
+// host: the running distro as { id, versionId, codename } from /etc/os-release (Linux only; null
 // elsewhere or when unknown). Read by the caller — this module does no IO.
 function scoreAsset(name, type, arch, flavor, table, host) {
   const t = table || assetTable();

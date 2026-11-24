@@ -331,3 +331,108 @@ test('linux portable: tarballs never needed a platform word and still do not', (
   assert.equal(lin(A('app-1.0-x86_64.tar.gz'), 'portable', 'x64', null).name, 'app-1.0-x86_64.tar.gz');
   assert.equal(lin(A('app-1.0.AppImage'), 'portable', 'x64', null).name, 'app-1.0.AppImage');
 });
+
+// --- releases named by codename ------------------------------------------------
+
+// Deskflow 1.27.0's real file list. It names its packages by codename ("ubuntu-resolute",
+// "debian-trixie"), with no release number anywhere. Found in the WILD: every Debian and
+// Ubuntu machine was handed debian-forky, and the desktop's package installer refused it
+// with "Dependency resolution failed".
+const DESKFLOW = A(
+  'deskflow-1.27.0-arch-x86_64.pkg.tar.zst',
+  'deskflow-1.27.0-debian-forky-aarch64.deb',
+  'deskflow-1.27.0-debian-forky-x86_64.deb',
+  'deskflow-1.27.0-debian-trixie-aarch64.deb',
+  'deskflow-1.27.0-debian-trixie-x86_64.deb',
+  'deskflow-1.27.0-fedora-44-aarch64.rpm',
+  'deskflow-1.27.0-fedora-44-x86_64.rpm',
+  'deskflow-1.27.0-fedora-46-aarch64.rpm',
+  'deskflow-1.27.0-fedora-46-x86_64.rpm',
+  'deskflow-1.27.0-linux-aarch64.flatpak',
+  'deskflow-1.27.0-linux-x86_64.flatpak',
+  'deskflow-1.27.0-macos-arm64.dmg',
+  'deskflow-1.27.0-macos-x86_64.dmg',
+  'deskflow-1.27.0-opensuse-tumbleweed-aarch64.rpm',
+  'deskflow-1.27.0-opensuse-tumbleweed-x86_64.rpm',
+  'deskflow-1.27.0-ubuntu-resolute-aarch64.deb',
+  'deskflow-1.27.0-ubuntu-resolute-x86_64.deb',
+  'deskflow-1.27.0-ubuntu-stonking-aarch64.deb',
+  'deskflow-1.27.0-ubuntu-stonking-x86_64.deb',
+  'deskflow-1.27.0-win-arm64-portable.zip',
+  'deskflow-1.27.0-win-arm64.msi',
+  'deskflow-1.27.0-win-x64-portable.zip',
+  'deskflow-1.27.0-win-x64.msi',
+  'sums.txt'
+);
+const deskflowOn = (host, arch = 'x64', flavor = null) => core.pickAsset(DESKFLOW, 'installer', arch, flavor, 'linux', host).name;
+
+test('linux installer: a package named by codename is matched to THIS release (Deskflow)', () => {
+  // Kubuntu reports ID=ubuntu, like every Ubuntu flavour.
+  const kubuntu2604 = { id: 'ubuntu', versionId: '26.04', codename: 'resolute' };
+  assert.equal(deskflowOn(kubuntu2604), 'deskflow-1.27.0-ubuntu-resolute-x86_64.deb');
+  assert.equal(deskflowOn(kubuntu2604, 'x64', 'deb'), 'deskflow-1.27.0-ubuntu-resolute-x86_64.deb', 'an update of the installed .deb picks the same file');
+  assert.equal(deskflowOn(kubuntu2604, 'arm64'), 'deskflow-1.27.0-ubuntu-resolute-aarch64.deb');
+  assert.equal(deskflowOn({ id: 'ubuntu', versionId: '26.10', codename: 'stonking' }), 'deskflow-1.27.0-ubuntu-stonking-x86_64.deb');
+  assert.equal(deskflowOn({ id: 'debian', versionId: '13', codename: 'trixie' }), 'deskflow-1.27.0-debian-trixie-x86_64.deb');
+  // Debian's testing release has a codename and no VERSION_ID at all.
+  assert.equal(deskflowOn({ id: 'debian', versionId: null, codename: 'forky' }), 'deskflow-1.27.0-debian-forky-x86_64.deb');
+  // The number rule still does Fedora, which Deskflow names by number.
+  assert.equal(deskflowOn({ id: 'fedora', versionId: '44', codename: null }), 'deskflow-1.27.0-fedora-44-x86_64.rpm');
+});
+
+test('linux installer: a host with no codename is still placed by its release number', () => {
+  // An os-release with VERSION_ID and no VERSION_CODENAME: the list of known codenames
+  // says which file is this release.
+  assert.equal(deskflowOn({ id: 'ubuntu', versionId: '26.04' }), 'deskflow-1.27.0-ubuntu-resolute-x86_64.deb');
+  assert.equal(deskflowOn({ id: 'debian', versionId: '13' }), 'deskflow-1.27.0-debian-trixie-x86_64.deb');
+  // Newer than anything published: the newest build that is still older.
+  assert.equal(deskflowOn({ id: 'ubuntu', versionId: '27.04', codename: 'tbd' }), 'deskflow-1.27.0-ubuntu-stonking-x86_64.deb');
+  assert.equal(deskflowOn({ id: 'debian', versionId: '15', codename: 'duke' }), 'deskflow-1.27.0-debian-forky-x86_64.deb');
+});
+
+test('linuxReleaseScore: codenames', () => {
+  const { linuxReleaseScore: score } = require('../src/platform/assets');
+  const resolute = { id: 'ubuntu', versionId: '26.04', codename: 'resolute' };
+  assert.equal(score('deskflow-1.27.0-ubuntu-resolute-x86_64.deb', resolute), 6, 'this release, by name');
+  assert.equal(score('App_1.0_Ubuntu_Resolute.deb', resolute), 6, 'case and separators do not matter');
+  assert.ok(score('app-ubuntu-noble-amd64.deb', resolute) > 0, 'older is still usable');
+  assert.ok(score('app-ubuntu-noble-amd64.deb', resolute) < score('app-ubuntu-questing-amd64.deb', resolute), 'the closest older one scores highest');
+  assert.ok(score('deskflow-1.27.0-ubuntu-stonking-x86_64.deb', resolute) < 0, 'newer is not');
+  // The host's own codename needs no entry in the list of known ones.
+  assert.equal(score('app-ubuntu-tidy-amd64.deb', { id: 'ubuntu', versionId: '27.04', codename: 'tidy' }), 6, 'a release newer than the list still matches itself');
+  // Words after the distro name that are not releases change nothing.
+  assert.equal(score('app-ubuntu-amd64.deb', resolute), 0, 'an architecture is not a release');
+  assert.equal(score('app-ubuntu-x86_64.deb', resolute), 0);
+  assert.equal(score('app-ubuntu-latest.deb', resolute), 0, 'an unknown word is not guessed at');
+  // Another distro's file is not compared at all, as before.
+  assert.equal(score('deskflow-1.27.0-debian-forky-x86_64.deb', resolute), 0);
+  assert.equal(score('deskflow-1.27.0-ubuntu-resolute-x86_64.deb', null), 0, 'no /etc/os-release');
+});
+
+test('linuxReleaseScore: of two builds newer than the host, the closer one loses by less', () => {
+  const { linuxReleaseScore: score } = require('../src/platform/assets');
+  const bookworm = { id: 'debian', versionId: '12', codename: 'bookworm' };
+  assert.ok(score('app-debian-trixie.deb', bookworm) < 0);
+  assert.ok(score('app-debian-trixie.deb', bookworm) > score('app-debian-forky.deb', bookworm));
+  const jammy = { id: 'ubuntu', versionId: '22.04' };
+  assert.ok(score('App-Ubuntu-24.04.deb', jammy) > score('App-Ubuntu-26.04.deb', jammy));
+  assert.ok(score('App-Ubuntu-24.04.deb', jammy) < 0, 'still below every build that can run');
+});
+
+test('parseOsRelease: id, release number and codename', () => {
+  const { parseOsRelease } = require('../src/detect');
+  const kubuntu = [
+    'PRETTY_NAME="Ubuntu 26.04 LTS"', 'NAME="Ubuntu"', 'VERSION_ID="26.04"', 'VERSION="26.04 LTS (Resolute Raccoon)"',
+    'VERSION_CODENAME=resolute', 'ID=ubuntu', 'ID_LIKE=debian', 'UBUNTU_CODENAME=resolute',
+  ];
+  const want = { id: 'ubuntu', versionId: '26.04', codename: 'resolute' };
+  assert.deepEqual(parseOsRelease(kubuntu.join('\n')), want);
+  assert.deepEqual(parseOsRelease(kubuntu.join('\r\n')), want, 'line endings do not matter');
+  // Debian testing: a codename, no VERSION_ID.
+  assert.deepEqual(parseOsRelease('PRETTY_NAME="Debian GNU/Linux forky/sid"\nVERSION_CODENAME=forky\nID=debian\n'), { id: 'debian', versionId: null, codename: 'forky' });
+  // Fedora: a number, and an empty codename.
+  assert.deepEqual(parseOsRelease('ID=fedora\nVERSION_ID=44\nVERSION_CODENAME=""\n'), { id: 'fedora', versionId: '44', codename: null });
+  // Nothing to place the host by.
+  assert.equal(parseOsRelease('ID=arch\n'), null);
+  assert.equal(parseOsRelease(''), null);
+});
