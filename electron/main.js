@@ -496,7 +496,7 @@ async function computeInstalled(cfg) {
       } catch {}
       let date = rec.installedAt || null;
       if (!date && v) try { date = await detect.installedDate(...core.lookupNames(r)); } catch {}
-      out[key] = { current: v, present: !!v, date: v ? date : null, lastAction: rec.lastAction || 'installed' };
+      out[key] = { current: v, present: !!v, date: v ? date : null, lastAction: rec.lastAction || 'installed', failed: core.failureOf(rec, v) };
     } else {
       const dir = portableDir(cfg, r);
       let current = (rec && rec.version) || null;
@@ -518,7 +518,7 @@ async function computeInstalled(cfg) {
       }
       let date = rec.installedAt || null;
       if (!date && present) try { date = await detect.installedDate(...core.lookupNames(r)); } catch {}
-      out[key] = { current, present, date: present ? date : null, lastAction: rec.lastAction || 'installed' };
+      out[key] = { current, present, date: present ? date : null, lastAction: rec.lastAction || 'installed', failed: core.failureOf(rec, current) };
     }
   }
   return out;
@@ -537,6 +537,7 @@ ipcMain.handle('installed:record-completion', async (_e, { appKey, fromVersion, 
   // An interactive install supplies status provenance, not a release tag. The registry
   // may use a different version scheme; treating it as a tag can block a later reinstall.
   stt[appKey] = { ...(stt[appKey] || {}), repo: core.displayId(r), type: r.type, installedAt, lastAction };
+  delete stt[appKey].lastFailure; // it installed, so the last failure is over
   state.save(stt);
   return { installedAt, lastAction };
 });

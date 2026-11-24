@@ -2006,7 +2006,7 @@ async function saveConfig() {
 async function refreshInstalled() {
   try {
     const inst = await window.api.getInstalled();
-    config.repos.forEach((r) => { const k = keyOf(r); const i = inst[k]; const s = (st[k] = st[k] || { ph: 'idle' }); if (i) { s.from = i.current || null; s.present = !!i.present; s.date = i.date || null; s.lastAction = i.lastAction || 'installed'; } });
+    config.repos.forEach((r) => { const k = keyOf(r); const i = inst[k]; const s = (st[k] = st[k] || { ph: 'idle' }); if (i) { s.from = i.current || null; s.present = !!i.present; s.date = i.date || null; s.lastAction = i.lastAction || 'installed'; if (i.failed && s.ph === 'idle') { s.ph = 'failed'; s.reason = i.failed.reason; s.to = i.failed.to; } } });
   } catch {}
 }
 async function load() {

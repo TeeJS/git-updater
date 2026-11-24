@@ -136,7 +136,11 @@ test('update: a checksum that does not match stops the install', async () => {
     assert.equal(results[0].status, 'failed');
     assert.match(results[0].reason, /checksum mismatch/);
     assert.equal(fs.existsSync(path.join(dir, 'app.txt')), false);
-    assert.equal(fs.existsSync(statePath), false);
+    // Nothing is recorded as installed. Only the failure is kept, so the row stays red after a restart.
+    const saved = JSON.parse(fs.readFileSync(statePath, 'utf8'))[KEY];
+    assert.equal(saved.tag, undefined);
+    assert.equal(saved.version, undefined);
+    assert.match(saved.lastFailure.reason, /checksum mismatch/);
   });
 });
 
