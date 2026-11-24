@@ -49,6 +49,11 @@ function parseHive(stdout) {
       // Kept for src/selfupdating.js: a Squirrel app registers its own updater as the
       // uninstaller ("…\Update.exe" --uninstall), which is how it is told apart.
       if (/\bUpdate\.exe"?\s+--uninstall\b/i.test(cur.UninstallString || '')) rec.uninstall = cur.UninstallString;
+      // The install folder when the record names none: the folder its uninstaller sits in
+      // (OBS: "C:\Program Files\obs-studio\uninstall.exe"). Never for an MSI, whose uninstaller
+      // is Windows' own msiexec. src/inuse.js asks which programs have files there open.
+      const unExe = (String(cur.UninstallString || '').match(/^\s*"([^"]+\.exe)"/i) || String(cur.UninstallString || '').match(/^\s*([A-Za-z]:\\[^"]*?\.exe)(?:\s|$)/i) || [])[1];
+      if (!rec.location && unExe && !/(^|\\)msiexec\.exe$/i.test(unExe)) rec.uninstallDir = unExe.replace(/\\[^\\]+$/, '');
       if (/^\d{8}$/.test(cur.InstallDate || '')) {
         const d = cur.InstallDate;
         const iso = `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`;

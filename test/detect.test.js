@@ -99,7 +99,7 @@ test('sameApp: a helper is still judged by its whole name, brackets included', (
   assert.equal(sameApp('Claude (URL Handler)', 'claude-code', 'win32'), false);
 });
 
-test('installedVersion: Notepad++ is found, and its newest install decides the installer type', async () => {
+test('installedVersion: Notepad++ is found, and its newest install decides the installer type', { skip: process.platform === 'linux' && 'a Windows inventory name: on Linux names are matched one way only, by design (see nameMatches)' }, async () => {
   const detect = require('../src/detect');
   const platform = require('../src/platform');
   const real = platform.installedApps;
@@ -219,4 +219,62 @@ test('procMatches: closing one app never closes a different known app', () => {
   // OBS Studio's process only when the system records it as the app's main program.
   assert.equal(procMatches('obs', 'obs-studio'), false);
   assert.ok(procMatches('obs', 'obs-studio', ['obs']));
+});
+
+// music-assistant/desktop-app installs as "Music Assistant": its OWNER's name. Nothing on the
+// PC is called "desktop-app", so the row read "Not installed" until a check filled in the
+// version git-updater had recorded, and its button still said Install.
+test('lookupNames: an app installed under its owner\'s name is found, on every platform', async () => {
+  const detect = require('../src/detect');
+  const platform = require('../src/platform');
+  const core = require('../src/core');
+  const real = platform.installedApps;
+  const entry = { owner: 'music-assistant', repo: 'desktop-app', type: 'installer' };
+  const inventories = {
+    win32: [{ name: 'Music Assistant', version: '0.7.4', flavor: 'exe', location: 'C:/Users/u/AppData/Local/Music Assistant' }],
+    darwin: [{ name: 'Music Assistant', version: '0.7.4', flavor: 'app', path: '/Applications/Music Assistant.app' }],
+    linux: [{ name: 'music-assistant', version: '0.7.4', flavor: 'deb' }],
+  };
+  try {
+    for (const [plat, rows] of Object.entries(inventories)) {
+      platform.installedApps = async () => rows;
+      detect.clearCache();
+      assert.equal(await detect.installedVersion(...core.lookupNames(entry)), '0.7.4', `${plat}: found by its owner's name`);
+      assert.equal(await detect.installedFlavor(...core.lookupNames(entry)), rows[0].flavor, `${plat}: and its install type with it`);
+    }
+  } finally {
+    platform.installedApps = real;
+    detect.clearCache();
+  }
+});
+
+test('lookupNames: the owner is tried only when the name finds nothing, and only exactly', async () => {
+  const detect = require('../src/detect');
+  const platform = require('../src/platform');
+  const core = require('../src/core');
+  const real = platform.installedApps;
+  platform.installedApps = async () => [
+    { name: 'Google Chrome', version: '158.0.8127.88', flavor: 'msi' },
+    { name: 'Microsoft Edge', version: '158.0.4370.33', flavor: 'msi' },
+    { name: 'OBS Studio', version: '32.1.2', flavor: 'exe' },
+    { name: 'Obsproject Tools', version: '9.9.9', flavor: 'exe' },
+  ];
+  detect.clearCache();
+  try {
+    // Loosely, "google" is Google Chrome. An app google publishes that is not installed stays not installed.
+    assert.equal(await detect.installedVersion(...core.lookupNames({ owner: 'google', repo: 'not-installed', type: 'installer' })), null);
+    assert.equal(await detect.installedVersion(...core.lookupNames({ owner: 'microsoft', repo: 'not-installed', type: 'installer' })), null);
+    // The name finds the app, so the owner is never asked.
+    assert.equal(await detect.installedVersion(...core.lookupNames({ owner: 'obsproject', repo: 'obs-studio', type: 'installer' })), '32.1.2');
+  } finally {
+    platform.installedApps = real;
+    detect.clearCache();
+  }
+});
+
+test('lookupNames: no alias for an entry that says what to look for, or one from another source', () => {
+  const core = require('../src/core');
+  assert.deepEqual(core.lookupNames({ owner: 'music-assistant', repo: 'desktop-app' }), ['desktop-app', 'music-assistant']);
+  assert.deepEqual(core.lookupNames({ owner: 'microsoft', repo: 'vscode', detect: 'Microsoft Visual Studio Code' }), ['Microsoft Visual Studio Code', null]);
+  assert.deepEqual(core.lookupNames({ owner: 'source.winget', repo: 'obsidian.obsidian', source: 'winget', name: 'Obsidian' }), ['Obsidian', null]);
 });

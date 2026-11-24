@@ -16,6 +16,7 @@ const detect = require('./detect');
 const sources = require('./sources');
 const platform = require('./platform');
 const selfupdating = require('./selfupdating');
+const inuse = require('./inuse');
 const { log } = require('./log');
 
 // Display id ("owner/repo") vs storage/identity key (adds the type, so the same repo
@@ -160,6 +161,26 @@ async function run(config, opts = {}) {
   return { results, summary: core.buildSummary(results) };
 }
 
+// An installer that failed with an exit code of its own: the programs that have the app's
+// files open, named for the row (see src/inuse.js). null when nobody does, or when they cannot
+// be asked: opts.inUse is given by the window and the schedule, which know where the helper is.
+async function inUseReason(repo, code, opts) {
+  if (!opts.inUse) return null;
+  try {
+    for (const rec of await detect.installedCopies(...core.lookupNames(repo))) {
+      const folder = inuse.folderOf(rec);
+      const names = folder ? await opts.inUse(folder) : [];
+      if (names.length) {
+        log(`  ${appKey(repo)}: files in ${folder} are open in ${names.join(', ')}`);
+        return inuse.reason(inuse.appLabel(rec, core.appName(repo)), names, code);
+      }
+    }
+  } catch (e) {
+    log(`  ${appKey(repo)}: could not ask which programs have its files open (${e.message})`);
+  }
+  return null;
+}
+
 // Where an app comes from, attached to every result so the UI and the CLI can always
 // show it. No network: this is read off the config entry alone.
 function where(repo) {
@@ -175,7 +196,7 @@ function where(repo) {
 // Update. Installers match the flavor ALREADY installed (msi vs exe on Windows, deb vs rpm
 // on Linux) so an update upgrades in place instead of installing a duplicate side by side.
 async function pickFor(repo, rel) {
-  const flavor = repo.type === 'installer' ? await detect.installedFlavor(core.detectName(repo)) : null;
+  const flavor = repo.type === 'installer' ? await detect.installedFlavor(...core.lookupNames(repo)) : null;
   return sources.selectAsset(repo, rel, { flavor, osRelease: detect.osRelease() });
 }
 
@@ -221,7 +242,7 @@ async function updatesItself(repo, rel, externallyInstalled) {
   let copies = [];
   if (!folder) {
     try {
-      copies = await detect.installedCopies(core.detectName(repo));
+      copies = await detect.installedCopies(...core.lookupNames(repo));
     } catch {}
   }
   const found = await selfupdating.check({ ...repo, updatesItself: undefined }, {
@@ -300,7 +321,7 @@ async function handleRepo(repo, id, st, opts) {
   let externallyInstalled = false; // portable app found in the OS inventory, not one we manage
   if (repo.type === 'installer') {
     try {
-      installed = await detect.installedVersion(core.detectName(repo));
+      installed = await detect.installedVersion(...core.lookupNames(repo));
     } catch {}
     // Scheme mismatch (e.g. Brave: registry 152.1.94.117 vs tag 1.94.117): the install
     // looks "newer" than any release, so updates would never be detected. Align the
@@ -319,7 +340,7 @@ async function handleRepo(repo, id, st, opts) {
     if (!installed) {
       let detected = null;
       try {
-        detected = await detect.installedVersion(core.detectName(repo));
+        detected = await detect.installedVersion(...core.lookupNames(repo));
       } catch {}
       if (detected) {
         installed = detected;
@@ -621,11 +642,18 @@ async function handleRepo(repo, id, st, opts) {
                 return interactiveResult;
               },
               fail: (reason) => ({ ...base, status: 'failed', reason }),
+              // An installer that failed with an exit code of its own: who has the app's files open.
+              whyFailed: (code) => inUseReason(repo, code, opts),
             });
             return { ...base, status: 'failed', needsAdmin: true, reason: 'waiting for administrator permission' };
           }
         }
         if ((e.status === 1603 || e.elevation) && interactive(stagedName)) return interactiveResult;
+        // An exit code of the installer's own: if other programs have the app's files open, name them.
+        if (e.genericExit) {
+          const why = await inUseReason(repo, e.status, opts);
+          if (why) throw new Error(why);
+        }
         throw e;
       }
     } else {

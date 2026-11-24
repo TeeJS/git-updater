@@ -14,6 +14,7 @@ const core = require('../src/core');
 const github = require('../src/github');
 const runner = require('../src/runner');
 const elevate = require('../src/elevate');
+const inuse = require('../src/inuse');
 const state = require('../src/state');
 const detect = require('../src/detect');
 const platform = require('../src/platform');
@@ -324,7 +325,7 @@ async function backgroundInstall(what = 'scheduled install') {
       let result;
       try {
         lock = state.acquireLock();
-        const out = await runner.run(config, { only: key, autoClose, forceClose: autoClose && !!cfg.forceClose, unattended: true });
+        const out = await runner.run(config, { only: key, autoClose, forceClose: autoClose && !!cfg.forceClose, unattended: true, inUse: whoUsesFolder });
         result = out.results[0];
       } catch (e) {
         result = { status: 'failed', reason: e && e.message ? e.message : String(e) };
@@ -492,10 +493,10 @@ async function computeInstalled(cfg) {
     if (r.type === 'installer') {
       let v = null;
       try {
-        v = await detect.installedVersion(core.detectName(r));
+        v = await detect.installedVersion(...core.lookupNames(r));
       } catch {}
       let date = rec.installedAt || null;
-      if (!date && v) try { date = await detect.installedDate(core.detectName(r)); } catch {}
+      if (!date && v) try { date = await detect.installedDate(...core.lookupNames(r)); } catch {}
       out[key] = { current: v, present: !!v, date: v ? date : null, lastAction: rec.lastAction || 'installed' };
     } else {
       const dir = portableDir(cfg, r);
@@ -509,7 +510,7 @@ async function computeInstalled(cfg) {
       if (!present && !current) {
         let v = null;
         try {
-          v = await detect.installedVersion(core.detectName(r));
+          v = await detect.installedVersion(...core.lookupNames(r));
         } catch {}
         if (v) {
           current = v;
@@ -517,7 +518,7 @@ async function computeInstalled(cfg) {
         }
       }
       let date = rec.installedAt || null;
-      if (!date && present) try { date = await detect.installedDate(core.detectName(r)); } catch {}
+      if (!date && present) try { date = await detect.installedDate(...core.lookupNames(r)); } catch {}
       out[key] = { current, present, date: present ? date : null, lastAction: rec.lastAction || 'installed' };
     }
   }
@@ -529,7 +530,7 @@ ipcMain.handle('installed:record-completion', async (_e, { appKey, fromVersion, 
   const r = readConfig().repos.find((x) => `${x.owner}/${x.repo}#${x.type}` === appKey);
   if (!r || r.type !== 'installer') throw new Error('installer app not found');
   detect.clearCache();
-  const version = await detect.installedVersion(core.detectName(r));
+  const version = await detect.installedVersion(...core.lookupNames(r));
   if (!version || version === fromVersion) throw new Error('installer completion not detected');
   const stt = state.load();
   const installedAt = new Date().toISOString();
@@ -607,7 +608,7 @@ async function launchApp(appKey) {
     // An installer entry, OR a portable entry with no managed copy — the app was installed
     // by hand (found in the OS inventory, e.g. Deskflow in /Applications). Either way, launch
     // it from the OS's own record.
-    const t = await detect.launchTarget(core.detectName(r));
+    const t = await detect.launchTarget(...core.lookupNames(r));
     if (t && t.path && fs.existsSync(t.path)) target = t.path;
     if (!target && t && t.location && fs.existsSync(t.location)) {
       const rel = core.pickLaunchFile(shallowFiles(t.location, 2), core.appName(r), process.platform);
@@ -782,7 +783,7 @@ const findEntry = (appKey) => {
   return r;
 };
 const hostInfo = async (entry) => ({
-  flavor: entry.type === 'installer' ? await detect.installedFlavor(core.detectName(entry)) : null,
+  flavor: entry.type === 'installer' ? await detect.installedFlavor(...core.lookupNames(entry)) : null,
   osRelease: detect.osRelease(),
 });
 
@@ -1951,6 +1952,12 @@ ipcMain.handle('check', async (_e, body = {}) => {
 // administrator rights behind ONE Windows prompt, so git-updater itself never runs elevated.
 // Windows only. Shipped beside the app's resources; in a development run it is the copy
 // built by `cargo build --release` in helper/, if there is one. null when it is not there.
+// After an installer fails: which programs have files in the app's folder open (src/inuse.js),
+// asked of the helper's read-only --who-uses. [] where there is no helper (macOS, Linux).
+function whoUsesFolder(folder) {
+  return inuse.namesUsing(folder, { helperPath: installerHelperPath(), runHelper: elevate.runHelper });
+}
+
 function installerHelperPath() {
   if (process.platform !== 'win32') return null;
   const file = app.isPackaged
@@ -2018,7 +2025,7 @@ ipcMain.handle('update', async (e, body = {}) => {
     // here, see adminRun), an installer that needs administrator rights is set aside instead of opening
     // its own window, and the window asks for them all at the end with 'update:admin'.
     const setAside = config.adminPromptOnce && !body.dryRun && adminRun() ? setAsideForAdmin : undefined;
-    return await runner.run(config, { only: body.only, force: !!body.force, dryRun: !!body.dryRun, autoClose: !!body.autoClose, forceClose: !!body.autoClose && !!config.forceClose, onProgress, openFile, setAside });
+    return await runner.run(config, { only: body.only, force: !!body.force, dryRun: !!body.dryRun, autoClose: !!body.autoClose, forceClose: !!body.autoClose && !!config.forceClose, onProgress, openFile, setAside, inUse: whoUsesFolder });
   } finally {
     state.releaseLock(lock);
     updating = false;

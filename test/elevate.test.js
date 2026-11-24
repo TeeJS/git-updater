@@ -353,6 +353,7 @@ function appHandlers({ config, helperThere = true }) {
     shell: { openPath: () => {} },
     path,
     paths: { dataDir: () => 'C:\\data' },
+    whoUsesFolder: async () => [],
     adminRun: () => (helperThere ? { helperPath: 'C:\\app\\resources\\helper\\git-updater-helper.exe' } : null),
     runner: {
       run: async (_config, opts) => {

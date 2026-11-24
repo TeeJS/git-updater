@@ -18,6 +18,11 @@
 //     signature), run that copy, record its exit code, remove the copy. Then hand the
 //     results back and exit.
 //
+//   git-updater-helper.exe --who-uses --folder <folder>
+//     Not elevated, installs nothing, changes nothing. Prints which programs have files under
+//     the folder open, one "<process id><TAB><name>" line each (see inuse.rs), so a failed
+//     installer can say what to close.
+//
 // Rules this program keeps:
 //   - It runs nothing but the installer files in the job, or Windows' own msiexec for an MSI.
 //   - It never runs a file from a folder the user account can write to.
@@ -27,6 +32,7 @@
 #![cfg_attr(not(test), windows_subsystem = "windows")]
 
 mod check;
+mod inuse;
 mod job;
 
 use std::ffi::{c_void, OsStr, OsString};
@@ -421,6 +427,18 @@ fn verify(job_path: &Path) -> u32 {
     EXIT_OK
 }
 
+// `--who-uses`: which programs have files under `folder` open. Read-only.
+fn who_uses(folder: &Path) -> u32 {
+    if !folder.is_absolute() || !folder.is_dir() {
+        return EXIT_BAD_ARGUMENTS;
+    }
+    let Some(users) = inuse::users_of(&inuse::files_under(folder)) else {
+        return EXIT_NO_RESULTS;
+    };
+    let _ = std::io::stdout().write_all(inuse::format_users(&users).as_bytes());
+    EXIT_OK
+}
+
 fn main() {
     // Load Windows' own libraries from System32 only, never from the folder this program
     // sits in (the build also sets this for the libraries loaded before this line runs).
@@ -430,6 +448,7 @@ fn main() {
     let code = match text.as_slice() {
         [Some("--verify"), Some("--job"), Some(job)] => verify(Path::new(job)),
         [Some("--install"), Some("--job"), Some(job)] => ask_and_wait(Path::new(job)),
+        [Some("--who-uses"), Some("--folder"), Some(folder)] => who_uses(Path::new(folder)),
         [Some("--elevated-run"), Some("--job"), Some(job), Some("--token"), Some(token)] if is_token(token) => {
             elevated_run(Path::new(job), token)
         }

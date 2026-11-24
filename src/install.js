@@ -473,6 +473,7 @@ function installInstaller(filePath, install, opts = {}) {
         WIN_INSTALLER_CODES[r.status] || `installer failed (exit ${r.status}) — if the app is open, close it and Retry`
       );
       err.status = r.status;
+      err.genericExit = !WIN_INSTALLER_CODES[r.status]; // not one explained above: the runner may name who has its files open
       throw err;
     }
     // macOS installer(8) and Linux dpkg/rpm all write to system locations, so an

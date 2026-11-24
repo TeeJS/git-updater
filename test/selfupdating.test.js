@@ -325,12 +325,12 @@ const between = (from, to) => {
   return html.slice(a, b);
 };
 
-test('window: the row reads "Updates itself", muted, and its tooltip says why and how to undo it', () => {
+test('window: the row reads "Updates itself", in purple, and its tooltip says why and how to undo it', () => {
   const ctx = {};
   vm.runInNewContext(`${between('const SELF_WHY', 'const selfOf')} ${between('function statusViewOf(s) {', 'function primaryAction(s)')}; this.statusViewOf = statusViewOf;`, ctx);
   const v = ctx.statusViewOf({ ph: 'self', selfBy: 'squirrel', selfName: 'Discord', from: '1.0.9269', to: '1.0.9270' });
   assert.equal(v.text, 'Updates itself');
-  assert.equal(v.cls, 'c-muted', 'not red, not an update to take');
+  assert.equal(v.cls, 'c-self', 'purple: not red, not an update to take, not grey "not checked"');
   assert.match(v.tip, /^Discord keeps itself up to date\. git-updater leaves it alone so the two updaters don't clash\./);
   assert.match(v.tip, /It has its own updater built in\./);
   assert.match(v.tip, /Version 1\.0\.9270 is out; Discord installs it itself\./);
@@ -353,4 +353,11 @@ test('window: the ⋯ menu carries the "Updates itself" tick on installed rows, 
   // Update all still sends every row to the engine; the engine is what leaves these alone.
   assert.match(html, /\$\('updateAll'\)\.onclick = \(\) => runBatch\(targetKeys\(\)/);
   assert.match(html, /left alone because \$\{leftAlone === 1 \? 'it updates itself' : 'they update themselves'\}/);
+});
+
+test('window: in the compact list the words "Updates itself" are purple too, not the grey other states get', () => {
+  const html = fs.readFileSync(path.join(__dirname, '..', 'ui', 'index.html'), 'utf8');
+  assert.match(html, /\.c-self \{ color: var\(--purple\); \} \.c-self \.dot \{ background: var\(--purple\);/);
+  assert.match(html, /\.cv\.say\.c-self \{ color: var\(--purple\); \}/);
+  assert.ok(html.indexOf('.cv.say.c-self') > html.indexOf('.cv { min-width'), 'after the grey .cv rule, so it wins');
 });

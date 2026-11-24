@@ -406,6 +406,13 @@ function appName(r) {
   return String(r.repo || '');
 }
 const detectName = (r) => (r && r.detect) || appName(r);
+// The names to look an installed app up by: [name, alias]. A GitHub repository's name is not
+// always what its app installs as. music-assistant/desktop-app installs as "Music Assistant",
+// its OWNER's name, and nothing on the PC is called "desktop-app", so the row read "Not
+// installed". The owner is the alias: tried only when the name finds nothing, and only as an
+// exact match (see matchEntries in src/detect.js). Not for an entry that says what to look for
+// (`detect`), nor for one from another source, whose `name` is already the app's own.
+const lookupNames = (r) => [detectName(r), r && !r.source && !r.detect && r.owner ? String(r.owner) : null];
 const processName = (r) => (r && r.process) || appName(r);
 
 // What a row is called in results, logs and the CLI: "owner/repo" for GitHub (unchanged),
@@ -778,6 +785,7 @@ module.exports = {
   holdFolders,
   appName,
   detectName,
+  lookupNames,
   processName,
   displayId,
   folderName,
