@@ -413,15 +413,6 @@ const detectName = (r) => (r && r.detect) || appName(r);
 // exact match (see matchEntries in src/detect.js). Not for an entry that says what to look for
 // (`detect`), nor for one from another source, whose `name` is already the app's own.
 const lookupNames = (r) => [detectName(r), r && !r.source && !r.detect && r.owner ? String(r.owner) : null];
-
-// An app's last failed update (its saved record's lastFailure, see noteFailure in src/runner.js)
-// while it still applies: until something installs that version or a newer one. The window
-// opens such a row red, with the reason, so a restart does not make a failed update look fine.
-function failureOf(rec, current) {
-  const lf = rec && rec.lastFailure;
-  if (!lf || !lf.to) return null;
-  return current && cmpVersion(current, lf.to) >= 0 ? null : lf;
-}
 const processName = (r) => (r && r.process) || appName(r);
 
 // What a row is called in results, logs and the CLI: "owner/repo" for GitHub (unchanged),
@@ -795,7 +786,6 @@ module.exports = {
   appName,
   detectName,
   lookupNames,
-  failureOf,
   processName,
   displayId,
   folderName,

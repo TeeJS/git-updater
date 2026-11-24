@@ -140,7 +140,6 @@ async function run(config, opts = {}) {
     }
     let closed = false;
     const markClosed = () => { closed = true; };
-    const attempt = {}; // handleRepo fills in the version it set out to install
     try {
       if (bad) throw bad;
       if (clash) throw new Error(`its portable folder (${repo.install.dir}) is also used by ${clash} — give each its own install.dir in config.json`);
@@ -150,34 +149,15 @@ async function run(config, opts = {}) {
         requireChecksum: !!config.requireChecksum,
         maxBytes: core.downloadLimitBytes(config),
         markClosed,
-        attempt,
       });
-      if (result.status === 'failed' && !result.needsAdmin && !result.chooseFile) noteFailure(st, key, result.to, result.reason, opts);
       results.push(closed ? { ...result, closed: true } : result);
     } catch (e) {
       results.push({ repo: id, id: appKey(repo), status: 'failed', reason: e.message, stopRun: !!e.rateLimited || !!e.badToken, ...where(repo), ...(closed ? { closed: true } : {}) });
-      if (!e.rateLimited && !e.badToken) noteFailure(st, key, attempt.to, e.message, opts);
       log(`FAIL ${appKey(repo)}: ${e.message}`);
       if (e.rateLimited || e.badToken) break; // every later call would fail the same way and burn more quota
     }
   }
   return { results, summary: core.buildSummary(results) };
-}
-
-// A failed update is remembered until it succeeds or a newer version comes out, so the row is
-// still red after git-updater restarts. An update of git-updater itself restarts it, and that
-// wiped OBS's "installer failed" off its row, which then looked fine. Update runs only: a check
-// installs nothing, so it has nothing to remember. `to` is the version that failed; without
-// one (the release was never even read) there is nothing to hold the failure to.
-// recordInstalled replaces the app's record, which clears it.
-function noteFailure(into, key, to, reason, opts) {
-  if (!to || opts.mode === 'check' || opts.dryRun) return;
-  into[key] = { ...(into[key] || {}), lastFailure: { to, reason, at: new Date().toISOString() } };
-  try {
-    state.save(into, opts.statePath);
-  } catch (e) {
-    log(`WARN ${key}: could not save the failure (${e.message})`);
-  }
 }
 
 // Where an app comes from, attached to every result so the UI and the CLI can always
@@ -384,7 +364,6 @@ async function handleRepo(repo, id, st, opts) {
   }
 
   const base = { repo: id, id: key, from: fromV, to: core.normTag(latest), ...src, ...selfInfo };
-  if (opts.attempt) opts.attempt.to = base.to;
 
   // Same answer for Check, Update, Update all, the schedule and the sign-in run, and for a forced
   // reinstall: the row's "Updates itself" tick is the one way to let git-updater update it.
@@ -392,11 +371,6 @@ async function handleRepo(repo, id, st, opts) {
     if (opts.mode !== 'check' && !opts.dryRun) log(`SKIP ${key}: ${core.appName(repo)} updates itself (${self.by})`);
     return { ...base, status: 'self', reason: `${core.appName(repo)} updates itself` };
   }
-
-  // The last update to this same version failed, and nothing has installed it since: a check
-  // keeps the row red with that reason, rather than turning it blue as if it had never been tried.
-  const lf = prev.lastFailure;
-  if (opts.mode === 'check' && lf && lf.to === base.to) return { ...base, status: 'failed', reason: lf.reason, lastFailure: lf };
 
   // A selection failure that choosing a file by hand would fix (nothing fits automatically,
   // or a saved choice stopped matching — see sources.selectAsset) is a row state, not an
@@ -646,10 +620,7 @@ async function handleRepo(repo, id, st, opts) {
                 if (!openOwnWindow(kept.file)) throw new Error('needs administrator rights');
                 return interactiveResult;
               },
-              fail: (reason) => {
-                noteFailure(state.load(opts.statePath), key, base.to, reason, opts);
-                return { ...base, status: 'failed', reason };
-              },
+              fail: (reason) => ({ ...base, status: 'failed', reason }),
             });
             return { ...base, status: 'failed', needsAdmin: true, reason: 'waiting for administrator permission' };
           }
