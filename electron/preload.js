@@ -48,6 +48,10 @@ contextBridge.exposeInMainWorld('api', {
   check: (body) => ipcRenderer.invoke('check', body),
   update: (body) => ipcRenderer.invoke('update', body),
   updateAdmin: (body) => ipcRenderer.invoke('update:admin', body),
+  // "Ask for administrator permission once per update run": what it still needs here (Linux: pkexec).
+  adminStatus: () => ipcRenderer.invoke('admin:status'),
+  adminInstallPkexec: () => ipcRenderer.invoke('admin:installPkexec'),
+  adminCopyInstallCommand: () => ipcRenderer.invoke('admin:copyInstallCommand'),
   onProgress: (cb) => ipcRenderer.on('update:progress', (_e, data) => cb(data)),
   openScan: () => ipcRenderer.invoke('scan:open'),
   scanRun: () => ipcRenderer.invoke('scan:run'),

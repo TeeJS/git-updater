@@ -303,6 +303,61 @@ function linuxTools(exists = fs.existsSync, platform = process.platform) {
   return pkexec && sh && find('apt-get') ? { pkexec, sh } : null;
 }
 
+// Whether the setting is OFFERED on this Linux machine, and what it still needs.
+//
+// The setting is shown wherever it could work: any system with apt-get. pkexec missing does
+// NOT hide it. Hiding it hid the whole feature from exactly the people who had to do one
+// thing to get it; instead the window says pkexec is missing and offers to install it
+// (installPkexecInTerminal below). null = not offered at all: not Linux, or no apt-get (an
+// rpm system, where there is nothing to install that would make it work).
+function linuxStatus(exists = fs.existsSync, platform = process.platform) {
+  if (platform !== 'linux') return null;
+  const find = (name) => LINUX_DIRS.map((d) => `${d}/${name}`).find((f) => exists(f)) || null;
+  if (!find('sh') || !find('apt-get')) return null;
+  return { missing: find('pkexec') ? null : 'pkexec' };
+}
+
+// The command that installs pkexec, exactly as the window shows it. The package is called
+// "pkexec" on Debian 12 and later and on Ubuntu 22.04 and later.
+const INSTALL_PKEXEC = 'sudo apt install pkexec';
+
+// Terminal programs, and the switch each takes before the command to run. x-terminal-emulator
+// is Debian's and Ubuntu's own name for "the default terminal" (Konsole on Kubuntu).
+const TERMINALS = [
+  ['x-terminal-emulator', '-e'],
+  ['konsole', '-e'],
+  ['gnome-terminal', '--'],
+  ['xfce4-terminal', '-x'],
+  ['xterm', '-e'],
+];
+
+// What runs in that terminal. sudo asks for the password there, in plain sight; the window
+// stays open afterwards so the result can be read.
+const INSTALL_PKEXEC_IN_TERMINAL = `${INSTALL_PKEXEC} && echo && echo "pkexec is installed. Close this window and go back to git-updater." || { echo; echo "pkexec was NOT installed. The reason is above."; }; echo; printf "Press Enter to close this window. "; read _`;
+
+// Open a terminal that installs pkexec. git-updater does not install it itself: it has no
+// way to become root without pkexec, and never takes a password. Returns true when a
+// terminal was started; false when none was found (the window then shows the command to copy).
+function installPkexecInTerminal(spawn = childProcess.spawn, exists = fs.existsSync) {
+  const find = (name) => LINUX_DIRS.map((d) => `${d}/${name}`).find((f) => exists(f)) || null;
+  const sh = find('sh');
+  if (!sh) return false;
+  for (const [name, flag] of TERMINALS) {
+    const terminal = find(name);
+    if (!terminal) continue;
+    try {
+      const child = spawn(terminal, [flag, sh, '-c', INSTALL_PKEXEC_IN_TERMINAL], { detached: true, stdio: 'ignore' });
+      child.on('error', (e) => log(`could not open ${terminal} to install pkexec (${e.message})`));
+      child.unref();
+      log(`opened ${terminal} to install pkexec`);
+      return true;
+    } catch (e) {
+      log(`could not open ${terminal} to install pkexec (${e.message})`);
+    }
+  }
+  return false;
+}
+
 // What the script printed, as one answer per package: { kind: 'exit', code } | { kind: 'copy' }
 // | { kind: 'hash' }, each with `reasons`, or null for a package it never reached. Returns null
 // when the script never started (its first line is missing): no permission, or no prompt.
@@ -394,4 +449,5 @@ async function finishLinux(entries, opts) {
 module.exports = {
   switchesFor, setAsideEntry, discard, finish, runHelper, exitReason, DECLINED, TIMEOUT_SECS,
   linuxTools, parseAdminOutput, linuxReason, ADMIN_SCRIPT, PKEXEC_DISMISSED,
+  linuxStatus, installPkexecInTerminal, INSTALL_PKEXEC, INSTALL_PKEXEC_IN_TERMINAL,
 };

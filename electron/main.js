@@ -718,7 +718,7 @@ ipcMain.handle('scan:open', () => {
 // answer from the main process is the guarantee.
 const SCAN_PLATFORMS = new Set(['win32', 'darwin']);
 
-ipcMain.handle('app:platform', () => ({ platform: process.platform, canScan: SCAN_PLATFORMS.has(process.platform), adminPromptOnce: !!adminRun() }));
+ipcMain.handle('app:platform', () => ({ platform: process.platform, canScan: SCAN_PLATFORMS.has(process.platform), adminPromptOnce: adminStatus().offered }));
 
 // Every known app found installed: the GitHub catalog's patterns AND every app in Popular
 // apps by name (see scanInstalled in src/catalog.js), so an app that comes from WinGet or
@@ -1957,6 +1957,28 @@ function installerHelperPath() {
     : path.join(__dirname, '..', 'helper', 'target', 'release', 'git-updater-helper.exe');
   return fs.existsSync(file) ? file : null;
 }
+
+// Whether the window OFFERS "Ask for administrator permission once per update run", and what it
+// still needs to work. On Linux it is offered wherever apt-get is, even when pkexec is not
+// installed: the window then says so and offers to install it. A setting that is hidden until
+// its one requirement happens to be met is a feature nobody finds.
+function adminStatus() {
+  if (adminRun()) return { offered: true, missing: null };
+  const linux = elevate.linuxStatus();
+  if (!linux) return { offered: false, missing: null };
+  return { offered: true, missing: linux.missing, installCommand: elevate.INSTALL_PKEXEC };
+}
+ipcMain.handle('admin:status', () => adminStatus());
+// "Install pkexec": a terminal opens and runs the install command, where sudo asks for the
+// password. Only when pkexec really is what is missing; the command is fixed, never the window's.
+ipcMain.handle('admin:installPkexec', () => {
+  if (adminStatus().missing !== 'pkexec') return { opened: false };
+  return { opened: elevate.installPkexecInTerminal() };
+});
+ipcMain.handle('admin:copyInstallCommand', () => {
+  clipboard.writeText(elevate.INSTALL_PKEXEC);
+  return { copied: true };
+});
 
 // What can run set-aside installers behind one prompt on this machine, as the options
 // elevate.finish takes: Windows' helper, or on Debian and Ubuntu family Linux the system's own
