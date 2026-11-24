@@ -1,0 +1,58 @@
+# Finding installed apps, and saying who blocks an installer.
+#
+# - An app installed under its owner's name is found (music-assistant/desktop-app is
+#   "Music Assistant"), the same way on every platform: src/detect.js, src/core.js.
+# - A failed installer names the programs that have the app's files open (src/inuse.js and the
+#   helper's --who-uses). Only Windows refuses to replace a file in use, so the helper's own
+#   tests run there; the rest runs on all three to prove nothing is asked elsewhere.
+
+name: Installed apps and files in use
+
+on:
+  pull_request:
+    paths:
+      - src/detect.js
+      - src/core.js
+      - src/inuse.js
+      - src/runner.js
+      - src/install.js
+      - src/elevate.js
+      - src/platform/**
+      - electron/main.js
+      - ui/index.html
+      - helper/**
+      - test/detect.test.js
+      - test/inuse.test.js
+      - test/platform.test.js
+      - test/elevate.test.js
+      - test/sources-runner.test.js
+      - test/selfupdating.test.js
+      - .github/workflows/installed-and-in-use.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Lookups, files in use, and the runs that use them
+        run: node --test test/detect.test.js test/inuse.test.js test/platform.test.js test/elevate.test.js test/sources-runner.test.js test/selfupdating.test.js
+
+  helper:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: The helper, including --who-uses against a file this test holds open
+        run: cargo test --release --locked --manifest-path helper/Cargo.toml
