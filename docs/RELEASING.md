@@ -40,6 +40,12 @@ both Windows exes `Valid` (CN=Thomas Schmitz), the Mac app and disk image notari
 Linux files built. A dry run skips the draft step, so that step is proven only by the first
 tag release, `v0.2.7-beta.3`. The per-host steps below remain the fallback.
 
+**The installer helper.** The Windows job also tests, builds (x64 and arm64) and signs
+`helper/`, the small Rust program that runs installers needing administrator rights behind
+one Windows prompt, and packs it into each Windows zip as `resources/helper/git-updater-helper.exe`.
+It adds no release file: the release is still the ten files. The job fails unless both
+packed helpers are validly signed and each is built for its own architecture.
+
 - **Dry run** (builds and signs, creates nothing): once the workflow is on `main`,
   `gh workflow run release.yml -f dry_run=true`. Read the proof lines in the logs: the Windows
   job lists each exe as `Valid`; the Mac job shows notarization verified for the app and the
@@ -99,8 +105,15 @@ SDK), the .NET 8 runtime, and per-user PowerShell 7 at `%LOCALAPPDATA%\pwsh7`.
 
 ```bash
 npm ci
+npm run helper
 npm run dist:win
 ```
+
+`npm run helper` builds and signs the installer helper for both architectures
+(`build/build-helper.js`) so `dist:win` can pack it; skip it and the app is built without the
+helper, and "Ask for administrator permission once per update run" does not appear. It needs
+Rust (`rustup`) and, for arm64, Visual Studio's "MSVC ARM64 build tools". Run it from
+PowerShell, not Git Bash: Git Bash puts its own `link.exe` ahead of the compiler's.
 
 **Verify the signature** before uploading (PowerShell):
 

@@ -190,6 +190,23 @@ jobs:
           }
           [IO.File]::WriteAllText("$PWD\.signing\metadata.json", ($meta | ConvertTo-Json), [Text.UTF8Encoding]::new($false))
       - run: npm ci
+      # The installer helper (helper/): a small Rust program shipped inside the Windows app,
+      # which runs installers that need administrator rights behind one Windows prompt. It is
+      # tested, then built for both architectures and signed (build/build-helper.js, through
+      # the same sign.js), before electron-builder packs it (package.json
+      # build.win.extraResources). Rust is preinstalled on the runner; --locked holds the
+      # build to helper/Cargo.lock.
+      - name: Test, build and sign the installer helper
+        shell: pwsh
+        run: |
+          cargo test --release --locked --manifest-path helper/Cargo.toml
+          if ($LASTEXITCODE -ne 0) { throw 'the helper tests failed' }
+          cargo build --release --locked --manifest-path helper/Cargo.toml
+          if ($LASTEXITCODE -ne 0) { throw 'the helper did not build' }
+          node --test test/helper.test.js test/elevate.test.js
+          if ($LASTEXITCODE -ne 0) { throw 'the helper tests that drive the built program failed' }
+          node build/build-helper.js
+          if ($LASTEXITCODE -ne 0) { throw 'the helper release build failed' }
       - name: Package and sign
         run: npx electron-builder --win --publish never
       # sign.js leaves a file unsigned (with a warning) when its setup is missing, so
@@ -198,11 +215,22 @@ jobs:
       - name: Verify every exe is signed
         shell: pwsh
         run: |
-          $files = @(Get-Item 'dist\win-unpacked\git-updater.exe', 'dist\win-arm64-unpacked\git-updater.exe')
+          # The app, and the installer helper packed beside its resources (Get-Item fails the
+          # step if either is missing from either folder).
+          $files = @(Get-Item 'dist\win-unpacked\git-updater.exe', 'dist\win-arm64-unpacked\git-updater.exe',
+            'dist\win-unpacked\resources\helper\git-updater-helper.exe', 'dist\win-arm64-unpacked\resources\helper\git-updater-helper.exe')
           foreach ($f in $files) {
             $s = Get-AuthenticodeSignature $f.FullName
             if ($s.Status -ne 'Valid') { throw "$($f.FullName) is not validly signed: $($s.Status) $($s.StatusMessage)" }
             "signed  $($f.FullName)  ($($s.SignerCertificate.Subject))"
+          }
+          # Each folder must hold the helper built for ITS architecture (the PE header says which).
+          $machines = @{ 'dist\win-unpacked' = 0x8664; 'dist\win-arm64-unpacked' = 0xAA64 }
+          foreach ($dir in $machines.Keys) {
+            $bytes = [IO.File]::ReadAllBytes((Join-Path $dir 'resources\helper\git-updater-helper.exe'))
+            $machine = [BitConverter]::ToUInt16($bytes, [BitConverter]::ToInt32($bytes, 0x3c) + 4)
+            if ($machine -ne $machines[$dir]) { throw ("{0} holds a helper for machine 0x{1:X4}, expected 0x{2:X4}" -f $dir, $machine, $machines[$dir]) }
+            "helper  {0}  machine 0x{1:X4}" -f $dir, $machine
           }
       - uses: actions/upload-artifact@v7
         with:

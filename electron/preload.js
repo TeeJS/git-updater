@@ -47,6 +47,7 @@ contextBridge.exposeInMainWorld('api', {
   chooseFile: (listId, index) => ipcRenderer.invoke('asset:choose', { listId, index }),
   check: (body) => ipcRenderer.invoke('check', body),
   update: (body) => ipcRenderer.invoke('update', body),
+  updateAdmin: (body) => ipcRenderer.invoke('update:admin', body),
   onProgress: (cb) => ipcRenderer.on('update:progress', (_e, data) => cb(data)),
   openScan: () => ipcRenderer.invoke('scan:open'),
   scanRun: () => ipcRenderer.invoke('scan:run'),

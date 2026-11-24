@@ -10,6 +10,7 @@ const core = require('./core');
 const paths = require('./paths');
 const github = require('./github');
 const install = require('./install');
+const elevate = require('./elevate');
 const state = require('./state');
 const detect = require('./detect');
 const sources = require('./sources');
@@ -489,17 +490,20 @@ async function handleRepo(repo, id, st, opts) {
       //   Windows EXE: opts.openFile (ShellExecute via Electron) so the setup's UAC manifest works.
       //   macOS .pkg:  opts.openFile hands it to Installer.app, which prompts for admin.
       //   Linux .deb/.rpm: opts.openFile hands it to the desktop's package installer.
+      const openOwnWindow = (keep) => {
+        log(`  -> opening interactive installer: ${keep}`);
+        if (isWin && /\.msi$/i.test(keep)) spawn('msiexec', ['/i', keep], { detached: true, stdio: 'ignore' }).unref();
+        else if (opts.openFile) opts.openFile(keep);
+        else return false;
+        return true;
+      };
       const interactive = (keepName) => {
         // An unattended (scheduled) run never opens an installer window or an authorization
         // prompt: nobody is there to answer it. Such an installer is reported as "needs you".
         if (opts.unattended) return false;
         const keep = path.join(stageBase, keepName); // outlives the tmp cleanup below
         fs.copyFileSync(file, keep);
-        log(`  -> opening interactive installer: ${keep}`);
-        if (isWin && /\.msi$/i.test(keep)) spawn('msiexec', ['/i', keep], { detached: true, stdio: 'ignore' }).unref();
-        else if (opts.openFile) opts.openFile(keep);
-        else return false;
-        return true;
+        return openOwnWindow(keep);
       };
       // A packaged app (MSIX) is never run by git-updater: Windows installs it through its own
       // App Installer window, which is where the user confirms it.
@@ -544,16 +548,39 @@ async function handleRepo(repo, id, st, opts) {
           `could not identify the installer type for ${asset.name} — add "install":{"kind":"nsis|inno|msi"} for ${id} in config.json`
         );
       }
+      // Silent switches the listing declares are an argv array, used only when the user
+      // has not pinned their own. Never a shell string.
+      const spec = { ...repo.install, kind, ...(declaredArgs ? { args: declaredArgs } : {}), rawArgs, switchless };
       try {
-        // Silent switches the listing declares are an argv array, used only when the user
-        // has not pinned their own. Never a shell string.
-        install.installInstaller(file, { ...repo.install, kind, ...(declaredArgs ? { args: declaredArgs } : {}), rawArgs, switchless });
+        install.installInstaller(file, spec);
       } catch (e) {
         // Silent installs can't show a UAC prompt, so unelevated they fail — MSI with
         // exit 1603, EXE installers with an elevation spawn error. Fall back to the
         // installer's own window in both cases. (No PowerShell, no self-elevation.)
         if ((e.status === 1603 || e.elevation) && opts.unattended) {
           throw new Error(`needs you: ${core.appName(repo)}'s installer needs administrator permission, so it was not run unattended. Update it from the window.`);
+        }
+        // "Ask for administrator permission once per update run" is on (opts.setAside is only
+        // given then, and only on Windows): keep the installer and carry on. When the run is
+        // over, everything set aside is run together behind one Windows prompt (see
+        // src/elevate.js). An installer the helper cannot take still opens its own window.
+        if ((e.status === 1603 || e.elevation) && opts.setAside) {
+          const kept = await elevate.setAsideEntry(file, stageBase, spec);
+          if (kept) {
+            log(`  ${key}: needs administrator permission — set aside for the one prompt at the end of the run`);
+            opts.setAside({
+              key,
+              ...kept,
+              // The saved state is read again at that moment: other apps have been updated since.
+              succeed: () => recordInstalled(state.load(opts.statePath)),
+              ownWindow: () => {
+                if (!openOwnWindow(kept.file)) throw new Error('needs administrator rights');
+                return interactiveResult;
+              },
+              fail: (reason) => ({ ...base, status: 'failed', reason }),
+            });
+            return { ...base, status: 'failed', needsAdmin: true, reason: 'waiting for administrator permission' };
+          }
         }
         if ((e.status === 1603 || e.elevation) && interactive(stagedName)) return interactiveResult;
         throw e;
@@ -608,27 +635,34 @@ async function handleRepo(repo, id, st, opts) {
       }
     }
 
-    const installedAt = new Date().toISOString();
-    const lastAction = tracked ? 'updated' : 'installed';
-    st[key] = {
-      repo: id,
-      type: repo.type,
-      tag: latest,
-      version: core.normTag(latest),
-      assetName: asset.name,
-      installedAt,
-      lastAction,
-      // Provenance of what is on disk: who listed it, where it was fetched from, and
-      // whether its checksum was verified. Query strings are never stored.
-      ...(src.source ? { source: src.source.type } : {}),
-      url: sources.redact(asset.browser_download_url),
-      fileHost: hostOf(finalUrl),
-      checksum: v && v.verified ? (sum && sum.state) || 'published' : 'none',
-      ...(files ? { files } : {}),
-    };
-    state.save(st, opts.statePath);
-    log(`OK ${key}: installed ${core.normTag(latest)}`);
-    return { ...base, status: 'updated', installedAt, lastAction, note: v && v.note, ...fileInfo(asset, { state: v && v.verified ? (sum && sum.state) || 'published' : 'none' }, finalUrl) };
+    return recordInstalled(st);
+
+    // The app is installed: write it into the saved state and build its result. Called at
+    // the end of a normal run, or later by the administrator run for an installer that was
+    // set aside (with the state as it stands then).
+    function recordInstalled(into) {
+      const installedAt = new Date().toISOString();
+      const lastAction = tracked ? 'updated' : 'installed';
+      into[key] = {
+        repo: id,
+        type: repo.type,
+        tag: latest,
+        version: core.normTag(latest),
+        assetName: asset.name,
+        installedAt,
+        lastAction,
+        // Provenance of what is on disk: who listed it, where it was fetched from, and
+        // whether its checksum was verified. Query strings are never stored.
+        ...(src.source ? { source: src.source.type } : {}),
+        url: sources.redact(asset.browser_download_url),
+        fileHost: hostOf(finalUrl),
+        checksum: v && v.verified ? (sum && sum.state) || 'published' : 'none',
+        ...(files ? { files } : {}),
+      };
+      state.save(into, opts.statePath);
+      log(`OK ${key}: installed ${core.normTag(latest)}`);
+      return { ...base, status: 'updated', installedAt, lastAction, note: v && v.note, ...fileInfo(asset, { state: v && v.verified ? (sum && sum.state) || 'published' : 'none' }, finalUrl) };
+    }
   } finally {
     try {
       await fs.promises.rm(tmp, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });

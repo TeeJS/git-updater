@@ -1,0 +1,530 @@
+'use strict';
+
+// "Ask for administrator permission once per update run" (PROJECT-one-admin-prompt.md).
+//
+// With the setting on, an installer whose silent run failed for lack of administrator
+// rights is SET ASIDE by the runner instead of opening its own window, and everything set
+// aside is handed to the installer helper together when the window's run ends: one Windows
+// prompt for all of them. These tests cover each link - the runner, src/elevate.js, the
+// app's two handlers and the window's loop - with the helper itself replaced by a stand-in,
+// so nothing here can make Windows show a prompt. The real helper is tested in
+// helper.test.js and in helper/ (cargo test).
+
+const { test } = require('node:test');
+const assert = require('node:assert');
+const { EventEmitter } = require('events');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const vm = require('vm');
+const AdmZip = require('adm-zip');
+
+const elevate = require('../src/elevate');
+const helper = require('../src/helper');
+const github = require('../src/github');
+const detect = require('../src/detect');
+const install = require('../src/install');
+const runner = require('../src/runner');
+const state = require('../src/state');
+
+const { CODES } = helper;
+const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'gu-elevate-'));
+const windowsOnly = os.platform() === 'win32' ? false : 'the helper takes drive-letter paths: a Windows-only feature';
+
+// --- the switches the helper is given ------------------------------------------------------
+
+test('switchesFor: the same silent switches a normal run uses, in the helper\'s two kinds', () => {
+  assert.deepStrictEqual(elevate.switchesFor({ kind: 'msi' }), { kind: 'msi', args: ['/qn', '/norestart'] });
+  assert.deepStrictEqual(elevate.switchesFor({ kind: 'msi', args: ['/quiet', 'ALLUSERS=1'] }), { kind: 'msi', args: ['/quiet', 'ALLUSERS=1'] });
+  assert.deepStrictEqual(elevate.switchesFor({ kind: 'nsis' }), { kind: 'exe', args: ['/S'] });
+  assert.deepStrictEqual(elevate.switchesFor({ kind: 'inno' }), { kind: 'exe', args: ['/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART'] });
+  assert.deepStrictEqual(elevate.switchesFor({ kind: 'exe', args: ['/quiet', '/norestart'] }), { kind: 'exe', args: ['/quiet', '/norestart'] });
+  assert.deepStrictEqual(elevate.switchesFor({ kind: 'exe', switchless: true }), { kind: 'exe', args: [] });
+  // A verbatim switch string goes through untouched, for an .exe and for an .msi.
+  const raw = '/Q /C:"msiexec /i ""vcredist.msi"" /quiet /norestart"';
+  assert.deepStrictEqual(elevate.switchesFor({ kind: 'exe', rawArgs: `  ${raw} ` }), { kind: 'exe', raw });
+  assert.deepStrictEqual(elevate.switchesFor({ kind: 'msi', rawArgs: '/qn REBOOT=ReallySuppress' }), { kind: 'msi', raw: '/qn REBOOT=ReallySuppress' });
+  // Pinned switches win over a verbatim string, as in a normal run.
+  assert.deepStrictEqual(elevate.switchesFor({ kind: 'nsis', args: ['/S', '/D=C:\\X'], rawArgs: '/other' }), { kind: 'exe', args: ['/S', '/D=C:\\X'] });
+});
+
+test('switchesFor: kinds the helper does not run are not taken', () => {
+  for (const kind of ['pkg', 'deb', 'rpm', 'msix', undefined]) assert.strictEqual(elevate.switchesFor({ kind }), null, String(kind));
+  assert.strictEqual(elevate.switchesFor(null), null);
+  // A plain .exe with no switches declared never runs silently, here or anywhere.
+  assert.throws(() => elevate.switchesFor({ kind: 'exe' }), /needs explicit ones/);
+});
+
+// --- finish(): the end of the run ----------------------------------------------------------
+
+// A stand-in for the helper: answers --verify and --install with what the test says, and
+// records the job it was handed each time.
+function fakeHelper(answers) {
+  const calls = [];
+  const spawn = (exe, args, options) => {
+    const mode = args[0];
+    const job = fs.readFileSync(args[2], 'utf8');
+    calls.push({ exe, mode, job, options, files: job.split('\n').filter((l) => l.startsWith('file ')).map((l) => l.slice(5)) });
+    const child = new EventEmitter();
+    child.stdout = new EventEmitter();
+    const answer = answers[mode];
+    setImmediate(() => {
+      if (answer.error) return child.emit('error', new Error(answer.error));
+      if (answer.stdout !== undefined) child.stdout.emit('data', Buffer.from(answer.stdout));
+      else if (answer.codes) child.stdout.emit('data', Buffer.from(`${helper.RESULTS_HEADER}\n${answer.codes.map((c, i) => (c === null ? '' : `${i} ${c}\n`)).join('')}`));
+      child.emit('close', answer.exit === undefined ? 0 : answer.exit);
+    });
+    return child;
+  };
+  return { spawn, calls };
+}
+
+function entriesIn(stageBase, names) {
+  const log = [];
+  const entries = names.map((name, i) => {
+    const keepDir = fs.mkdtempSync(path.join(stageBase, 'admin-'));
+    fs.writeFileSync(path.join(keepDir, `${name}.exe`), 'MZ');
+    return {
+      key: `acme/${name}#installer`,
+      item: { file: `C:\\stage\\${name}.exe`, sha256: String(i).repeat(64), kind: 'exe', args: ['/S'] },
+      keepDir,
+      succeed: () => { log.push(`succeed ${name}`); return { id: `acme/${name}#installer`, status: 'updated' }; },
+      ownWindow: () => { log.push(`window ${name}`); return { id: `acme/${name}#installer`, status: 'failed', reason: 'installer window opened — approve the UAC prompt and finish it, then Check' }; },
+      fail: (reason) => ({ id: `acme/${name}#installer`, status: 'failed', reason }),
+    };
+  });
+  return { entries, log };
+}
+
+const leftIn = (dir) => fs.readdirSync(dir).sort();
+
+test('finish: one --verify, one --install, and each installer gets its own result', async () => {
+  const stageBase = tmp();
+  try {
+    const { entries, log } = entriesIn(stageBase, ['a', 'b', 'c', 'd']);
+    const { spawn, calls } = fakeHelper({ '--verify': { codes: [0, 0, 0, 0] }, '--install': { codes: [0, 3010, 1603, CODES.timedOut] } });
+    const out = await elevate.finish(entries, { helperPath: 'C:\\app\\helper.exe', stageBase, spawn });
+
+    assert.deepStrictEqual(calls.map((c) => [c.exe, c.mode, c.files.length]), [['C:\\app\\helper.exe', '--verify', 4], ['C:\\app\\helper.exe', '--install', 4]]);
+    assert.ok(calls.every((c) => c.job.startsWith(`${helper.JOB_HEADER}\ntimeout 600\n`)), 'ten minutes per installer, as a normal run');
+    assert.ok(calls.every((c) => c.options.windowsHide === true && !c.options.shell), 'never through a shell');
+    assert.deepStrictEqual(log, ['succeed a', 'succeed b'], '0 and 3010 are an installer saying it succeeded');
+    assert.strictEqual(out.get('acme/a#installer').status, 'updated');
+    assert.strictEqual(out.get('acme/b#installer').status, 'updated');
+    assert.match(out.get('acme/c#installer').reason, /^installer failed \(exit 1603\)/, 'elevated, 1603 no longer means "needs administrator rights"');
+    assert.match(out.get('acme/d#installer').reason, /did not finish in time/);
+    assert.deepStrictEqual(leftIn(stageBase), [], 'every kept installer and both job files are removed');
+  } finally {
+    fs.rmSync(stageBase, { recursive: true, force: true });
+  }
+});
+
+test('finish: an unsigned installer opens its own window, a changed one fails, and only the rest are asked for', async () => {
+  const stageBase = tmp();
+  try {
+    const { entries, log } = entriesIn(stageBase, ['good', 'unsigned', 'swapped', 'alsogood']);
+    const { spawn, calls } = fakeHelper({ '--verify': { codes: [0, CODES.notSigned, CODES.hashMismatch, 0] }, '--install': { codes: [0, 0] } });
+    const out = await elevate.finish(entries, { helperPath: 'h.exe', stageBase, spawn });
+
+    assert.deepStrictEqual(calls[1].files, ['C:\\stage\\good.exe', 'C:\\stage\\alsogood.exe'], 'the prompt covers only what the helper will run');
+    assert.deepStrictEqual(log, ['window unsigned', 'succeed good', 'succeed alsogood']);
+    assert.match(out.get('acme/unsigned#installer').reason, /^installer window opened/);
+    assert.match(out.get('acme/swapped#installer').reason, /changed after it was downloaded/);
+    assert.strictEqual(out.get('acme/alsogood#installer').status, 'updated', 'results are matched to the installers that were asked for');
+    assert.deepStrictEqual(leftIn(stageBase), [path.basename(entries[1].keepDir)], 'only the file its own window is using is kept');
+  } finally {
+    fs.rmSync(stageBase, { recursive: true, force: true });
+  }
+});
+
+test('finish: nothing the helper will take means no prompt at all', async () => {
+  const stageBase = tmp();
+  try {
+    const { entries, log } = entriesIn(stageBase, ['a', 'b']);
+    const { spawn, calls } = fakeHelper({ '--verify': { codes: [CODES.notSigned, CODES.notAnInstaller] } });
+    const out = await elevate.finish(entries, { helperPath: 'h.exe', stageBase, spawn });
+    assert.deepStrictEqual(calls.map((c) => c.mode), ['--verify']);
+    assert.deepStrictEqual(log, ['window a']);
+    assert.match(out.get('acme/b#installer').reason, /not an installer that can be run with administrator permission/);
+    assert.strictEqual((await elevate.finish([], { helperPath: 'h.exe', stageBase, spawn })).size, 0);
+    assert.strictEqual(calls.length, 1, 'and nothing set aside starts nothing');
+  } finally {
+    fs.rmSync(stageBase, { recursive: true, force: true });
+  }
+});
+
+test('finish: answering No (or letting the prompt time out) installs nothing and opens nothing', async () => {
+  const stageBase = tmp();
+  try {
+    const { entries, log } = entriesIn(stageBase, ['a', 'b']);
+    const { spawn } = fakeHelper({ '--verify': { codes: [0, 0] }, '--install': { exit: CODES.declined, stdout: '' } });
+    const out = await elevate.finish(entries, { helperPath: 'h.exe', stageBase, spawn });
+    assert.deepStrictEqual(log, []);
+    for (const e of entries) assert.strictEqual(out.get(e.key).reason, 'administrator permission was not given — Retry');
+    assert.deepStrictEqual(leftIn(stageBase), []);
+  } finally {
+    fs.rmSync(stageBase, { recursive: true, force: true });
+  }
+});
+
+test('finish: if the helper cannot be used, every installer opens its own window as before', async () => {
+  const cases = [
+    ['the helper is missing', { '--verify': { error: 'spawn ENOENT' } }],
+    ['--verify exits with an error', { '--verify': { exit: CODES.badJob, stdout: '' } }],
+    ['--verify prints something else', { '--verify': { stdout: 'nonsense' } }],
+    ['--install cannot elevate', { '--verify': { codes: [0, 0] }, '--install': { exit: CODES.elevationFailed, stdout: '' } }],
+    ['--install returns no results', { '--verify': { codes: [0, 0] }, '--install': { exit: CODES.noResults, stdout: '' } }],
+    ['--install prints something else', { '--verify': { codes: [0, 0] }, '--install': { stdout: `${helper.RESULTS_HEADER}\n9 0\n` } }],
+    ['--install cannot be started', { '--verify': { codes: [0, 0] }, '--install': { error: 'spawn EACCES' } }],
+  ];
+  for (const [what, answers] of cases) {
+    const stageBase = tmp();
+    try {
+      const { entries, log } = entriesIn(stageBase, ['a', 'b']);
+      const out = await elevate.finish(entries, { helperPath: 'h.exe', stageBase, spawn: fakeHelper(answers).spawn });
+      assert.deepStrictEqual(log, ['window a', 'window b'], what);
+      for (const e of entries) assert.match(out.get(e.key).reason, /^installer window opened/, what);
+      assert.strictEqual(leftIn(stageBase).length, 2, `${what}: both files are kept for their windows`);
+    } finally {
+      fs.rmSync(stageBase, { recursive: true, force: true });
+    }
+  }
+});
+
+test('finish: every app gets an answer, whatever goes wrong', async () => {
+  const stageBase = tmp();
+  try {
+    // An installer the run never reached, one whose record step throws, one whose window cannot open.
+    const { entries } = entriesIn(stageBase, ['reached', 'never', 'recordfails', 'nowindow']);
+    entries[2].succeed = () => { throw new Error('could not save the state file'); };
+    entries[3].ownWindow = () => { throw new Error('needs administrator rights'); };
+    const { spawn } = fakeHelper({ '--verify': { codes: [0, 0, 0, CODES.notSigned] }, '--install': { codes: [0, null, 0] } });
+    const out = await elevate.finish(entries, { helperPath: 'h.exe', stageBase, spawn });
+    assert.strictEqual(out.get('acme/reached#installer').status, 'updated');
+    assert.match(out.get('acme/never#installer').reason, /stopped before this installer — Retry/);
+    assert.strictEqual(out.get('acme/recordfails#installer').reason, 'could not save the state file');
+    assert.strictEqual(out.get('acme/nowindow#installer').reason, 'needs administrator rights');
+    assert.deepStrictEqual(leftIn(stageBase), []);
+
+    // A job that cannot even be written (here: a path the helper would refuse).
+    const bad = entriesIn(stageBase, ['x']);
+    bad.entries[0].item.file = 'relative.exe';
+    const again = await elevate.finish(bad.entries, { helperPath: 'h.exe', stageBase, spawn });
+    assert.deepStrictEqual(bad.log, ['window x']);
+    assert.match(again.get('acme/x#installer').reason, /^installer window opened/);
+  } finally {
+    fs.rmSync(stageBase, { recursive: true, force: true });
+  }
+});
+
+// --- the runner: setting an installer aside --------------------------------------------------
+
+async function withRelease(fn) {
+  const real = {
+    getLatestRelease: github.getLatestRelease,
+    downloadAsset: github.downloadAsset,
+    verifyDigest: github.verifyDigest,
+    fetchChecksumFromRelease: github.fetchChecksumFromRelease,
+    isRunning: detect.isRunning,
+    clearCache: detect.clearCache,
+    installedVersion: detect.installedVersion,
+    installInstaller: install.installInstaller,
+  };
+  github.getLatestRelease = async () => ({ tag_name: 'v2.0.0', assets: [{ name: 'payload.zip', browser_download_url: 'https://example.invalid/payload.zip' }] });
+  github.downloadAsset = async (_url, file) => {
+    const zip = new AdmZip();
+    zip.addFile('app.txt', Buffer.from('v2'));
+    zip.writeZip(file);
+  };
+  github.verifyDigest = () => ({ skipped: true, note: 'no digest in test' });
+  github.fetchChecksumFromRelease = async () => null;
+  detect.clearCache = () => {};
+  detect.isRunning = async () => false;
+  detect.installedVersion = async () => '1.0.0';
+  // What a silent run does without administrator rights: an .exe cannot start, an .msi ends 1603.
+  install.installInstaller = () => { throw Object.assign(new Error('requires elevation'), { elevation: true }); };
+  try {
+    return await fn();
+  } finally {
+    Object.assign(github, { getLatestRelease: real.getLatestRelease, downloadAsset: real.downloadAsset, verifyDigest: real.verifyDigest, fetchChecksumFromRelease: real.fetchChecksumFromRelease });
+    Object.assign(detect, { isRunning: real.isRunning, clearCache: real.clearCache, installedVersion: real.installedVersion });
+    install.installInstaller = real.installInstaller;
+  }
+}
+
+const widget = () => ({ portableRoot: '', repos: [{ owner: 'acme', repo: 'widget', type: 'installer', asset: 'payload.zip', install: { kind: 'nsis' } }] });
+
+test('runner: with the setting on, an installer that needs administrator rights is set aside, not opened', { skip: windowsOnly }, async () => {
+  const dir = tmp();
+  const statePath = path.join(dir, 'state.json');
+  const opened = [];
+  const aside = [];
+  try {
+    await withRelease(async () => {
+      const { results } = await runner.run(widget(), { statePath, openFile: (f) => opened.push(f), setAside: (e) => aside.push(e) });
+      assert.strictEqual(results[0].status, 'failed');
+      assert.strictEqual(results[0].needsAdmin, true);
+      assert.strictEqual(results[0].reason, 'waiting for administrator permission');
+    });
+    assert.deepStrictEqual(opened, [], 'no installer window');
+    assert.strictEqual(aside.length, 1);
+    const entry = aside[0];
+    assert.strictEqual(entry.key, 'acme/widget#installer');
+    assert.deepStrictEqual({ kind: entry.item.kind, args: entry.item.args }, { kind: 'exe', args: ['/S'] });
+    assert.ok(fs.existsSync(entry.item.file), 'the installer outlives the download folder');
+    assert.strictEqual(entry.item.sha256, require('crypto').createHash('sha256').update(fs.readFileSync(entry.item.file)).digest('hex'));
+    assert.ok(!fs.existsSync(statePath), 'nothing is recorded as installed yet');
+
+    // Later, the administrator run succeeds. Other apps were updated in between: the record
+    // is written into the state as it stands THEN, not the copy this run loaded.
+    fs.writeFileSync(statePath, JSON.stringify({ 'other/app#portable': { version: '9.9.9' } }));
+    const done = entry.succeed();
+    assert.strictEqual(done.status, 'updated');
+    assert.strictEqual(done.lastAction, 'updated');
+    const saved = state.load(statePath);
+    assert.strictEqual(saved['acme/widget#installer'].version, '2.0.0');
+    assert.strictEqual(saved['other/app#portable'].version, '9.9.9', 'the later update was not overwritten');
+
+    // Or it cannot be run by the helper: its own window, from the kept file, with the wording the window waits on.
+    const windowed = entry.ownWindow();
+    assert.deepStrictEqual(opened, [entry.item.file]);
+    assert.match(windowed.reason, /^installer window opened — approve the UAC prompt/);
+    assert.deepStrictEqual(entry.fail('administrator permission was not given — Retry').reason, 'administrator permission was not given — Retry');
+  } finally {
+    for (const e of aside) elevate.discard(e);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('runner: a scheduled run never sets anything aside, and the setting off changes nothing', { skip: windowsOnly }, async () => {
+  const dir = tmp();
+  const opened = [];
+  const aside = [];
+  try {
+    await withRelease(async () => {
+      const unattended = await runner.run(widget(), { statePath: path.join(dir, 'a.json'), unattended: true, openFile: (f) => opened.push(f), setAside: (e) => aside.push(e) });
+      assert.match(unattended.results[0].reason, /^needs you: widget's installer needs administrator permission/);
+      assert.deepStrictEqual([opened.length, aside.length], [0, 0]);
+      const off = await runner.run(widget(), { statePath: path.join(dir, 'b.json'), openFile: (f) => opened.push(f) });
+      assert.match(off.results[0].reason, /^installer window opened/);
+      assert.strictEqual(off.results[0].needsAdmin, undefined);
+      assert.strictEqual(opened.length, 1);
+    });
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('runner: an installer that fails for another reason is not set aside', { skip: windowsOnly }, async () => {
+  const dir = tmp();
+  const aside = [];
+  try {
+    await withRelease(async () => {
+      install.installInstaller = () => { throw Object.assign(new Error('another installer is already running — wait for it to finish, then Retry'), { status: 1618 }); };
+      const { results } = await runner.run(widget(), { statePath: path.join(dir, 's.json'), openFile: () => {}, setAside: (e) => aside.push(e) });
+      assert.match(results[0].reason, /another installer is already running/);
+      assert.strictEqual(aside.length, 0);
+    });
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// --- the app: the two handlers ---------------------------------------------------------------
+
+const mainSrc = fs.readFileSync(path.join(__dirname, '..', 'electron', 'main.js'), 'utf8');
+const preloadSrc = fs.readFileSync(path.join(__dirname, '..', 'electron', 'preload.js'), 'utf8');
+const html = fs.readFileSync(path.join(__dirname, '..', 'ui', 'index.html'), 'utf8');
+function between(src, start, end) {
+  const a = src.indexOf(start);
+  const b = src.indexOf(end, a);
+  assert.ok(a >= 0 && b > a, `${start} ... ${end}`);
+  return src.slice(a, b);
+}
+
+function appHandlers({ config, helperThere = true }) {
+  const handlers = {};
+  const seen = { runs: [], finished: [], discarded: [], progress: [] };
+  const context = {
+    ipcMain: { handle: (name, fn) => { handlers[name] = fn; } },
+    core: { validateConfig: (c) => c },
+    readConfig: () => config,
+    state: { acquireLock: () => 'lock', releaseLock: () => {} },
+    shell: { openPath: () => {} },
+    path,
+    paths: { dataDir: () => 'C:\\data' },
+    installerHelperPath: () => (helperThere ? 'C:\\app\\resources\\helper\\git-updater-helper.exe' : null),
+    runner: {
+      run: async (_config, opts) => {
+        seen.runs.push(opts);
+        if (opts.setAside) opts.setAside({ key: opts.only, keepDir: `keep-${opts.only}-${seen.runs.length}` });
+        return { results: [{ id: opts.only, status: 'failed', needsAdmin: !!opts.setAside }] };
+      },
+    },
+    elevate: {
+      discard: (entry) => { if (entry) seen.discarded.push(entry.keepDir); },
+      finish: async (entries, opts) => {
+        seen.finished.push({ keys: entries.map((e) => e.key), opts });
+        return new Map(entries.map((e) => [e.key, { id: e.key, status: 'updated' }]));
+      },
+    },
+  };
+  vm.runInNewContext(between(mainSrc, 'const pendingAdmin = new Map();', '// Downloads+verifies+extracts the new build'), context);
+  const sender = { send: (channel, data) => seen.progress.push([channel, data]) };
+  return { update: (body) => handlers.update({ sender }, body), admin: (body) => handlers['update:admin']({ sender }, body), seen };
+}
+
+test('app: the setting is read from the saved settings, and only then is anything set aside', async () => {
+  const on = appHandlers({ config: { adminPromptOnce: true } });
+  await on.update({ only: 'a' });
+  assert.strictEqual(typeof on.seen.runs[0].setAside, 'function');
+  await on.update({ only: 'a', dryRun: true });
+  assert.strictEqual(on.seen.runs[1].setAside, undefined, 'a dry run sets nothing aside');
+
+  const off = appHandlers({ config: {} });
+  await off.update({ only: 'a', adminPromptOnce: true });
+  assert.strictEqual(off.seen.runs[0].setAside, undefined, 'the window cannot switch it on by asking');
+
+  const noHelper = appHandlers({ config: { adminPromptOnce: true }, helperThere: false });
+  await noHelper.update({ only: 'a' });
+  assert.strictEqual(noHelper.seen.runs[0].setAside, undefined, 'without the helper, the installer window route is kept');
+});
+
+test('app: update:admin runs what was set aside for the apps asked for, once, and drops the rest', async () => {
+  const app = appHandlers({ config: { adminPromptOnce: true } });
+  await app.update({ only: 'a' });
+  await app.update({ only: 'b' });
+  await app.update({ only: 'a' }); // a second attempt for the same app replaces the first
+  await app.update({ only: 'c' });
+  assert.deepStrictEqual(app.seen.discarded, ['keep-a-1']);
+
+  const { results } = await app.admin({ keys: ['a', 'b', 'never-set-aside'] });
+  assert.deepStrictEqual(app.seen.finished.map((f) => f.keys), [['a', 'b']]);
+  assert.strictEqual(app.seen.finished[0].opts.helperPath, 'C:\\app\\resources\\helper\\git-updater-helper.exe');
+  assert.strictEqual(app.seen.finished[0].opts.stageBase, path.join('C:\\data', 'staging'));
+  assert.deepStrictEqual(results.map((r) => [r.id, r.status]), [['a', 'updated'], ['b', 'updated'], ['never-set-aside', 'failed']]);
+  assert.match(results[2].reason, /nothing was waiting for administrator permission/);
+  assert.ok(app.seen.discarded.includes('keep-c-4'), 'an app that was not asked for is dropped, not run later');
+  assert.deepStrictEqual(app.seen.progress.map(([c, d]) => [c, d.id, d.phase]), [['update:progress', 'a', 'admin'], ['update:progress', 'b', 'admin']]);
+
+  const again = await app.admin({ keys: ['a', 'b', 'c'] });
+  assert.deepStrictEqual(app.seen.finished[1].keys, [], 'nothing is run twice');
+  assert.ok(again.results.every((r) => r.status === 'failed'));
+});
+
+test('app: the scheduled run is never given the setting, and the window can reach the new handler', () => {
+  const scheduled = mainSrc.split('\n').filter((l) => l.includes('runner.run(') && l.includes('unattended: true'));
+  assert.ok(scheduled.length >= 1);
+  for (const line of scheduled) assert.ok(!line.includes('setAside'), line.trim());
+  assert.match(preloadSrc, /updateAdmin: \(body\) => ipcRenderer\.invoke\('update:admin', body\)/);
+  assert.match(mainSrc, /adminPromptOnce: !!installerHelperPath\(\)/, 'the window is told whether the setting can work here');
+  assert.match(mainSrc, /if \(cfg\.adminPromptOnce != null\) cfg\.adminPromptOnce = !!cfg\.adminPromptOnce;/);
+  // Packaged, the helper sits beside the app's resources; it is never looked for anywhere a user file could stand in.
+  const where = between(mainSrc, 'function installerHelperPath()', '\n}\n');
+  assert.match(where, /process\.platform !== 'win32'\) return null/);
+  assert.match(where, /path\.join\(process\.resourcesPath, 'helper', 'git-updater-helper\.exe'\)/);
+});
+
+// --- the window ------------------------------------------------------------------------------
+
+function windowRun({ updates, admin }) {
+  const calls = [];
+  const watched = [];
+  const shown = [];
+  const context = {
+    busy: false,
+    st: {},
+    renderRepos: () => {},
+    holdVisible: () => {},
+    msg: (text, cls) => shown.push([text, cls]),
+    clean: (e) => String(e && e.message ? e.message : e),
+    nameOfKey: (k) => k,
+    watchInstall: (k, _from, _wasInstall, onComplete) => watched.push([k, typeof onComplete]),
+    window: {
+      api: {
+        update: async (body) => { calls.push(`update ${body.only}`); return { results: [{ id: body.only, ...updates[body.only] }] }; },
+        updateAdmin: async (body) => { calls.push(`admin ${body.keys.join('+')}`); return admin(body.keys); },
+        openApp: async (k) => { calls.push(`reopen ${k}`); },
+      },
+    },
+  };
+  vm.runInNewContext(between(html, 'async function runBatch(', 'window.api.onProgress('), context);
+  return { context, calls, watched, shown };
+}
+
+test('window: installers set aside are asked for once, after every app has had its turn', async () => {
+  const w = windowRun({
+    updates: {
+      a: { status: 'failed', needsAdmin: true, reason: 'waiting for administrator permission', to: '2.0', closed: true },
+      b: { status: 'updated', to: '3.0', closed: true },
+      c: { status: 'failed', needsAdmin: true, reason: 'waiting for administrator permission', to: '4.0' },
+    },
+    admin: () => ({ results: [{ id: 'c', status: 'updated', to: '4.0' }, { id: 'a', status: 'updated', to: '2.0' }] }),
+  });
+  w.context.st = { a: { present: true }, b: { present: true }, c: {} };
+  await w.context.runBatch(['a', 'b', 'c'], false, true);
+  assert.deepStrictEqual(w.calls, ['update a', 'update b', 'reopen b', 'update c', 'admin a+c', 'reopen a'], 'an app closed for its update is re-opened only once it is installed');
+  assert.deepStrictEqual([w.context.st.a.ph, w.context.st.b.ph, w.context.st.c.ph], ['updated', 'updated', 'installed']);
+  assert.deepStrictEqual(w.shown.at(-1), ['2 updated, 1 installed.', 'ok']);
+});
+
+test('window: permission not given, an installer handed to its own window, and a failed call are each shown', async () => {
+  const waiting = { status: 'failed', needsAdmin: true, reason: 'waiting for administrator permission', closed: true };
+  const declined = windowRun({
+    updates: { a: waiting, b: waiting },
+    admin: () => ({ results: [{ id: 'a', status: 'failed', reason: 'administrator permission was not given — Retry' }, { id: 'b', status: 'failed', reason: 'installer window opened — approve the UAC prompt and finish it, then Check' }] }),
+  });
+  declined.context.st = { a: { present: true }, b: { present: true } };
+  await declined.context.runBatch(['a', 'b'], false, true);
+  assert.deepStrictEqual([declined.context.st.a.ph, declined.context.st.a.reason], ['failed', 'administrator permission was not given — Retry']);
+  assert.strictEqual(declined.context.st.b.ph, 'waiting', 'its own installer window is open, so the row waits for it');
+  assert.deepStrictEqual(declined.watched, [['b', 'function']], 'and the app is re-opened when that installer finishes');
+  assert.deepStrictEqual(declined.calls, ['update a', 'update b', 'admin a+b', 'reopen a']);
+  assert.deepStrictEqual(declined.shown.at(-1), ['1 waiting for its installer window, 1 failed.', 'bad']);
+
+  const broken = windowRun({ updates: { a: waiting }, admin: () => { throw new Error('an update is already in progress'); } });
+  broken.context.st = { a: { present: true } };
+  await broken.context.runBatch(['a'], false, true);
+  assert.deepStrictEqual([broken.context.st.a.ph, broken.context.st.a.reason], ['failed', 'an update is already in progress']);
+  assert.deepStrictEqual(broken.calls, ['update a', 'admin a', 'reopen a']);
+  assert.strictEqual(broken.context.busy, false);
+});
+
+test('window: with nothing set aside the run is exactly as before, and the new handler is never called', async () => {
+  const w = windowRun({ updates: { a: { status: 'updated', to: '2.0' }, b: { status: 'failed', reason: 'download failed' } }, admin: () => { throw new Error('must not be called'); } });
+  w.context.st = { a: { present: true }, b: { present: true } };
+  await w.context.runBatch(['a', 'b'], false, false);
+  assert.deepStrictEqual(w.calls, ['update a', 'update b']);
+  assert.deepStrictEqual(w.shown.at(-1), ['1 updated, 1 failed.', 'bad']);
+});
+
+test('window: the setting is in Settings > Updating, off and hidden until the app says it can work here', async () => {
+  const updating = between(html, 'id="sg-updating"', '</section>');
+  assert.match(updating, /<div id="adminPromptOnceBlock" hidden>/);
+  assert.match(updating, /<input type="checkbox" id="adminPromptOnce"> Ask for administrator permission once per update run<\/label>/);
+  assert.ok(!/id="adminPromptOnce"[^>]*checked/.test(html), 'off unless the user turns it on');
+  assert.match(html, /\$\('adminPromptOnce'\)\.checked = !!config\.adminPromptOnce;/);
+
+  const block = between(html, "$('adminPromptOnce').onchange", "$('requireChecksum').onchange");
+  for (const answer of [{ adminPromptOnce: true }, { adminPromptOnce: false }, {}]) {
+    const els = { adminPromptOnce: { checked: true }, adminPromptOnceBlock: { hidden: true } };
+    const saved = [];
+    const config = {};
+    const ctx = { $: (id) => els[id], config, saveConfig: async () => { saved.push({ ...config }); }, msg: () => {}, window: { api: { getPlatform: async () => answer } } };
+    vm.runInNewContext(block, ctx);
+    await new Promise((r) => setImmediate(r));
+    assert.strictEqual(els.adminPromptOnceBlock.hidden, !answer.adminPromptOnce, JSON.stringify(answer));
+    els.adminPromptOnce.onchange();
+    assert.deepStrictEqual(saved, [{ adminPromptOnce: true }], 'ticking it saves it');
+  }
+});
+
+test('window: a row says what it is waiting for', () => {
+  const view = between(html, 'function statusViewOf(s) {', 'function primaryAction(s)');
+  const ctx = { datedStatus: () => ({}) };
+  vm.runInNewContext(`${view}; this.statusViewOf = statusViewOf;`, ctx);
+  assert.strictEqual(ctx.statusViewOf({ ph: 'needsAdmin' }).text, 'Waiting for administrator permission');
+  assert.match(ctx.statusViewOf({ ph: 'needsAdmin' }).tip, /Windows will ask once, at the end of this run/);
+  assert.strictEqual(ctx.statusViewOf({ ph: 'admin' }).text, 'Installing — approve the Windows prompt');
+  assert.match(html, /const WORKING_PHASES = \[[^\]]*'needsAdmin', 'admin'\]/, 'both count as "Working now" in the status filter');
+});
