@@ -591,20 +591,29 @@ async function closeApp(needle, opts = {}) {
 // core.pickAsset takes this as data so it stays IO-free. Kubuntu, Xubuntu and the rest
 // all report ID=ubuntu, which is what the package filenames say, so no flavour mapping
 // is needed. Cached: /etc/os-release cannot change while the process runs.
+//
+// codename: some projects name their packages by release codename, not number
+// ("ubuntu-resolute", "debian-trixie" — Deskflow does). Debian's testing release has a
+// codename and no VERSION_ID at all, so either one is enough to describe the host.
+function parseOsRelease(txt) {
+  const get = (k) => {
+    const m = new RegExp(`^${k}=(.*)$`, 'm').exec(String(txt || ''));
+    return m ? m[1].trim().replace(/^["']|["']$/g, '') : null;
+  };
+  const id = get('ID');
+  const versionId = get('VERSION_ID');
+  const codename = get('VERSION_CODENAME');
+  if (!id || (!versionId && !codename)) return null;
+  return { id, versionId, codename: codename ? codename.toLowerCase() : null };
+}
+
 let _osRelease;
 function osRelease() {
   if (_osRelease !== undefined) return _osRelease;
   _osRelease = null;
   if (process.platform === 'linux') {
     try {
-      const txt = fs.readFileSync('/etc/os-release', 'utf8');
-      const get = (k) => {
-        const m = new RegExp(`^${k}=(.*)$`, 'm').exec(txt);
-        return m ? m[1].trim().replace(/^["']|["']$/g, '') : null;
-      };
-      const id = get('ID');
-      const versionId = get('VERSION_ID');
-      if (id && versionId) _osRelease = { id, versionId };
+      _osRelease = parseOsRelease(fs.readFileSync('/etc/os-release', 'utf8'));
     } catch {
       // No /etc/os-release (container, exotic distro) — scoring just skips the release term.
     }
@@ -622,6 +631,7 @@ module.exports = {
   ownProcesses,
   isSelf,
   osRelease,
+  parseOsRelease,
   installedVersion,
   installedDate,
   installedFlavor,

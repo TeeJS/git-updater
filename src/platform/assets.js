@@ -265,19 +265,58 @@ function releaseTokens(name, id) {
   return m ? [Number(m[1]), m[2] === undefined ? 0 : Number(m[2])] : null;
 }
 
-// host: { id, versionId } from /etc/os-release, or null when unknown/not Linux.
+// Releases that projects name by CODENAME instead of by number. Deskflow 1.27.0 ships
+// deskflow-1.27.0-ubuntu-resolute-x86_64.deb, -ubuntu-stonking-, -debian-trixie- and
+// -debian-forky-: no digits anywhere, so the number rule above saw four identical files and
+// the shortest name won. Every Debian and Ubuntu machine was handed debian-forky (Debian's
+// testing release), which the desktop's package installer then refused with "Dependency
+// resolution failed".
+//
+// The host's own codename (VERSION_CODENAME in /etc/os-release) needs no table: a file
+// naming it is an exact match. The table is only for ORDERING the others, older or newer
+// than this machine. A codename missing from it (a release newer than this list) simply
+// scores 0, as a file that names no release always has.
+const CODENAMES = {
+  ubuntu: {
+    focal: [20, 4], jammy: [22, 4], noble: [24, 4], oracular: [24, 10],
+    plucky: [25, 4], questing: [25, 10], resolute: [26, 4], stonking: [26, 10],
+  },
+  debian: { bullseye: [11, 0], bookworm: [12, 0], trixie: [13, 0], forky: [14, 0], duke: [15, 0] },
+};
+
+// The word that follows the distro id in a filename, lower-cased: "ubuntu-resolute" ->
+// "resolute". null when the id is absent or is not followed by a whole word, so
+// "ubuntu-amd64" and "ubuntu-x86_64" (architectures, not releases) yield nothing.
+function releaseCodename(name, id) {
+  const esc = String(id).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const m = new RegExp(`(?:^|[-_.])${esc}[-_.]([a-z]+)(?:[-_.]|$)`, 'i').exec(name);
+  return m ? m[1].toLowerCase() : null;
+}
+
+// host: { id, versionId, codename } from /etc/os-release, or null when unknown/not Linux.
+// versionId or codename may be missing (Debian's testing release has no VERSION_ID).
 function linuxReleaseScore(name, host) {
-  if (!host || !host.id || !host.versionId) return 0;
-  const hm = /^(\d+)(?:\.(\d+))?/.exec(String(host.versionId));
-  const got = releaseTokens(name, host.id);
-  if (!hm || !got) return 0;
-  const want = [Number(hm[1]), hm[2] === undefined ? 0 : Number(hm[2])];
+  if (!host || !host.id) return 0;
+  const table = CODENAMES[String(host.id).toLowerCase()] || {};
+  const hostCode = host.codename ? String(host.codename).toLowerCase() : null;
+  const hm = /^(\d+)(?:\.(\d+))?/.exec(String(host.versionId || ''));
+  const want = hm ? [Number(hm[1]), hm[2] === undefined ? 0 : Number(hm[2])] : (hostCode && table[hostCode]) || null;
+  let got = releaseTokens(name, host.id);
+  if (!got) {
+    const word = releaseCodename(name, host.id);
+    if (!word) return 0;
+    if (word === hostCode) return 6; // this machine's own release, by name
+    got = table[word] || null; // not a codename this list knows: nothing to compare
+  }
+  if (!want || !got) return 0;
   // Distance in releases, counting a minor bump as a fraction of a major one. Ubuntu
   // ships .04 and .10, so a minor difference is never more than one major step.
   const delta = got[0] - want[0] + (got[1] - want[1]) / 100;
   if (got[0] === want[0] && got[1] === want[1]) return 6; // exact release match wins outright
   if (delta < 0) return 3 - Math.min(2, -delta / 2); // older: usable, closest wins
-  return -4; // newer than the host: built against libraries this machine does not have
+  // Newer than the host: built against libraries this machine does not have. Nothing newer
+  // will really run, but the closest one is the least bad, so it loses by the least.
+  return -4 - Math.min(0.9, delta / 10);
 }
 
 // A .zip sitting beside a .dmg of the SAME name is the macOS build.
