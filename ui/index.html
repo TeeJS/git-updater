@@ -11,7 +11,7 @@
     /* Text greys: both are at least 4.5:1 (WCAG AA) on --bg, --panel and --panel-2; test/ui-contrast.test.js checks it. */
     --text: #e6edf3; --muted: #8b949e; --faint: #808a96;
     --accent: #e3a13c; --accent-ink: #1a1206;
-    --green: #3fb950; --blue: #58a6ff; --red: #f85149;
+    --green: #3fb950; --blue: #58a6ff; --red: #f85149; --purple: #bc8cff;
     --mono: 'Cascadia Code', 'Cascadia Mono', Consolas, ui-monospace, monospace;
     --sans: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
   }
@@ -207,6 +207,8 @@
   .c-up { color: var(--blue); } .c-up .dot { background: var(--blue); box-shadow: 0 0 8px var(--blue); }
   .c-bad { color: var(--red); } .c-bad .dot { background: var(--red); box-shadow: 0 0 8px var(--red); }
   .c-warn { color: var(--accent); } .c-warn .dot { background: var(--accent); }
+  /* An app that updates itself: not an error, not an update to take, and not "not checked" either. */
+  .c-self { color: var(--purple); } .c-self .dot { background: var(--purple); box-shadow: 0 0 8px var(--purple); }
   .c-work .dot { animation: pulse 1s infinite; background: var(--accent); box-shadow: 0 0 8px var(--accent); }
   @keyframes pulse { 0%,100% { opacity: .3 } 50% { opacity: 1 } }
   td.act { text-align: right; white-space: nowrap; }
@@ -931,7 +933,7 @@ function statusViewOf(s) {
     case 'installed': return datedStatus({ ...s, lastAction: 'installed' });
     case 'updated': return datedStatus({ ...s, lastAction: 'updated' });
     // Left to the app's own updater on purpose: not an update to take, and not an error.
-    case 'self': return { text: 'Updates itself', cls: 'c-muted', tip: selfTip(s) };
+    case 'self': return { text: 'Updates itself', cls: 'c-self', tip: selfTip(s) };
     // Not an error to read but a decision to make: the row's button becomes "Choose…".
     case 'failed': return s.chooseFile ? { text: 'Choose a download', cls: 'c-warn', tip: s.reason } : { text: s.reason || 'Failed', cls: 'c-bad' };
     default: return s.present ? { text: 'Not checked', cls: 'c-muted' } : { text: 'Not installed', cls: 'c-warn' };
