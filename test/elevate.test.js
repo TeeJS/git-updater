@@ -417,7 +417,7 @@ test('app: the scheduled run is never given the setting, and the window can reac
   assert.ok(scheduled.length >= 1);
   for (const line of scheduled) assert.ok(!line.includes('setAside'), line.trim());
   assert.match(preloadSrc, /updateAdmin: \(body\) => ipcRenderer\.invoke\('update:admin', body\)/);
-  assert.ok(mainSrc.includes('adminPromptOnce: !!adminRun() }));'), 'the window is told whether the setting can work here');
+  assert.ok(mainSrc.includes('adminPromptOnce: adminStatus().offered }));'), 'the window is told whether the setting is offered here');
   assert.match(mainSrc, /if \(cfg\.adminPromptOnce != null\) cfg\.adminPromptOnce = !!cfg\.adminPromptOnce;/);
   // Packaged, the helper sits beside the app's resources; it is never looked for anywhere a user file could stand in.
   const where = between(mainSrc, 'function installerHelperPath()', '// Installers set aside during');
@@ -507,10 +507,10 @@ test('window: the setting is in Settings > Updating, off and hidden until the ap
 
   const block = between(html, "$('adminPromptOnce').onchange", "$('requireChecksum').onchange");
   for (const answer of [{ adminPromptOnce: true }, { adminPromptOnce: false }, {}]) {
-    const els = { adminPromptOnce: { checked: true }, adminPromptOnceBlock: { hidden: true } };
+    const els = { ...needsEls(), adminPromptOnce: { checked: true }, adminPromptOnceBlock: { hidden: true } };
     const saved = [];
     const config = {};
-    const ctx = { $: (id) => els[id], config, saveConfig: async () => { saved.push({ ...config }); }, msg: () => {}, window: { api: { getPlatform: async () => answer } } };
+    const ctx = { $: (id) => els[id], config, saveConfig: async () => { saved.push({ ...config }); }, msg: () => {}, window: { addEventListener: () => {}, api: { getPlatform: async () => answer, adminStatus: async () => ({}) } } };
     vm.runInNewContext(block, ctx);
     await new Promise((r) => setImmediate(r));
     assert.strictEqual(els.adminPromptOnceBlock.hidden, !answer.adminPromptOnce, JSON.stringify(answer));
@@ -785,8 +785,8 @@ test('linux window: the row and the setting speak of a password prompt, not a Wi
   assert.strictEqual(ctx.statusViewOf({ ph: 'admin' }).text, 'Installing — enter your password in the prompt');
 
   const block = between(html, "$('adminPromptOnce').onchange", "$('requireChecksum').onchange");
-  const els = { adminPromptOnce: { checked: false }, adminPromptOnceBlock: { hidden: true }, adminPromptOnceHint: { textContent: 'the Windows wording' } };
-  const settings = { $: (id) => els[id], config: {}, saveConfig: async () => {}, msg: () => {}, adminPromptKind: 'windows', window: { api: { getPlatform: async () => ({ adminPromptOnce: true, platform: 'linux' }) } } };
+  const els = { ...needsEls(), adminPromptOnce: { checked: false }, adminPromptOnceBlock: { hidden: true }, adminPromptOnceHint: { textContent: 'the Windows wording' } };
+  const settings = { $: (id) => els[id], config: {}, saveConfig: async () => {}, msg: () => {}, adminPromptKind: 'windows', window: { addEventListener: () => {}, api: { getPlatform: async () => ({ adminPromptOnce: true, platform: 'linux' }), adminStatus: async () => ({}) } } };
   vm.runInNewContext(block, settings);
   await new Promise((r) => setImmediate(r));
   assert.strictEqual(els.adminPromptOnceBlock.hidden, false);
@@ -794,4 +794,168 @@ test('linux window: the row and the setting speak of a password prompt, not a Wi
   assert.match(els.adminPromptOnceHint.textContent, /behind one password prompt\. git-updater itself never runs as root\./);
   assert.ok(els.adminPromptOnceHint.textContent.length <= 220, 'as short as every other Settings hint');
   assert.match(html, /<p class="hint" id="adminPromptOnceHint">Installers that need administrator rights run together at the end, behind one Windows prompt\./, 'Windows keeps its wording');
+});
+
+// --- Linux: the setting is offered even when pkexec is not installed ---------------------------
+//
+// It was hidden unless pkexec was already there, which hid the feature from everyone who had
+// one thing to install. Now it shows wherever apt-get is; ticked without pkexec, the window
+// says so under the box and offers to install it.
+
+// The elements of the "pkexec is not installed" notice, as the window's code sees them.
+function needsEls() {
+  return {
+    adminPromptNeeds: { hidden: true },
+    adminNeedsMsg: { textContent: '' },
+    adminNeedsInstall: {},
+    adminNeedsCopy: {},
+    adminNeedsCheck: {},
+  };
+}
+
+test('linux: the setting is offered wherever apt-get is, and says what is missing', () => {
+  const having = (...files) => (f) => files.includes(f);
+  assert.strictEqual(elevate.linuxStatus(() => true, 'win32'), null);
+  assert.deepStrictEqual(elevate.linuxStatus(() => true, 'linux'), { missing: null });
+  assert.deepStrictEqual(elevate.linuxStatus(having('/bin/sh', '/usr/bin/apt-get'), 'linux'), { missing: 'pkexec' }, 'offered, with the one thing it needs named');
+  assert.strictEqual(elevate.linuxStatus(having('/bin/sh', '/usr/bin/pkexec'), 'linux'), null, 'no apt-get (an rpm system): nothing to install would make it work');
+  assert.strictEqual(elevate.INSTALL_PKEXEC, 'sudo apt install pkexec');
+});
+
+test('linux: Install pkexec opens the default terminal on the install command, and nothing else', () => {
+  const having = (...files) => (f) => files.includes(f);
+  const started = [];
+  const spawn = (exe, args, options) => {
+    started.push({ exe, args, options });
+    return { on: () => {}, unref: () => {} };
+  };
+  assert.strictEqual(elevate.installPkexecInTerminal(spawn, having('/bin/sh', '/usr/bin/x-terminal-emulator', '/usr/bin/konsole')), true);
+  assert.deepStrictEqual(started[0].args, ['-e', '/bin/sh', '-c', elevate.INSTALL_PKEXEC_IN_TERMINAL]);
+  assert.strictEqual(started[0].exe, '/usr/bin/x-terminal-emulator', 'the system\'s own choice of terminal comes first');
+  assert.strictEqual(started[0].options.detached, true);
+  assert.ok(!started[0].options.shell);
+  assert.strictEqual(started.length, 1, 'one terminal');
+
+  started.length = 0;
+  assert.strictEqual(elevate.installPkexecInTerminal(spawn, having('/usr/bin/sh', '/usr/bin/gnome-terminal')), true);
+  assert.deepStrictEqual([started[0].exe, started[0].args[0]], ['/usr/bin/gnome-terminal', '--'], 'each terminal gets its own switch');
+
+  started.length = 0;
+  const throwing = (exe, args, options) => { if (exe.endsWith('konsole')) throw new Error('EACCES'); return spawn(exe, args, options); };
+  assert.strictEqual(elevate.installPkexecInTerminal(throwing, having('/bin/sh', '/usr/bin/konsole', '/usr/bin/xterm')), true);
+  assert.deepStrictEqual(started.map((s) => s.exe), ['/usr/bin/xterm'], 'one that will not start is passed over');
+
+  started.length = 0;
+  assert.strictEqual(elevate.installPkexecInTerminal(spawn, having('/bin/sh')), false, 'no terminal: the window shows the command to copy');
+  assert.strictEqual(elevate.installPkexecInTerminal(spawn, having('/home/me/bin/konsole', '/bin/sh')), false, 'a terminal in a user folder is not used');
+  assert.deepStrictEqual(started, []);
+
+  const line = elevate.INSTALL_PKEXEC_IN_TERMINAL;
+  assert.ok(line.startsWith('sudo apt install pkexec && '), 'exactly the command the window shows');
+  assert.strictEqual(line.split('sudo').length, 2, 'sudo is used once, for that command');
+  assert.match(line, /pkexec was NOT installed/, 'a failure is said in the terminal, which stays open');
+  assert.match(line, /read _$/);
+});
+
+test('linux app: the window is told the setting is offered, and what it still needs', () => {
+  const src = between(mainSrc, 'function adminStatus()', "ipcMain.handle('admin:status'");
+  const status = (run, linux) => {
+    const ctx = { adminRun: () => run, elevate: { linuxStatus: () => linux, INSTALL_PKEXEC: 'sudo apt install pkexec' } };
+    vm.runInNewContext(`${src}; this.adminStatus = adminStatus;`, ctx);
+    return { ...ctx.adminStatus() };
+  };
+  assert.deepStrictEqual(status({ helperPath: 'C:\\h.exe' }, null), { offered: true, missing: null }, 'Windows with its helper');
+  assert.deepStrictEqual(status({ linux: LINUX }, { missing: null }), { offered: true, missing: null }, 'Linux, ready');
+  assert.deepStrictEqual(status(null, { missing: 'pkexec' }), { offered: true, missing: 'pkexec', installCommand: 'sudo apt install pkexec' }, 'Linux without pkexec: still offered');
+  assert.deepStrictEqual(status(null, null), { offered: false, missing: null }, 'nowhere it could work');
+
+  const handlers = {};
+  const seen = { opened: 0, copied: [] };
+  let missing = 'pkexec';
+  const ctx = {
+    ipcMain: { handle: (name, fn) => { handlers[name] = fn; } },
+    adminStatus: () => ({ offered: true, missing }),
+    elevate: { installPkexecInTerminal: () => { seen.opened += 1; return true; }, INSTALL_PKEXEC: 'sudo apt install pkexec' },
+    clipboard: { writeText: (text) => seen.copied.push(text) },
+  };
+  vm.runInNewContext(between(mainSrc, "ipcMain.handle('admin:status'", '// What can run set-aside installers'), ctx);
+  assert.strictEqual(handlers['admin:status']().missing, 'pkexec');
+  assert.strictEqual(handlers['admin:installPkexec']().opened, true);
+  handlers['admin:copyInstallCommand']();
+  assert.deepStrictEqual(seen, { opened: 1, copied: ['sudo apt install pkexec'] }, 'the command is the app\'s own, never one the window sends');
+  missing = null;
+  assert.strictEqual(handlers['admin:installPkexec']().opened, false, 'nothing is opened when pkexec is not what is missing');
+  assert.strictEqual(seen.opened, 1);
+
+  for (const name of ['adminStatus', 'adminInstallPkexec', 'adminCopyInstallCommand']) assert.ok(preloadSrc.includes(`  ${name}: () => ipcRenderer.invoke('admin:`), name);
+});
+
+test('linux window: ticked without pkexec, the notice appears under the box and offers to install it', async () => {
+  const updating = between(html, 'id="sg-updating"', '</section>');
+  const notice = between(updating, '<div id="adminPromptNeeds"', '<p class="hint" id="adminNeedsMsg"');
+  assert.match(updating, /<div id="adminPromptNeeds" hidden role="status">/, 'not shown until it is needed');
+  assert.ok(updating.indexOf('id="adminPromptOnce"') < updating.indexOf('id="adminPromptNeeds"'), 'right under the box it is about');
+  assert.match(notice, /<strong>pkexec is not installed<\/strong>, so this cannot work yet\./);
+  assert.match(notice, /<code>sudo apt install pkexec<\/code>/, 'the exact command is shown');
+  for (const [id, label] of [['adminNeedsInstall', 'Install pkexec'], ['adminNeedsCopy', 'Copy command'], ['adminNeedsCheck', 'Check again']]) {
+    assert.match(notice, new RegExp(`<button type="button" id="${id}"[^>]*>${label}</button>`));
+  }
+
+  const block = between(html, "$('adminPromptOnce').onchange", "$('requireChecksum').onchange");
+  const run = async ({ ticked, status, opened = true }) => {
+    const els = { ...needsEls(), adminPromptOnce: { checked: ticked }, adminPromptOnceBlock: { hidden: true }, adminPromptOnceHint: {} };
+    const said = [];
+    const calls = [];
+    const listeners = {};
+    const api = {
+      getPlatform: async () => ({ adminPromptOnce: true, platform: 'linux' }),
+      adminStatus: async () => status(),
+      adminInstallPkexec: async () => { calls.push('install'); return { opened }; },
+      adminCopyInstallCommand: async () => { calls.push('copy'); return { copied: true }; },
+    };
+    const ctx = { $: (id) => els[id], config: {}, saveConfig: async () => {}, msg: (text) => said.push(text), adminPromptKind: 'windows', window: { api, addEventListener: (name, fn) => { listeners[name] = fn; } } };
+    vm.runInNewContext(block, ctx);
+    const settle = () => new Promise((r) => setImmediate(() => setImmediate(r)));
+    await settle();
+    return { els, said, calls, listeners, settle };
+  };
+
+  let missing = 'pkexec';
+  const w = await run({ ticked: true, status: () => ({ offered: true, missing }) });
+  assert.strictEqual(w.els.adminPromptOnceBlock.hidden, false, 'the setting itself is shown');
+  assert.strictEqual(w.els.adminPromptNeeds.hidden, false, 'ticked and pkexec missing: the notice is up');
+
+  await w.els.adminNeedsInstall.onclick();
+  assert.deepStrictEqual(w.calls, ['install']);
+  assert.strictEqual(w.els.adminNeedsMsg.textContent, 'A terminal opened. Type your password there, then come back here.');
+  await w.els.adminNeedsCopy.onclick();
+  assert.strictEqual(w.els.adminNeedsMsg.textContent, 'Copied. Paste it into a terminal and press Enter.');
+  await w.els.adminNeedsCheck.onclick();
+  assert.strictEqual(w.els.adminNeedsMsg.textContent, 'pkexec is still not installed.');
+  assert.strictEqual(w.els.adminPromptNeeds.hidden, false);
+
+  // pkexec gets installed in the terminal; coming back to the window clears the notice by itself.
+  missing = null;
+  w.listeners.focus();
+  await w.settle();
+  assert.strictEqual(w.els.adminPromptNeeds.hidden, true);
+  assert.strictEqual(w.els.adminNeedsMsg.textContent, '');
+  await w.els.adminNeedsCheck.onclick();
+  assert.deepStrictEqual(w.said, ['pkexec is installed. The next update run asks for your password once.']);
+
+  // Unticking hides it; ticking it again without pkexec brings it straight back.
+  missing = 'pkexec';
+  const u = await run({ ticked: false, status: () => ({ offered: true, missing }) });
+  assert.strictEqual(u.els.adminPromptNeeds.hidden, true, 'not ticked: nothing to say');
+  u.els.adminPromptOnce.checked = true;
+  u.els.adminPromptOnce.onchange();
+  await u.settle();
+  assert.strictEqual(u.els.adminPromptNeeds.hidden, false, 'the moment it is ticked');
+
+  const none = await run({ ticked: true, status: () => ({ offered: true, missing: 'pkexec' }), opened: false });
+  await none.els.adminNeedsInstall.onclick();
+  assert.strictEqual(none.els.adminNeedsMsg.textContent, 'No terminal could be opened. Click Copy command and run it in a terminal.');
+
+  const old = await run({ ticked: true, status: () => { throw new Error('no handler'); } });
+  assert.strictEqual(old.els.adminPromptNeeds.hidden, true, 'an app that cannot answer shows no notice');
 });

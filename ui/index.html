@@ -253,6 +253,7 @@
   #chooserStatus { margin-right: auto; min-width: 0; font-size: 12.5px; color: var(--muted); }
   #chooserStatus.bad { color: var(--red); }
   .force-warn { font-size: .84rem; color: var(--accent); }
+  #adminPromptNeeds strong { color: var(--accent); } /* the one line that says why the setting cannot work yet */
   /* Compact view (the Compact switch in the header, remembered). One line per app: status dot,
      name, current → available, the action button. The lines flow into as many columns as the
      window has room for (400px or more each, so two at the 920px first-run width and one when it
@@ -596,6 +597,16 @@
           <label class="scan-label"><input type="checkbox" id="adminPromptOnce"> Ask for administrator permission once per update run</label>
         </div>
         <p class="hint" id="adminPromptOnceHint">Installers that need administrator rights run together at the end, behind one Windows prompt. git-updater itself never runs as administrator; an unsigned installer still opens its own window.</p>
+        <div id="adminPromptNeeds" hidden role="status">
+          <p class="hint force-warn"><strong>pkexec is not installed</strong>, so this cannot work yet. Install pkexec opens a terminal that runs <code>sudo apt install pkexec</code>; type your password there.</p>
+          <div class="row" style="margin-top:.35rem">
+            <span style="min-width:8rem"></span>
+            <button type="button" id="adminNeedsInstall" class="primary">Install pkexec</button>
+            <button type="button" id="adminNeedsCopy" title="Copy the command, to run it in a terminal yourself">Copy command</button>
+            <button type="button" id="adminNeedsCheck">Check again</button>
+          </div>
+          <p class="hint" id="adminNeedsMsg" role="status"></p>
+        </div>
       </div>
       <div class="row" style="margin-top:.6rem">
         <span style="color:var(--muted);font-size:.9rem;min-width:8rem">Downloads</span>
@@ -1976,6 +1987,7 @@ async function load() {
   $('selfAutoUpdate').checked = !!config.selfAutoUpdate;
   $('autoCloseReopen').checked = !!config.autoCloseReopen;
   $('adminPromptOnce').checked = !!config.adminPromptOnce;
+  syncAdminNeeds();
   syncForceClose();
   $('downloadLimitEnabled').checked = config.downloadLimitEnabled !== false;
   $('downloadLimitMiB').value = config.downloadLimitMiB == null ? 500 : config.downloadLimitMiB;
@@ -2093,13 +2105,44 @@ function syncForceClose() {
 }
 $('autoCloseReopen').onchange = () => { config.autoCloseReopen = $('autoCloseReopen').checked; syncForceClose(); saveConfig().then(() => msg('Saved.', 'ok')); };
 $('forceClose').onchange = () => { config.forceClose = $('forceClose').checked; saveConfig().then(() => msg('Saved.', 'ok')); };
-$('adminPromptOnce').onchange = () => { config.adminPromptOnce = $('adminPromptOnce').checked; saveConfig().then(() => msg('Saved.', 'ok')); };
-// Shown only where it can work: on Windows with the installer helper present, or on Linux
-// with pkexec and apt-get.
+$('adminPromptOnce').onchange = () => { config.adminPromptOnce = $('adminPromptOnce').checked; saveConfig().then(() => msg('Saved.', 'ok')); syncAdminNeeds(); };
+// On Linux the setting needs pkexec. With the box ticked and pkexec not installed, say so
+// right under it and offer to install it. The app answers what is missing; an older main
+// process without the answer shows nothing.
+async function syncAdminNeeds() {
+  let status = {};
+  try {
+    status = (await window.api.adminStatus()) || {};
+  } catch {}
+  const needs = $('adminPromptOnce').checked && status.missing === 'pkexec';
+  $('adminPromptNeeds').hidden = !needs;
+  if (!needs) $('adminNeedsMsg').textContent = '';
+  return needs;
+}
+$('adminNeedsInstall').onclick = async () => {
+  const r = await window.api.adminInstallPkexec().catch(() => ({}));
+  $('adminNeedsMsg').textContent = r && r.opened
+    ? 'A terminal opened. Type your password there, then come back here.'
+    : 'No terminal could be opened. Click Copy command and run it in a terminal.';
+};
+$('adminNeedsCopy').onclick = async () => {
+  await window.api.adminCopyInstallCommand().catch(() => {});
+  $('adminNeedsMsg').textContent = 'Copied. Paste it into a terminal and press Enter.';
+};
+$('adminNeedsCheck').onclick = async () => {
+  const still = await syncAdminNeeds();
+  if (still) $('adminNeedsMsg').textContent = 'pkexec is still not installed.';
+  else msg('pkexec is installed. The next update run asks for your password once.', 'ok');
+};
+// Back from the terminal: the notice clears itself once pkexec is there.
+window.addEventListener('focus', () => { syncAdminNeeds(); });
+// Shown wherever it could work: on Windows with the installer helper present, or on Linux
+// with apt-get. pkexec missing does not hide it: syncAdminNeeds above offers to install it.
 window.api
   .getPlatform()
   .then(({ adminPromptOnce, platform }) => {
     $('adminPromptOnceBlock').hidden = !adminPromptOnce;
+    syncAdminNeeds();
     // Linux has no Windows prompt: the desktop asks for the password, and apt-get installs.
     if (platform === 'linux') {
       adminPromptKind = 'linux';
