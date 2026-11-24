@@ -354,3 +354,10 @@ test('window: the ⋯ menu carries the "Updates itself" tick on installed rows, 
   assert.match(html, /\$\('updateAll'\)\.onclick = \(\) => runBatch\(targetKeys\(\)/);
   assert.match(html, /left alone because \$\{leftAlone === 1 \? 'it updates itself' : 'they update themselves'\}/);
 });
+
+test('window: in the compact list the words "Updates itself" are purple too, not the grey other states get', () => {
+  const html = fs.readFileSync(path.join(__dirname, '..', 'ui', 'index.html'), 'utf8');
+  assert.match(html, /\.c-self \{ color: var\(--purple\); \} \.c-self \.dot \{ background: var\(--purple\);/);
+  assert.match(html, /\.cv\.say\.c-self \{ color: var\(--purple\); \}/);
+  assert.ok(html.indexOf('.cv.say.c-self') > html.indexOf('.cv { min-width'), 'after the grey .cv rule, so it wins');
+});
