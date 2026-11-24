@@ -5,19 +5,23 @@
 // Why: on 2026-11-23 git-updater installed Discord 1.0.9270 from WinGet. Discord's own updater
 // asked Discord's server, was told this PC must stay on 1.0.9269, and rolled itself back while
 // the 1.0.9270 installer was still deleting the old folder. Discord came back without its core
-// module and would not start. Two updaters working on one app clash; an app that has its own
-// updater is that updater's job.
+// module and would not start. Two updaters working on one app clash.
 //
-// ONE rule on every platform: if the installed copy carries its own updater, it is not updated
-// here. The rule follows the installed COPY, not the platform, so an app that updates itself on
-// one system but not on another is treated correctly on each. Every marker below is looked for
-// everywhere; each simply only exists where its updater does.
+// What is recognised: Squirrel, the one layout that has actually clashed. Its updater
+// (Update.exe) owns the install and swaps app-<version> folders itself, so an installer run over
+// it races that updater for the same folders. Squirrel apps: Discord, GitHub Desktop, Slack.
 //
-//   squirrel          Update.exe beside app-<version> folders (Discord, GitHub Desktop, Slack)
-//   electron-updater  app-update.yml in the app's resources (electron-builder apps, all platforms)
-//   sparkle           the Sparkle framework inside an app bundle
-//   listing           the listing says so (Homebrew's `auto_updates`)
-//   you               the user ticked "Updates itself" in the row's menu
+//   squirrel   Update.exe beside app-<version> folders
+//   you        the user ticked "Updates itself" in the row's menu
+//
+// NOT recognised, on purpose (2026-11-24): an app merely HAVING an updater. Homebrew's
+// `auto_updates`, electron-updater's app-update.yml and the Sparkle framework mark most popular
+// apps (Chrome, Bitwarden, Zoom, OBS, Obsidian), which git-updater updates without trouble.
+// Treating them as "updates itself" (beta.14, beta.15) turned half the rows on a Mac purple and
+// stopped updates the user wanted. The row's tick covers any other app that does clash.
+//
+// The rule follows the installed COPY, not the platform: the marker is looked for everywhere and
+// simply only exists where Squirrel does (Windows).
 //
 // The user's tick wins in both directions: `updatesItself: false` on the config entry means
 // "update it anyway", `true` means "leave it alone" even when no marker was found.
@@ -27,9 +31,9 @@
 const fs = require('fs');
 const path = require('path');
 
-const KINDS = ['squirrel', 'electron-updater', 'sparkle', 'listing', 'you'];
+const KINDS = ['squirrel', 'you'];
 
-// Every marker is looked for in a FOLDER the app lives in. `fsx` is injectable for tests.
+// The marker is looked for in a FOLDER the app lives in. `fsx` is injectable for tests.
 function exists(fsx, ...parts) {
   try {
     return fsx.existsSync(path.join(...parts));
@@ -46,21 +50,15 @@ function hasAppVersionDir(fsx, dir) {
   }
 }
 
-// The marker in one folder or app bundle -> a kind, or null.
+// The marker in one folder -> a kind, or null.
 function markerIn(dir, fsx = fs) {
   if (!dir || typeof dir !== 'string') return null;
-  if (/\.app[\\/]?$/i.test(dir)) {
-    if (exists(fsx, dir, 'Contents', 'Resources', 'app-update.yml')) return 'electron-updater';
-    if (exists(fsx, dir, 'Contents', 'Frameworks', 'Sparkle.framework')) return 'sparkle';
-    return null;
-  }
   if (exists(fsx, dir, 'Update.exe') && hasAppVersionDir(fsx, dir)) return 'squirrel';
-  if (exists(fsx, dir, 'resources', 'app-update.yml')) return 'electron-updater';
   return null;
 }
 
 // A folder and what sits directly inside it: an unpacked download often keeps the app one
-// folder down (App-1.2.3/…), and a folder of app bundles keeps each bundle there.
+// folder down (App-1.2.3/…).
 function markerInTree(dir, fsx = fs) {
   const own = markerIn(dir, fsx);
   if (own) return own;
@@ -107,26 +105,13 @@ function foldersOf(rec) {
   return out;
 }
 
-// A package's own file list (dpkg -L, rpm -ql): the marker is a file in it.
-function markerInFiles(files) {
-  for (const f of files || []) {
-    const p = String(f || '').trim().replace(/\\/g, '/');
-    if (/\/resources\/app-update\.yml$/i.test(p) || /\.app\/Contents\/Resources\/app-update\.yml$/i.test(p)) return 'electron-updater';
-    if (/\.app\/Contents\/Frameworks\/Sparkle\.framework(\/|$)/i.test(p)) return 'sparkle';
-  }
-  return null;
-}
-
 // Does this app keep itself up to date? -> { by: <kind> } or null.
-//   repo       the config entry (its `updatesItself` tick wins)
-//   listing    true when the app's listing says it updates itself
-//   copies     inventory records of the installed app (any platform)
-//   folder     the folder git-updater keeps the app in (portable apps)
-//   listFiles  async (record) -> the files a package owns, for records that name no folder
-async function check(repo, { listing = false, copies = [], folder = null, listFiles = null, fsx = fs } = {}) {
+//   repo     the config entry (its `updatesItself` tick wins)
+//   copies   inventory records of the installed app (any platform)
+//   folder   the folder git-updater keeps the app in (portable apps)
+async function check(repo, { copies = [], folder = null, fsx = fs } = {}) {
   if (repo && repo.updatesItself === false) return null;
   if (repo && repo.updatesItself === true) return { by: 'you' };
-  if (listing) return { by: 'listing' };
   if (folder) {
     const hit = markerInTree(folder, fsx);
     if (hit) return { by: hit };
@@ -136,16 +121,8 @@ async function check(repo, { listing = false, copies = [], folder = null, listFi
       const hit = markerIn(dir, fsx);
       if (hit) return { by: hit };
     }
-    if (!foldersOf(rec).length && listFiles) {
-      let files = [];
-      try {
-        files = await listFiles(rec);
-      } catch {}
-      const hit = markerInFiles(files);
-      if (hit) return { by: hit };
-    }
   }
   return null;
 }
 
-module.exports = { check, markerIn, markerInTree, markerInFiles, squirrelRoot, foldersOf, KINDS };
+module.exports = { check, markerIn, markerInTree, squirrelRoot, foldersOf, KINDS };

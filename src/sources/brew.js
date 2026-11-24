@@ -222,9 +222,9 @@ function toRelease(base, ctx) {
       publisher: publisherOf(cask),
       ...(notes.length ? { note: notes.join('; ') } : {}),
     },
-    // Homebrew's own marker for an app with an updater of its own; `brew upgrade` skips these
-    // by default for the same reason git-updater leaves them alone (src/selfupdating.js).
-    ...(cask.auto_updates ? { updatesItself: true } : {}),
+    // Homebrew's `auto_updates` stays a note only. It marks most popular apps (Chrome, Zoom,
+    // Bitwarden, OBS), which git-updater updates without trouble, so it does not make the row
+    // "Updates itself" (src/selfupdating.js says what does).
   };
 
   if (eff.unsupported) {

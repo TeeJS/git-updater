@@ -169,8 +169,7 @@ function pickLaunchPath(files, name) {
 }
 
 // The files a deb or rpm package owns, as absolute paths. [] for anything else (a Flatpak or
-// Snap keeps its files in its own sandbox). Also read by src/selfupdating.js, which looks in
-// this list for an app's own updater.
+// Snap keeps its files in its own sandbox).
 async function packageFiles(name, flavor) {
   if (flavor === 'deb') return (await run('dpkg', ['-L', name])).split('\n').map((f) => f.trim()).filter(Boolean);
   if (flavor === 'rpm') return (await run('rpm', ['-ql', name])).split('\n').map((f) => f.trim()).filter(Boolean);
@@ -278,7 +277,6 @@ module.exports = {
   runningProcesses,
   killProcess,
   launchTargetFor,
-  packageFiles,
   launchApp,
   pickLaunchPath,
   parseExec,
