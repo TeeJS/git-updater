@@ -16,6 +16,7 @@ const detect = require('./detect');
 const sources = require('./sources');
 const platform = require('./platform');
 const selfupdating = require('./selfupdating');
+const inuse = require('./inuse');
 const { log } = require('./log');
 
 // Display id ("owner/repo") vs storage/identity key (adds the type, so the same repo
@@ -158,6 +159,26 @@ async function run(config, opts = {}) {
     }
   }
   return { results, summary: core.buildSummary(results) };
+}
+
+// An installer that failed with an exit code of its own: the programs that have the app's
+// files open, named for the row (see src/inuse.js). null when nobody does, or when they cannot
+// be asked: opts.inUse is given by the window and the schedule, which know where the helper is.
+async function inUseReason(repo, code, opts) {
+  if (!opts.inUse) return null;
+  try {
+    for (const rec of await detect.installedCopies(...core.lookupNames(repo))) {
+      const folder = inuse.folderOf(rec);
+      const names = folder ? await opts.inUse(folder) : [];
+      if (names.length) {
+        log(`  ${appKey(repo)}: files in ${folder} are open in ${names.join(', ')}`);
+        return inuse.reason(inuse.appLabel(rec, core.appName(repo)), names, code);
+      }
+    }
+  } catch (e) {
+    log(`  ${appKey(repo)}: could not ask which programs have its files open (${e.message})`);
+  }
+  return null;
 }
 
 // Where an app comes from, attached to every result so the UI and the CLI can always
@@ -621,11 +642,18 @@ async function handleRepo(repo, id, st, opts) {
                 return interactiveResult;
               },
               fail: (reason) => ({ ...base, status: 'failed', reason }),
+              // An installer that failed with an exit code of its own: who has the app's files open.
+              whyFailed: (code) => inUseReason(repo, code, opts),
             });
             return { ...base, status: 'failed', needsAdmin: true, reason: 'waiting for administrator permission' };
           }
         }
         if ((e.status === 1603 || e.elevation) && interactive(stagedName)) return interactiveResult;
+        // An exit code of the installer's own: if other programs have the app's files open, name them.
+        if (e.genericExit) {
+          const why = await inUseReason(repo, e.status, opts);
+          if (why) throw new Error(why);
+        }
         throw e;
       }
     } else {

@@ -128,6 +128,7 @@ const TIMEOUT_SECS = 600; // per installer: the same ten minutes a normal silent
 //     succeed()    record the install and return the app's result
 //     ownWindow()  open the installer in its own window (today's route) and return that result
 //     fail(reason) return a failed result
+//     whyFailed(code)  optional: for an installer exit code of its own, a better reason or null
 // Returns a Map of key -> result. Never throws: every entry gets a result.
 async function finish(entries, opts = {}) {
   const out = new Map();
@@ -191,7 +192,7 @@ async function finish(entries, opts = {}) {
       for (const e of accepted) ownWindow(e, `the administrator run failed (${problem(ran)})`);
       return out;
     }
-    accepted.forEach((e, i) => {
+    for (const [i, e] of accepted.entries()) {
       const code = codes[i];
       log(`  ${e.key}: ${code === null ? 'not reached' : `exit ${code}`}`);
       if (helper.succeeded(code)) {
@@ -202,8 +203,15 @@ async function finish(entries, opts = {}) {
         }
       } else if (code === CODES.notSigned) ownWindow(e, 'the installer has no valid publisher signature');
       else if (code === null) out.set(e.key, e.fail('the administrator run stopped before this installer — Retry'));
-      else out.set(e.key, e.fail(exitReason(code)));
-    });
+      else {
+        // An exit code of the installer's own: if other programs have the app's files open,
+        // the row names them (src/inuse.js) instead of guessing "if the app is open".
+        const own = !REFUSED[code] && !INSTALLER_EXIT[code];
+        let why = null;
+        if (own && e.whyFailed) try { why = await e.whyFailed(code); } catch {}
+        out.set(e.key, e.fail(why || exitReason(code)));
+      }
+    }
     return out;
   } catch (err) {
     // Nothing above should throw; if it does, no app is left without an answer.

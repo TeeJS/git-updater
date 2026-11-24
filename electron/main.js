@@ -14,6 +14,7 @@ const core = require('../src/core');
 const github = require('../src/github');
 const runner = require('../src/runner');
 const elevate = require('../src/elevate');
+const inuse = require('../src/inuse');
 const state = require('../src/state');
 const detect = require('../src/detect');
 const platform = require('../src/platform');
@@ -324,7 +325,7 @@ async function backgroundInstall(what = 'scheduled install') {
       let result;
       try {
         lock = state.acquireLock();
-        const out = await runner.run(config, { only: key, autoClose, forceClose: autoClose && !!cfg.forceClose, unattended: true });
+        const out = await runner.run(config, { only: key, autoClose, forceClose: autoClose && !!cfg.forceClose, unattended: true, inUse: whoUsesFolder });
         result = out.results[0];
       } catch (e) {
         result = { status: 'failed', reason: e && e.message ? e.message : String(e) };
@@ -1951,6 +1952,12 @@ ipcMain.handle('check', async (_e, body = {}) => {
 // administrator rights behind ONE Windows prompt, so git-updater itself never runs elevated.
 // Windows only. Shipped beside the app's resources; in a development run it is the copy
 // built by `cargo build --release` in helper/, if there is one. null when it is not there.
+// After an installer fails: which programs have files in the app's folder open (src/inuse.js),
+// asked of the helper's read-only --who-uses. [] where there is no helper (macOS, Linux).
+function whoUsesFolder(folder) {
+  return inuse.namesUsing(folder, { helperPath: installerHelperPath(), runHelper: elevate.runHelper });
+}
+
 function installerHelperPath() {
   if (process.platform !== 'win32') return null;
   const file = app.isPackaged
@@ -2018,7 +2025,7 @@ ipcMain.handle('update', async (e, body = {}) => {
     // here, see adminRun), an installer that needs administrator rights is set aside instead of opening
     // its own window, and the window asks for them all at the end with 'update:admin'.
     const setAside = config.adminPromptOnce && !body.dryRun && adminRun() ? setAsideForAdmin : undefined;
-    return await runner.run(config, { only: body.only, force: !!body.force, dryRun: !!body.dryRun, autoClose: !!body.autoClose, forceClose: !!body.autoClose && !!config.forceClose, onProgress, openFile, setAside });
+    return await runner.run(config, { only: body.only, force: !!body.force, dryRun: !!body.dryRun, autoClose: !!body.autoClose, forceClose: !!body.autoClose && !!config.forceClose, onProgress, openFile, setAside, inUse: whoUsesFolder });
   } finally {
     state.releaseLock(lock);
     updating = false;

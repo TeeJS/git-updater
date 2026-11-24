@@ -34,7 +34,7 @@ const REG_OUT = [
 test('win: parses the uninstall registry, dropping entries with no version', () => {
   assert.deepEqual(win.parseHive(REG_OUT), [
     { name: '7-Zip 26.02 (x64 edition)', version: '26.02', flavor: 'msi' },
-    { name: 'Notepad++ (64-bit x64)', version: '8.7.1', flavor: 'exe' },
+    { name: 'Notepad++ (64-bit x64)', version: '8.7.1', flavor: 'exe', uninstallDir: 'C:\\Program Files\\Notepad++' }, // its folder, from its uninstaller (src/inuse.js)
   ]);
 });
 
