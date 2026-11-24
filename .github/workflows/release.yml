@@ -128,6 +128,12 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # One password prompt on Linux: the real root step, as root, with real test packages
+      # (the same test .github/workflows/linux-admin.yml runs on pull requests).
+      - name: Test the administrator install step
+        env:
+          GIT_UPDATER_ROOT_TESTS: '1'
+        run: node --test test/elevate.test.js test/admin-linux.test.js
       - run: npx electron-builder --linux --publish never
       - uses: actions/upload-artifact@v7
         with:

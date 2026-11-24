@@ -718,7 +718,7 @@ ipcMain.handle('scan:open', () => {
 // answer from the main process is the guarantee.
 const SCAN_PLATFORMS = new Set(['win32', 'darwin']);
 
-ipcMain.handle('app:platform', () => ({ platform: process.platform, canScan: SCAN_PLATFORMS.has(process.platform), adminPromptOnce: !!installerHelperPath() }));
+ipcMain.handle('app:platform', () => ({ platform: process.platform, canScan: SCAN_PLATFORMS.has(process.platform), adminPromptOnce: !!adminRun() }));
 
 // Every known app found installed: the GitHub catalog's patterns AND every app in Popular
 // apps by name (see scanInstalled in src/catalog.js), so an app that comes from WinGet or
@@ -1958,6 +1958,17 @@ function installerHelperPath() {
   return fs.existsSync(file) ? file : null;
 }
 
+// What can run set-aside installers behind one prompt on this machine, as the options
+// elevate.finish takes: Windows' helper, or on Debian and Ubuntu family Linux the system's own
+// pkexec and apt-get (no helper is shipped there). null when neither is here: the setting is
+// then not offered, and every installer keeps its own window.
+function adminRun() {
+  const helperPath = installerHelperPath();
+  if (helperPath) return { helperPath };
+  const linux = elevate.linuxTools();
+  return linux ? { linux } : null;
+}
+
 // Installers set aside during the window's update run, waiting for the one administrator
 // prompt at its end (src/elevate.js). Keyed by app; held here, never in the window, so the
 // files and switches that get run are the ones this process chose.
@@ -1980,10 +1991,10 @@ ipcMain.handle('update', async (e, body = {}) => {
     const openFile = (f) => shell.openPath(f); // ShellExecute: an installer's UAC manifest works
     // Force close is read from the saved settings here, never taken from the window: it only ever
     // applies on top of auto-close, to an app that was asked to close and did not.
-    // So is "Ask for administrator permission once per update run": with it on (and the helper
-    // present), an installer that needs administrator rights is set aside instead of opening
+    // So is "Ask for administrator permission once per update run": with it on (and a way to run them
+    // here, see adminRun), an installer that needs administrator rights is set aside instead of opening
     // its own window, and the window asks for them all at the end with 'update:admin'.
-    const setAside = config.adminPromptOnce && !body.dryRun && installerHelperPath() ? setAsideForAdmin : undefined;
+    const setAside = config.adminPromptOnce && !body.dryRun && adminRun() ? setAsideForAdmin : undefined;
     return await runner.run(config, { only: body.only, force: !!body.force, dryRun: !!body.dryRun, autoClose: !!body.autoClose, forceClose: !!body.autoClose && !!config.forceClose, onProgress, openFile, setAside });
   } finally {
     state.releaseLock(lock);
@@ -1992,7 +2003,7 @@ ipcMain.handle('update', async (e, body = {}) => {
 });
 
 // The end of the window's update run: every installer set aside for these apps is handed to
-// the helper together. Windows shows one prompt; each app gets its own result back, in the
+// the helper (Windows) or to apt-get (Linux) together. One prompt; each app gets its own result back, in the
 // order asked. Anything set aside for an app that is NOT asked for is dropped.
 ipcMain.handle('update:admin', async (e, body = {}) => {
   if (updating) throw new Error('an update is already in progress');
@@ -2005,7 +2016,7 @@ ipcMain.handle('update:admin', async (e, body = {}) => {
     pendingAdmin.clear();
     lock = state.acquireLock();
     for (const entry of entries) e.sender.send('update:progress', { id: entry.key, phase: 'admin' });
-    const done = await elevate.finish(entries, { helperPath: installerHelperPath(), stageBase: path.join(paths.dataDir(), 'staging') });
+    const done = await elevate.finish(entries, { ...adminRun(), stageBase: path.join(paths.dataDir(), 'staging') });
     return { results: keys.map((k) => done.get(k) || { id: k, status: 'failed', reason: 'nothing was waiting for administrator permission — Retry' }) };
   } finally {
     state.releaseLock(lock);

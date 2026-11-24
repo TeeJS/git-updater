@@ -1,0 +1,41 @@
+# The real root step of "one password prompt on Linux" (PROJECT-linux-one-password-prompt.md),
+# run as root on Ubuntu against real test packages: test/admin-linux.test.js.
+#
+# It proves what no test on a developer's machine can: that the script git-updater hands to
+# pkexec really installs each package with apt-get under /bin/sh (dash), that one bad package
+# does not stop the others, that a swapped file is refused, and that a hung install is
+# stopped. `sudo -n` stands in for pkexec, so the one thing NOT proven here is the password
+# prompt itself.
+#
+# The release workflow runs the same test before it builds the Linux packages.
+
+name: Linux administrator step
+
+on:
+  pull_request:
+    paths:
+      - src/elevate.js
+      - test/elevate.test.js
+      - test/admin-linux.test.js
+      - .github/workflows/linux-admin.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  root-step:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: The parts around the root step (pkexec replaced by a stand-in)
+        run: node --test test/elevate.test.js
+      - name: The root step itself, as root, with real packages
+        env:
+          GIT_UPDATER_ROOT_TESTS: '1'
+        run: node --test test/admin-linux.test.js
