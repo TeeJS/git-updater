@@ -1,0 +1,3 @@
+# Link the C runtime statically so the helper needs nothing installed on the PC it runs on.
+[target.'cfg(all(windows, target_env = "msvc"))']
+rustflags = ["-C", "target-feature=+crt-static"]

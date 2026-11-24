@@ -1,0 +1,29 @@
+[package]
+name = "git-updater-helper"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "git-updater installer helper (runs installers that need administrator rights, behind one Windows prompt)"
+
+[dependencies.windows-sys]
+version = "0.61"
+features = [
+  "Win32_Foundation",
+  "Win32_Security",
+  "Win32_Security_Authorization",
+  "Win32_Security_Cryptography",
+  "Win32_Security_WinTrust",
+  "Win32_Storage_FileSystem",
+  "Win32_System_Com",
+  "Win32_System_LibraryLoader",
+  "Win32_System_Registry",
+  "Win32_System_SystemInformation",
+  "Win32_System_Threading",
+  "Win32_UI_Shell",
+  "Win32_UI_WindowsAndMessaging",
+]
+
+[profile.release]
+panic = "abort"
+opt-level = "s"
+lto = true
