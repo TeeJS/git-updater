@@ -420,7 +420,7 @@ test('app: the scheduled run is never given the setting, and the window can reac
   assert.match(mainSrc, /adminPromptOnce: !!installerHelperPath\(\)/, 'the window is told whether the setting can work here');
   assert.match(mainSrc, /if \(cfg\.adminPromptOnce != null\) cfg\.adminPromptOnce = !!cfg\.adminPromptOnce;/);
   // Packaged, the helper sits beside the app's resources; it is never looked for anywhere a user file could stand in.
-  const where = between(mainSrc, 'function installerHelperPath()', '\n}\n');
+  const where = between(mainSrc, 'function installerHelperPath()', '// Installers set aside during');
   assert.match(where, /process\.platform !== 'win32'\) return null/);
   assert.match(where, /path\.join\(process\.resourcesPath, 'helper', 'git-updater-helper\.exe'\)/);
 });
