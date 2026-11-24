@@ -14,7 +14,6 @@ const elevate = require('./elevate');
 const state = require('./state');
 const detect = require('./detect');
 const sources = require('./sources');
-const platform = require('./platform');
 const selfupdating = require('./selfupdating');
 const inuse = require('./inuse');
 const { log } = require('./log');
@@ -237,7 +236,7 @@ async function preflight(repo, rel, ctx, o) {
 // unticking and ticking again returns the app to "decided by what was found".
 // The installed copy is looked at wherever it is: the folder git-updater keeps a portable app
 // in, otherwise the operating system's record of the install. The same on every platform.
-async function updatesItself(repo, rel, externallyInstalled) {
+async function updatesItself(repo, externallyInstalled) {
   const folder = repo.type === 'portable' && !externallyInstalled && repo.install && repo.install.dir ? repo.install.dir : null;
   let copies = [];
   if (!folder) {
@@ -245,12 +244,7 @@ async function updatesItself(repo, rel, externallyInstalled) {
       copies = await detect.installedCopies(...core.lookupNames(repo));
     } catch {}
   }
-  const found = await selfupdating.check({ ...repo, updatesItself: undefined }, {
-    listing: !!(rel && rel.updatesItself),
-    copies,
-    folder,
-    listFiles: (rec) => platform.packageFiles(rec.name, rec.flavor),
-  });
+  const found = await selfupdating.check({ ...repo, updatesItself: undefined }, { copies, folder });
   const decision = repo.updatesItself === false ? null : repo.updatesItself === true ? { by: 'you' } : found;
   return { found, decision };
 }
@@ -374,7 +368,7 @@ async function handleRepo(repo, id, st, opts) {
   // An app on this machine that keeps itself up to date is left to its own updater (see
   // src/selfupdating.js). Worked out for an up-to-date row too, so the window can show the
   // row's "Updates itself" tick. Never for an app that is not installed: a first install goes ahead.
-  const own = installed ? await updatesItself(repo, rel, externallyInstalled) : { found: null, decision: null };
+  const own = installed ? await updatesItself(repo, externallyInstalled) : { found: null, decision: null };
   const self = own.decision;
   const selfInfo = {
     ...(own.decision ? { updatesItself: own.decision.by } : {}),

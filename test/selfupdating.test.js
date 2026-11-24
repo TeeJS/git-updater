@@ -1,8 +1,10 @@
 'use strict';
 
 // Apps that keep themselves up to date are left alone (PROJECT-self-updating-apps.md,
-// src/selfupdating.js). One rule on every platform: these tests build each marker as a real
-// folder on whatever system runs them, because every marker is looked for everywhere.
+// src/selfupdating.js). Only Squirrel is recognised; an app that merely has an updater
+// (electron-updater, Sparkle, Homebrew's `auto_updates`) is updated as usual. These tests build
+// each layout as a real folder on whatever system runs them, because the marker is looked for
+// everywhere.
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -52,26 +54,16 @@ test('markerIn: Squirrel is Update.exe beside an app-<version> folder', () => {
   }
 });
 
-test('markerIn: electron-updater is app-update.yml in the resources folder', () => {
+// 2026-11-24: these marked most apps on a Mac (Chrome, Bitwarden, OBS, Zoom) as "Updates itself",
+// apps git-updater had always updated without trouble. Having an updater is not a clash.
+test('markerIn: an app that merely has an updater (electron-updater, Sparkle) is not recognised', () => {
   const dir = tmp();
   try {
-    assert.equal(selfupdating.markerIn(electronUpdaterApp(path.join(dir, 'Thing'))), 'electron-updater');
-    touch(dir, 'Plain', 'resources', 'app.asar');
-    assert.equal(selfupdating.markerIn(path.join(dir, 'Plain')), null);
-  } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test('markerIn: inside an app bundle, app-update.yml or the Sparkle framework', () => {
-  const dir = tmp();
-  try {
+    assert.equal(selfupdating.markerIn(electronUpdaterApp(path.join(dir, 'Bitwarden'))), null, 'app-update.yml in resources');
     touch(dir, 'One.app', 'Contents', 'Resources', 'app-update.yml');
     touch(dir, 'Two.app', 'Contents', 'Frameworks', 'Sparkle.framework', 'Sparkle');
-    touch(dir, 'Three.app', 'Contents', 'MacOS', 'Three');
-    assert.equal(selfupdating.markerIn(path.join(dir, 'One.app')), 'electron-updater');
-    assert.equal(selfupdating.markerIn(path.join(dir, 'Two.app')), 'sparkle');
-    assert.equal(selfupdating.markerIn(path.join(dir, 'Three.app')), null);
+    assert.equal(selfupdating.markerIn(path.join(dir, 'One.app')), null, 'app-update.yml in an app bundle');
+    assert.equal(selfupdating.markerIn(path.join(dir, 'Two.app')), null, 'the Sparkle framework');
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -80,10 +72,10 @@ test('markerIn: inside an app bundle, app-update.yml or the Sparkle framework', 
 test('markerInTree: an unpacked download that keeps the app one folder down', () => {
   const dir = tmp();
   try {
-    electronUpdaterApp(path.join(dir, 'Thing-1.2.3'));
-    assert.equal(selfupdating.markerInTree(dir), 'electron-updater');
-    touch(dir, 'Bundles', 'Two.app', 'Contents', 'Frameworks', 'Sparkle.framework', 'Sparkle');
-    assert.equal(selfupdating.markerInTree(path.join(dir, 'Bundles')), 'sparkle', 'a folder of app bundles');
+    squirrelApp(path.join(dir, 'Chatty-1.2.3'));
+    assert.equal(selfupdating.markerInTree(dir), 'squirrel');
+    electronUpdaterApp(path.join(dir, 'Other', 'Thing-1.2.3'));
+    assert.equal(selfupdating.markerInTree(path.join(dir, 'Other')), null);
     assert.equal(selfupdating.markerInTree(path.join(dir, 'missing')), null);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
@@ -112,42 +104,20 @@ test('foldersOf: where an inventory record says the app is', () => {
   assert.deepEqual(selfupdating.foldersOf({ name: 'pkg', flavor: 'deb' }), [], 'a Linux package names no folder');
 });
 
-test('markerInFiles: a package that ships app-update.yml', () => {
-  assert.equal(selfupdating.markerInFiles(['/opt/Thing', '/opt/Thing/thing', '/opt/Thing/resources/app-update.yml']), 'electron-updater');
-  assert.equal(selfupdating.markerInFiles(['/usr/bin/obs', '/usr/share/applications/com.obsproject.Studio.desktop']), null);
-  assert.equal(selfupdating.markerInFiles(null), null);
-});
-
 // --- the decision ---------------------------------------------------------------------
 
-test('check: the tick wins both ways, then the listing, then the installed copy', async () => {
+test('check: the tick wins both ways, then the installed copy', async () => {
   const dir = tmp();
   try {
     const app = squirrelApp(path.join(dir, 'Discord'));
     const copies = [{ name: 'Discord', version: '1.0.9269', uninstall: `"${path.join(app, 'Update.exe')}" --uninstall` }];
-    assert.equal(await selfupdating.check({ updatesItself: false }, { copies, listing: true }), null, '"update it anyway"');
+    assert.equal(await selfupdating.check({ updatesItself: false }, { copies }), null, '"update it anyway"');
     assert.deepEqual(await selfupdating.check({ updatesItself: true }, {}), { by: 'you' }, 'marked by hand, nothing found');
-    assert.deepEqual(await selfupdating.check({}, { listing: true }), { by: 'listing' });
     assert.deepEqual(await selfupdating.check({}, { copies }), { by: 'squirrel' });
     assert.deepEqual(await selfupdating.check({}, { folder: path.join(dir) }), { by: 'squirrel' }, 'a kept folder, one level down');
     assert.equal(await selfupdating.check({}, { copies: [{ name: 'X', version: '1', location: path.join(dir, 'nowhere') }] }), null);
-  } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test('check: a record with no folder asks for the package\'s files, and only then', async () => {
-  const asked = [];
-  const listFiles = async (rec) => {
-    asked.push(rec.name);
-    return rec.name === 'thing' ? ['/opt/Thing/resources/app-update.yml'] : ['/usr/bin/other'];
-  };
-  assert.deepEqual(await selfupdating.check({}, { copies: [{ name: 'thing', flavor: 'deb' }], listFiles }), { by: 'electron-updater' });
-  assert.equal(await selfupdating.check({}, { copies: [{ name: 'other', flavor: 'rpm' }], listFiles }), null);
-  const dir = tmp();
-  try {
-    await selfupdating.check({}, { copies: [{ name: 'boxed', location: dir }], listFiles });
-    assert.deepEqual(asked, ['thing', 'other'], 'a record that names a folder is looked at, not asked about');
+    const bitwarden = electronUpdaterApp(path.join(dir, 'Bitwarden'));
+    assert.equal(await selfupdating.check({}, { copies: [{ name: 'Bitwarden', version: '1', location: bitwarden }] }), null, 'having an updater is not enough');
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -274,10 +244,27 @@ test('runner: a first install is never skipped, and the installed copy is not ev
 test('runner: up to date, the row still learns that the app updates itself', async () => {
   const dir = tmp();
   try {
-    await withWorld({ installed: '2.0.0', listing: true }, async () => {
+    const app = squirrelApp(path.join(dir, 'Chatty'));
+    await withWorld({ installed: '2.0.0', copies: [{ name: 'chatty', version: '2.0.0', location: app }] }, async () => {
       const r = (await runner.run({ repos: [installerEntry()] }, { mode: 'check', statePath: path.join(dir, 's.json') })).results[0];
       assert.equal(r.status, 'current');
-      assert.equal(r.updatesItself, 'listing');
+      assert.equal(r.updatesItself, 'squirrel');
+    });
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// The Mac on 2026-11-24: Bitwarden (electron-updater, Homebrew `auto_updates`) read "Updates itself".
+test('runner: an app that merely has an updater, and whose listing says so, is offered its update as usual', async () => {
+  const dir = tmp();
+  try {
+    const app = electronUpdaterApp(path.join(dir, 'Bitwarden'));
+    await withWorld({ installed: '1.0.0', copies: [{ name: 'chatty', version: '1.0.0', location: app }], listing: true }, async () => {
+      const r = (await runner.run({ repos: [installerEntry()] }, { mode: 'check', statePath: path.join(dir, 's.json') })).results[0];
+      assert.equal(r.status, 'updated');
+      assert.equal(r.updatesItself, undefined);
+      assert.equal(r.selfFound, undefined);
     });
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
@@ -288,7 +275,7 @@ test('runner: a portable app is judged by the folder git-updater keeps it in', a
   const dir = tmp();
   try {
     const folder = path.join(dir, 'thing');
-    electronUpdaterApp(path.join(folder, 'Thing-1.0.0'));
+    squirrelApp(path.join(folder, 'Thing-1.0.0'));
     const key = 'acme/thing#portable';
     const statePath = path.join(dir, 'state.json');
     fs.writeFileSync(statePath, JSON.stringify({ [key]: { tag: 'v1.0.0', version: '1.0.0', files: ['Thing-1.0.0/Thing.exe'] } }));
@@ -296,7 +283,7 @@ test('runner: a portable app is judged by the folder git-updater keeps it in', a
       const entry = { owner: 'acme', repo: 'thing', type: 'portable', asset: 'payload.zip', install: { dir: folder } };
       const r = (await runner.run({ portableRoot: dir, repos: [entry] }, { mode: 'check', statePath })).results[0];
       assert.equal(r.status, 'self');
-      assert.equal(r.updatesItself, 'electron-updater');
+      assert.equal(r.updatesItself, 'squirrel');
       assert.equal(calls.copies, 0, 'its own folder is the record; the system inventory is not asked');
     });
   } finally {
@@ -342,9 +329,9 @@ test('window: a scheduled check\'s "self" result fills the row as "self", not as
   const ctx = {};
   vm.runInNewContext(`${between('// --- background results', '// --- end of the background results block ---')}; this.merge = mergeBackgroundResults;`, ctx);
   const st = { a: { ph: 'idle' } };
-  ctx.merge(st, [{ id: 'a', status: 'self', from: '1', to: '2', updatesItself: 'listing' }]);
+  ctx.merge(st, [{ id: 'a', status: 'self', from: '1', to: '2', updatesItself: 'squirrel' }]);
   assert.equal(st.a.ph, 'self');
-  assert.equal(st.a.selfBy, 'listing');
+  assert.equal(st.a.selfBy, 'squirrel');
 });
 
 test('window: the ⋯ menu carries the "Updates itself" tick on installed rows, and Update all is not changed', () => {

@@ -66,13 +66,6 @@ async function launchTargetFor(name, flavor) {
   return p.launchTargetFor ? p.launchTargetFor(name, flavor) : null;
 }
 
-// Optional: the files an installed package owns, for inventories that list packages rather
-// than folders (Linux deb and rpm). [] means "nothing to add".
-async function packageFiles(name, flavor) {
-  const p = impl();
-  return p.packageFiles ? p.packageFiles(name, flavor) : [];
-}
-
 // Optional: the programs the operating system has on record apart from its installed-apps
 // inventory, as full paths. Only Windows has such a list (the "App Paths" registry); it names
 // the program of an app whose inventory row does not. [] means "nothing to add".
@@ -113,7 +106,6 @@ module.exports = {
   copyTree,
   verifyPayload,
   launchTargetFor,
-  packageFiles,
   registeredPrograms,
   startMenuShortcuts,
   launchApp,

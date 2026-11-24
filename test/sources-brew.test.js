@@ -107,11 +107,16 @@ test('brew: what cannot be installed or updated says why', () => {
   assert.match(brew.toRelease(cask('vlc'), arm()).provenance.note, /also updates itself/);
 });
 
-// Homebrew's own marker for an app with its own updater: the engine leaves such an app alone
-// (src/selfupdating.js), the way `brew upgrade` does by default.
-test('brew: a cask marked auto_updates says so on the release, and one that is not does not', () => {
-  assert.equal(brew.toRelease(cask('vlc'), arm()).updatesItself, true);
-  assert.equal(brew.toRelease(cask('kicad'), arm()).updatesItself, undefined);
+// Homebrew's marker for an app with its own updater is a note on the row, nothing more. It marks
+// most popular apps (Chrome, Bitwarden, Zoom), which git-updater updates as usual
+// (src/selfupdating.js; on 2026-11-24 it had turned half the rows on a Mac "Updates itself").
+test('brew: a cask marked auto_updates gets a note, and the release does not say it updates itself', () => {
+  const vlc = brew.toRelease(cask('vlc'), arm());
+  assert.equal(vlc.updatesItself, undefined);
+  assert.match(vlc.provenance.note, /this app also updates itself/);
+  const kicad = brew.toRelease(cask('kicad'), arm());
+  assert.equal(kicad.updatesItself, undefined);
+  assert.doesNotMatch(String(kicad.provenance.note || ''), /updates itself/);
 });
 
 // Three real casks from Sol's review: a variation overrides far more than the file.
