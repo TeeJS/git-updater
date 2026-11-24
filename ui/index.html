@@ -590,6 +590,13 @@
         <span class="force-warn">A forced close can lose unsaved work.</span>
       </div>
       <p class="hint">Running apps are closed gracefully, then re-opened. Apps that won't close are skipped, unless force close is on.</p>
+      <div id="adminPromptOnceBlock" hidden>
+        <div class="row" style="margin-top:.6rem">
+          <span style="color:var(--muted);font-size:.9rem;min-width:8rem">Administrator</span>
+          <label class="scan-label"><input type="checkbox" id="adminPromptOnce"> Ask for administrator permission once per update run</label>
+        </div>
+        <p class="hint">Installers that need administrator rights run together at the end, behind one Windows prompt. git-updater itself never runs as administrator; an unsigned installer still opens its own window.</p>
+      </div>
       <div class="row" style="margin-top:.6rem">
         <span style="color:var(--muted);font-size:.9rem;min-width:8rem">Downloads</span>
         <label class="scan-label"><input type="checkbox" id="downloadLimitEnabled"> Limit each download to</label>
@@ -886,6 +893,8 @@ function statusViewOf(s) {
     case 'verifying': return { text: 'Verifying SHA-256', cls: 'c-work' };
     case 'installing': return { text: 'Installing…', cls: 'c-work' };
     case 'waiting': return { text: 'Waiting for installer…', cls: 'c-work' };
+    case 'needsAdmin': return { text: 'Waiting for administrator permission', cls: 'c-work', tip: 'Its installer needs administrator rights. Windows will ask once, at the end of this run, for every app waiting like this.' };
+    case 'admin': return { text: 'Installing — approve the Windows prompt', cls: 'c-work' };
     case 'current': return datedStatus(s);
     case 'available': return s.present ? { text: 'Update available', cls: 'c-up' } : { text: 'Available to install', cls: 'c-up' };
     case 'installed': return datedStatus({ ...s, lastAction: 'installed' });
@@ -945,7 +954,7 @@ function showScreen(name) {
 const TYPE_FILTERS = ['all', 'portable', 'installer'];
 const STATUS_FILTERS = ['all', 'unchecked', 'uptodate', 'available', 'update', 'installable', 'present', 'absent', 'failed', 'working'];
 const AUTO_FILTERS = ['all', 'on', 'off'];
-const WORKING_PHASES = ['loading', 'checking', 'queued', 'downloading', 'verifying', 'installing', 'waiting'];
+const WORKING_PHASES = ['loading', 'checking', 'queued', 'downloading', 'verifying', 'installing', 'waiting', 'needsAdmin', 'admin'];
 // Case-insensitive, matches the owner, the app name, or both typed together as owner/app.
 function matchesSearch(r, text) {
   const q = String(text || '').trim().toLowerCase();
@@ -1963,6 +1972,7 @@ async function load() {
   $('selfCheckOnOpen').checked = !!config.selfCheckOnOpen;
   $('selfAutoUpdate').checked = !!config.selfAutoUpdate;
   $('autoCloseReopen').checked = !!config.autoCloseReopen;
+  $('adminPromptOnce').checked = !!config.adminPromptOnce;
   syncForceClose();
   $('downloadLimitEnabled').checked = config.downloadLimitEnabled !== false;
   $('downloadLimitMiB').value = config.downloadLimitMiB == null ? 500 : config.downloadLimitMiB;
@@ -2080,6 +2090,12 @@ function syncForceClose() {
 }
 $('autoCloseReopen').onchange = () => { config.autoCloseReopen = $('autoCloseReopen').checked; syncForceClose(); saveConfig().then(() => msg('Saved.', 'ok')); };
 $('forceClose').onchange = () => { config.forceClose = $('forceClose').checked; saveConfig().then(() => msg('Saved.', 'ok')); };
+$('adminPromptOnce').onchange = () => { config.adminPromptOnce = $('adminPromptOnce').checked; saveConfig().then(() => msg('Saved.', 'ok')); };
+// Shown only where it can work: on Windows, with the installer helper present.
+window.api
+  .getPlatform()
+  .then(({ adminPromptOnce }) => { $('adminPromptOnceBlock').hidden = !adminPromptOnce; })
+  .catch(() => {}); // an older main process without the answer keeps it hidden
 $('requireChecksum').onchange = () => { config.requireChecksum = $('requireChecksum').checked; saveConfig().then(() => msg('Saved.', 'ok')); };
 $('typePref').onchange = () => {
   if ($('typePref').value) config.typePreference = $('typePref').value; else delete config.typePreference;
@@ -2449,32 +2465,61 @@ async function runBatch(keys, force, autoClose = false) {
     try { await window.api.openApp(k); }
     catch (e) { reopenErrors.push(`${nameOfKey(k)}: ${clean(e)}`); msg(`Could not re-open ${nameOfKey(k)}: ${clean(e)}`, 'bad'); }
   }
+  // One app's result, written into its row. True when its own installer window is now open:
+  // the row is then watched until that installer finishes (and the app re-opened then).
+  function settle(k, r, wasInstall, closed) {
+    const s = st[k] || {};
+    if (!r) { st[k] = { ...s, ph: 'failed', reason: 'no result' }; failed++; }
+    else if (r.status === 'updated') { st[k] = { ...s, ...(r.fileHost ? { fileHost: r.servedFrom || r.fileHost } : {}), ...(r.checksum ? { checksum: r.checksum } : {}), ph: wasInstall ? 'installed' : 'updated', from: r.to, to: r.to, present: true, date: r.installedAt || new Date().toISOString(), lastAction: r.lastAction || (wasInstall ? 'installed' : 'updated') }; wasInstall ? installed++ : done++; }
+    else if (r.status === 'current') { st[k] = { ...s, ph: 'current', to: r.to }; }
+    else if (/installer window opened/.test(r.reason || '')) {
+      st[k] = { ...s, ph: 'waiting', to: r.to };
+      watchInstall(k, s.from, wasInstall, closed ? () => reopen(k) : undefined);
+      return true;
+    }
+    // Nothing was attempted: the row asks for a file to be chosen, which is not a failure.
+    else if (r.chooseFile) { st[k] = { ...s, ph: 'failed', reason: r.reason, chooseFile: true, to: r.to || s.to }; needChoice++; }
+    else { st[k] = { ...s, ph: 'failed', reason: r.reason }; failed++; }
+    return false;
+  }
+  // Apps whose installer needs administrator rights, set aside for the one Windows prompt at
+  // the end of this run (Settings > Updating > "Ask for administrator permission once per
+  // update run"). Empty with the setting off.
+  const admin = [];
   for (const k of keys) {
     const wasInstall = !(st[k] && st[k].present); // fresh install vs update, for the right wording
-    let closed = false, installerPending = false;
+    let closed = false, held = false; // held: not finished yet, so not re-opened yet
     try {
       const { results } = await window.api.update({ only: k, force: !!force, autoClose });
       const r = results.find((x) => (x.id || x.repo) === k) || results[0];
       closed = !!r?.closed;
-      const s = st[k] || {};
-      if (!r) { st[k] = { ...s, ph: 'failed', reason: 'no result' }; failed++; }
-      else if (r.status === 'updated') { st[k] = { ...s, ...(r.fileHost ? { fileHost: r.servedFrom || r.fileHost } : {}), ...(r.checksum ? { checksum: r.checksum } : {}), ph: wasInstall ? 'installed' : 'updated', from: r.to, to: r.to, present: true, date: r.installedAt || new Date().toISOString(), lastAction: r.lastAction || (wasInstall ? 'installed' : 'updated') }; wasInstall ? installed++ : done++; }
-      else if (r.status === 'current') { st[k] = { ...s, ph: 'current', to: r.to }; }
-      else if (/installer window opened/.test(r.reason || '')) {
-        st[k] = { ...s, ph: 'waiting', to: r.to };
-        installerPending = true;
-        watchInstall(k, s.from, wasInstall, closed ? () => reopen(k) : undefined);
-      }
-      // Nothing was attempted: the row asks for a file to be chosen, which is not a failure.
-      else if (r.chooseFile) { st[k] = { ...s, ph: 'failed', reason: r.reason, chooseFile: true, to: r.to || s.to }; needChoice++; }
-      else { st[k] = { ...s, ph: 'failed', reason: r.reason }; failed++; }
+      if (r && r.needsAdmin) {
+        st[k] = { ...(st[k] || {}), ph: 'needsAdmin', to: r.to };
+        admin.push({ k, wasInstall, closed });
+        held = true;
+      } else held = settle(k, r, wasInstall, closed);
       if (r && r.stopRun) { // same as checkApps: the rest would only fail the same way
         keys.slice(keys.indexOf(k) + 1).forEach((x) => { st[x] = { ...(st[x] || {}), ph: 'failed', reason: r.reason }; failed++; });
         renderRepos();
         break;
       }
     } catch (e) { st[k] = { ...(st[k] || {}), ph: 'failed', reason: clean(e) }; failed++; }
-    finally { if (closed && !installerPending) await reopen(k); }
+    finally { if (closed && !held) await reopen(k); }
+    renderRepos();
+  }
+  // The end of the run: Windows asks once, and every installer set aside is run.
+  if (admin.length) {
+    admin.forEach(({ k }) => { st[k] = { ...(st[k] || {}), ph: 'admin' }; });
+    renderRepos();
+    let results = [], problem = null;
+    try { ({ results } = await window.api.updateAdmin({ keys: admin.map((a) => a.k) })); }
+    catch (e) { problem = clean(e); }
+    for (const { k, wasInstall, closed } of admin) {
+      let held = false;
+      if (problem) { st[k] = { ...(st[k] || {}), ph: 'failed', reason: problem }; failed++; }
+      else held = settle(k, results.find((x) => (x.id || x.repo) === k), wasInstall, closed);
+      if (closed && !held) await reopen(k);
+    }
     renderRepos();
   }
   busy = false; renderRepos();

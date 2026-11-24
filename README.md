@@ -85,7 +85,9 @@ The tarball has no such requirement, which is why it is the recommended Linux do
   *Only install files that have a checksum*, refuses those files outright. Portable
   updates are transactional — a failed or interrupted update restores the previous version completely,
   and your settings inside the app folder survive. Installers that need admin rights fall
-  back to their own window with a normal UAC prompt.
+  back to their own window with a normal UAC prompt. On Windows, the Settings switch
+  *Ask for administrator permission once per update run* installs them together at the end
+  instead, behind one Windows prompt; git-updater itself never runs as administrator.
 - **Quiet by default.** Out of the box nothing runs at startup, nothing phones home, and
   closing the window quits — on macOS too, where it does not linger in the dock. If you would
   rather it stayed available, Settings has two switches, both off until you turn them on:

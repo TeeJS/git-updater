@@ -12,6 +12,7 @@
   "scripts": {
     "start": "electron .",
     "test": "node --test",
+    "helper": "node build/build-helper.js",
     "dist": "electron-builder --win",
     "dist:win": "electron-builder --win",
     "dist:mac": "electron-builder --mac",
@@ -44,6 +45,15 @@
       "signtoolOptions": {
         "sign": "./sign.js"
       },
+      "extraResources": [
+        {
+          "from": "helper/dist/${arch}",
+          "to": "helper",
+          "filter": [
+            "git-updater-helper.exe"
+          ]
+        }
+      ],
       "target": [
         {
           "target": "zip",
