@@ -492,10 +492,10 @@ async function computeInstalled(cfg) {
     if (r.type === 'installer') {
       let v = null;
       try {
-        v = await detect.installedVersion(core.detectName(r));
+        v = await detect.installedVersion(...core.lookupNames(r));
       } catch {}
       let date = rec.installedAt || null;
-      if (!date && v) try { date = await detect.installedDate(core.detectName(r)); } catch {}
+      if (!date && v) try { date = await detect.installedDate(...core.lookupNames(r)); } catch {}
       out[key] = { current: v, present: !!v, date: v ? date : null, lastAction: rec.lastAction || 'installed' };
     } else {
       const dir = portableDir(cfg, r);
@@ -509,7 +509,7 @@ async function computeInstalled(cfg) {
       if (!present && !current) {
         let v = null;
         try {
-          v = await detect.installedVersion(core.detectName(r));
+          v = await detect.installedVersion(...core.lookupNames(r));
         } catch {}
         if (v) {
           current = v;
@@ -517,7 +517,7 @@ async function computeInstalled(cfg) {
         }
       }
       let date = rec.installedAt || null;
-      if (!date && present) try { date = await detect.installedDate(core.detectName(r)); } catch {}
+      if (!date && present) try { date = await detect.installedDate(...core.lookupNames(r)); } catch {}
       out[key] = { current, present, date: present ? date : null, lastAction: rec.lastAction || 'installed' };
     }
   }
@@ -529,7 +529,7 @@ ipcMain.handle('installed:record-completion', async (_e, { appKey, fromVersion, 
   const r = readConfig().repos.find((x) => `${x.owner}/${x.repo}#${x.type}` === appKey);
   if (!r || r.type !== 'installer') throw new Error('installer app not found');
   detect.clearCache();
-  const version = await detect.installedVersion(core.detectName(r));
+  const version = await detect.installedVersion(...core.lookupNames(r));
   if (!version || version === fromVersion) throw new Error('installer completion not detected');
   const stt = state.load();
   const installedAt = new Date().toISOString();
@@ -607,7 +607,7 @@ async function launchApp(appKey) {
     // An installer entry, OR a portable entry with no managed copy — the app was installed
     // by hand (found in the OS inventory, e.g. Deskflow in /Applications). Either way, launch
     // it from the OS's own record.
-    const t = await detect.launchTarget(core.detectName(r));
+    const t = await detect.launchTarget(...core.lookupNames(r));
     if (t && t.path && fs.existsSync(t.path)) target = t.path;
     if (!target && t && t.location && fs.existsSync(t.location)) {
       const rel = core.pickLaunchFile(shallowFiles(t.location, 2), core.appName(r), process.platform);
@@ -782,7 +782,7 @@ const findEntry = (appKey) => {
   return r;
 };
 const hostInfo = async (entry) => ({
-  flavor: entry.type === 'installer' ? await detect.installedFlavor(core.detectName(entry)) : null,
+  flavor: entry.type === 'installer' ? await detect.installedFlavor(...core.lookupNames(entry)) : null,
   osRelease: detect.osRelease(),
 });
 

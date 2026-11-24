@@ -158,22 +158,35 @@ async function allInstalled() {
 // identity matches, which is what an entry's `detect` field carries for such an app.
 const sameIdentity = (name, needle) => String(name || '').toLowerCase() === String(needle || '').trim().toLowerCase();
 
-async function matchEntries(needle) {
-  return (await allInstalled()).filter((e) => (e.packaged ? sameIdentity(e.name, needle) : sameApp(e.name, needle)));
+// `alias` is a second name, tried only when `needle` finds nothing, and only as an EXACT
+// match: the same letters and digits, bracketed notes dropped. It is a GitHub entry's owner
+// (see core.lookupNames): music-assistant/desktop-app is installed as "Music Assistant", and
+// nothing on the PC is called "desktop-app". Exact, because loosely "google" would match
+// Google Chrome and "microsoft" half of the PC.
+const exactly = (name, alias) => {
+  const a = norm(alias);
+  return a.length >= 2 && (norm(name) === a || norm(withoutNotes(name)) === a);
+};
+
+async function matchEntries(needle, alias = null) {
+  const all = await allInstalled();
+  const hits = all.filter((e) => (e.packaged ? sameIdentity(e.name, needle) : sameApp(e.name, needle)));
+  if (hits.length || !alias) return hits;
+  return all.filter((e) => !e.packaged && exactly(e.name, alias));
 }
 
 // Best version for an app whose inventory name matches `needle`. An app can have
 // several entries (e.g. an old EXE install alongside a newer MSI install, or a deb
 // and a flatpak) — report the highest version. null = not installed.
-async function installedVersion(needle) {
-  const hits = await matchEntries(needle);
+async function installedVersion(needle, alias = null) {
+  const hits = await matchEntries(needle, alias);
   if (!hits.length) return null;
   return hits.map((h) => h.version).sort(cmpVersion).pop();
 }
 
 // Date of the highest-versioned matching OS install, when its inventory provides one.
-async function installedDate(needle) {
-  const hits = await matchEntries(needle);
+async function installedDate(needle, alias = null) {
+  const hits = await matchEntries(needle, alias);
   if (!hits.length) return null;
   hits.sort((a, b) => cmpVersion(a.version, b.version));
   return hits[hits.length - 1].installDate || null;
@@ -182,8 +195,8 @@ async function installedDate(needle) {
 // How is the app currently installed — 'msi'/'exe' on Windows, 'deb'/'rpm'/'flatpak'/
 // 'snap' on Linux, 'app' on macOS? null when not installed. Used to pick the SAME
 // package format on update, so a second copy never lands beside the first.
-async function installedFlavor(needle) {
-  const hits = await matchEntries(needle);
+async function installedFlavor(needle, alias = null) {
+  const hits = await matchEntries(needle, alias);
   if (!hits.length) return null;
   hits.sort((a, b) => cmpVersion(a.version, b.version));
   return hits[hits.length - 1].flavor || null;
@@ -192,8 +205,8 @@ async function installedFlavor(needle) {
 // Every inventory record of the installed app, highest version first: [{ name, version,
 // flavor, path?, location?, uninstall? }]. [] when not installed. src/selfupdating.js looks in
 // the folders these name for an updater of the app's own.
-async function installedCopies(needle) {
-  const hits = await matchEntries(needle);
+async function installedCopies(needle, alias = null) {
+  const hits = await matchEntries(needle, alias);
   return hits.slice().sort((a, b) => cmpVersion(b.version, a.version));
 }
 
@@ -222,8 +235,8 @@ const isSetupFile = (file) => {
 //      the visible "PowerToys (Preview) x64" (the setup's icon, no folder) and a hidden
 //      "PowerToys (Preview)" (no icon, C:\Program Files\PowerToys). So when the chosen row
 //      has no folder, the newest row that has one supplies it.
-async function launchTarget(needle) {
-  const hits = await matchEntries(needle);
+async function launchTarget(needle, alias = null) {
+  const hits = await matchEntries(needle, alias);
   if (!hits.length) return null;
   hits.sort((a, b) => cmpVersion(a.version, b.version));
   const best = hits[hits.length - 1];
