@@ -890,6 +890,26 @@ function statusGroup(s) {
 const passedOverNote = (s) => (s.newerWithoutFile && s.to
   ? `Version ${s.newerWithoutFile} is out, but it has no file for this computer. ${s.to} is the newest version that does.`
   : '');
+// An app that keeps itself up to date is left to its own updater (src/selfupdating.js). Its row
+// says why, what is out, and how to let git-updater update it after all.
+const SELF_WHY = {
+  squirrel: 'It has its own updater built in.',
+  'electron-updater': 'It has its own updater built in.',
+  sparkle: 'It has its own updater built in.',
+  listing: 'Its listing says it updates itself.',
+  you: 'You marked it as updating itself.',
+};
+function selfTip(s) {
+  const who = s.selfName || 'This app';
+  return [
+    `${who} keeps itself up to date. git-updater leaves it alone so the two updaters don't clash.`,
+    SELF_WHY[s.selfBy] || '',
+    s.to && s.to !== s.from ? `Version ${s.to} is out; ${who} installs it itself.` : '',
+    'To let git-updater update it, untick "Updates itself" in its ⋯ menu.',
+  ].filter(Boolean).join('\n');
+}
+// What a check or run result says about this, kept on the row for its tooltip and its ⋯ tick.
+const selfOf = (k, r) => ({ selfBy: (r && r.updatesItself) || null, selfFound: (r && r.selfFound) || null, selfName: nameOfKey(k) });
 function statusView(s) {
   const v = statusViewOf(s);
   const note = ['current', 'available', 'installed', 'updated'].includes(s.ph) ? passedOverNote(s) : '';
@@ -910,6 +930,8 @@ function statusViewOf(s) {
     case 'available': return s.present ? { text: 'Update available', cls: 'c-up' } : { text: 'Available to install', cls: 'c-up' };
     case 'installed': return datedStatus({ ...s, lastAction: 'installed' });
     case 'updated': return datedStatus({ ...s, lastAction: 'updated' });
+    // Left to the app's own updater on purpose: not an update to take, and not an error.
+    case 'self': return { text: 'Updates itself', cls: 'c-muted', tip: selfTip(s) };
     // Not an error to read but a decision to make: the row's button becomes "Choose…".
     case 'failed': return s.chooseFile ? { text: 'Choose a download', cls: 'c-warn', tip: s.reason } : { text: s.reason || 'Failed', cls: 'c-bad' };
     default: return s.present ? { text: 'Not checked', cls: 'c-muted' } : { text: 'Not installed', cls: 'c-warn' };
@@ -937,7 +959,7 @@ function mergeBackgroundResults(st, results) {
   for (const r of results || []) {
     const s = st[r.id];
     if (!s || s.ph !== 'idle' || r.status === 'failed') continue;
-    st[r.id] = { ...s, ph: r.status === 'current' ? 'current' : 'available', from: r.from || s.from, to: r.to, ...(r.newerWithoutFile ? { newerWithoutFile: r.newerWithoutFile } : {}) };
+    st[r.id] = { ...s, ...(r.updatesItself ? { selfBy: r.updatesItself } : {}), ...(r.selfFound ? { selfFound: r.selfFound } : {}), ph: r.status === 'current' ? 'current' : r.status === 'self' ? 'self' : 'available', from: r.from || s.from, to: r.to, ...(r.newerWithoutFile ? { newerWithoutFile: r.newerWithoutFile } : {}) };
     n++;
   }
   return n;
@@ -1142,7 +1164,7 @@ function syncCompact() {
 // update. While something is happening to the app, or it failed, that is said instead, because
 // in this view the status is otherwise only a coloured dot.
 function compactVersions(s, sv) {
-  if (sv.cls === 'c-work' || s.ph === 'failed') {
+  if (sv.cls === 'c-work' || s.ph === 'failed' || s.ph === 'self') {
     const say = el('span', 'cv say ' + sv.cls, sv.text);
     say.title = sv.tip || sv.text;
     return say;
@@ -1423,6 +1445,21 @@ function openMenu(r, anchor) {
     renderRepos();
     msg(`Auto-update is ${r.autoUpdate ? 'on' : 'off'} for ${shortName(r)}.`, 'ok');
   });
+  // "Updates itself" (src/selfupdating.js): ticked, git-updater leaves the app to its own updater.
+  // It starts ticked when the app's copy shows an updater of its own. Setting it back to what
+  // was found removes the choice, so the app follows what is found again.
+  if (s.present) {
+    const found = !!s.selfFound;
+    const on = r.updatesItself === true || (r.updatesItself !== false && found);
+    item(`${on ? '☑' : '☐'} Updates itself`, () => {
+      const next = !on;
+      if (next === found) delete r.updatesItself; else r.updatesItself = next;
+      // Re-checked so the row shows what the choice means; said after the check's own message.
+      saveConfig()
+        .then(() => checkApps([key]))
+        .then(() => msg(next ? `git-updater will leave ${shortName(r)} alone — it updates itself.` : `git-updater will update ${shortName(r)} again.`, 'ok'));
+    });
+  }
   if (catsOn()) {
     const cur = catOf(r);
     listCats().filter((c) => c !== cur).forEach((c) => item(`Move to ${c.name}`, () => moveToCategory(r, c.name)));
@@ -2478,7 +2515,7 @@ async function checkApps(keys) {
         const prov = { ...(r.fileHost ? { fileHost: r.servedFrom || r.fileHost } : {}), ...(r.checksum ? { checksum: r.checksum } : {}) };
         // A row that needs a file chosen still knows its versions, so it keeps showing them.
         if (r.status === 'failed') st[k] = { ...s, ...prov, ph: 'failed', reason: r.reason, chooseFile: !!r.chooseFile, ...(r.chooseFile ? { from: r.from || s.from, to: r.to || s.to } : {}) };
-        else st[k] = { ...s, ...prov, ph: r.status === 'current' ? 'current' : 'available', from: r.from || s.from, to: r.to, present: s.present, newerWithoutFile: r.newerWithoutFile || null };
+        else st[k] = { ...s, ...prov, ...selfOf(k, r), ph: r.status === 'current' ? 'current' : r.status === 'self' ? 'self' : 'available', from: r.from || s.from, to: r.to, present: s.present, newerWithoutFile: r.newerWithoutFile || null };
       }
       renderRepos();
       // Rate-limited (or a bad token): every remaining call would fail the same way and
@@ -2513,7 +2550,7 @@ async function runBatch(keys, force, autoClose = false) {
   holdVisible(); // before the statuses change, so rows do not vanish from a filtered list mid-run
   busy = true;
   keys.forEach((k) => (st[k] = { ...(st[k] || {}), ph: 'queued', chooseFile: false })); renderRepos();
-  let done = 0, installed = 0, failed = 0, needChoice = 0;
+  let done = 0, installed = 0, failed = 0, needChoice = 0, leftAlone = 0;
   const reopenErrors = [];
   async function reopen(k) {
     try { await window.api.openApp(k); }
@@ -2525,7 +2562,9 @@ async function runBatch(keys, force, autoClose = false) {
     const s = st[k] || {};
     if (!r) { st[k] = { ...s, ph: 'failed', reason: 'no result' }; failed++; }
     else if (r.status === 'updated') { st[k] = { ...s, ...(r.fileHost ? { fileHost: r.servedFrom || r.fileHost } : {}), ...(r.checksum ? { checksum: r.checksum } : {}), ph: wasInstall ? 'installed' : 'updated', from: r.to, to: r.to, present: true, date: r.installedAt || new Date().toISOString(), lastAction: r.lastAction || (wasInstall ? 'installed' : 'updated') }; wasInstall ? installed++ : done++; }
-    else if (r.status === 'current') { st[k] = { ...s, ph: 'current', to: r.to }; }
+    else if (r.status === 'current') { st[k] = { ...s, ph: 'current', to: r.to, ...selfOf(k, r) }; }
+    // Left to its own updater: nothing was attempted, and nothing failed.
+    else if (r.status === 'self') { st[k] = { ...s, ph: 'self', from: r.from || s.from, to: r.to, ...selfOf(k, r) }; leftAlone++; }
     else if (/installer window opened/.test(r.reason || '')) {
       st[k] = { ...s, ph: 'waiting', to: r.to };
       watchInstall(k, s.from, wasInstall, closed ? () => reopen(k) : undefined);
@@ -2584,6 +2623,7 @@ async function runBatch(keys, force, autoClose = false) {
   if (waiting) parts.push(`${waiting} waiting for its installer window`);
   if (failed) parts.push(`${failed} failed`);
   if (needChoice) parts.push(`${needChoice} need${needChoice === 1 ? 's' : ''} a download chosen`);
+  if (leftAlone) parts.push(`${leftAlone} left alone because ${leftAlone === 1 ? 'it updates itself' : 'they update themselves'}`);
   if (reopenErrors.length) parts.push(`${reopenErrors.length} could not be re-opened: ${reopenErrors.join('; ')}`);
   msg(parts.length ? parts.join(', ') + '.' : 'Nothing to update.', failed || needChoice || reopenErrors.length ? 'bad' : 'ok');
 }

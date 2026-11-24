@@ -222,6 +222,9 @@ function toRelease(base, ctx) {
       publisher: publisherOf(cask),
       ...(notes.length ? { note: notes.join('; ') } : {}),
     },
+    // Homebrew's own marker for an app with an updater of its own; `brew upgrade` skips these
+    // by default for the same reason git-updater leaves them alone (src/selfupdating.js).
+    ...(cask.auto_updates ? { updatesItself: true } : {}),
   };
 
   if (eff.unsupported) {

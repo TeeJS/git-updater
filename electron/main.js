@@ -252,9 +252,10 @@ async function backgroundCheck() {
   const config = core.validateConfig(readConfig());
   const out = await runner.run(config, { mode: 'check' });
   applyRetypes(out.results);
-  const results = (out.results || []).map((r) => ({ id: r.id, status: r.status, from: r.from, to: r.to, reason: r.reason }));
-  // In a check, "current" is up to date, "failed" is an error and anything else is an update.
-  const updates = results.filter((r) => r.status !== 'failed' && r.status !== 'current').length;
+  const results = (out.results || []).map((r) => ({ id: r.id, status: r.status, from: r.from, to: r.to, reason: r.reason, updatesItself: r.updatesItself, selfFound: r.selfFound }));
+  // In a check, "current" is up to date, "self" updates itself (left alone), "failed" is an
+  // error and anything else is an update.
+  const updates = results.filter((r) => r.status !== 'failed' && r.status !== 'current' && r.status !== 'self').length;
   const failed = results.filter((r) => r.status === 'failed').length;
   lastBackground = { at: new Date().toISOString(), results };
   log(`scheduled check: ${results.length} apps, ${updates} with updates, ${failed} failed`);

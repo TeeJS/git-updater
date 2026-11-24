@@ -1,0 +1,45 @@
+# Apps that update themselves are left alone (PROJECT-self-updating-apps.md, src/selfupdating.js).
+#
+# One rule on every platform, so its tests run on all three: each marker is built as a real
+# folder on the runner, and the engine and the window are checked to give the same answer for
+# Check, Update, Update all, the schedule and the sign-in run.
+
+name: Apps that update themselves
+
+on:
+  pull_request:
+    paths:
+      - src/selfupdating.js
+      - src/runner.js
+      - src/detect.js
+      - src/autoupdate.js
+      - src/core.js
+      - src/platform/**
+      - src/sources/brew.js
+      - ui/index.html
+      - test/selfupdating.test.js
+      - test/sources-brew.test.js
+      - test/ui-schedule.test.js
+      - test/autoupdate.test.js
+      - .github/workflows/self-updating.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: The rule, the markers, and every run that uses them
+        run: node --test test/selfupdating.test.js test/sources-brew.test.js test/ui-schedule.test.js test/autoupdate.test.js

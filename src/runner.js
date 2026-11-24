@@ -14,6 +14,8 @@ const elevate = require('./elevate');
 const state = require('./state');
 const detect = require('./detect');
 const sources = require('./sources');
+const platform = require('./platform');
+const selfupdating = require('./selfupdating');
 const { log } = require('./log');
 
 // Display id ("owner/repo") vs storage/identity key (adds the type, so the same repo
@@ -207,6 +209,31 @@ async function preflight(repo, rel, ctx, o) {
   return { asset, sum };
 }
 
+// Does this installed app keep itself up to date? (src/selfupdating.js)
+//   -> { found, decision }  found: what its copy shows, ignoring the user's tick ({ by } | null);
+//                           decision: what happens, the tick applied ({ by } | null).
+// Both go to the window: the row's "Updates itself" tick needs to know what was found, so that
+// unticking and ticking again returns the app to "decided by what was found".
+// The installed copy is looked at wherever it is: the folder git-updater keeps a portable app
+// in, otherwise the operating system's record of the install. The same on every platform.
+async function updatesItself(repo, rel, externallyInstalled) {
+  const folder = repo.type === 'portable' && !externallyInstalled && repo.install && repo.install.dir ? repo.install.dir : null;
+  let copies = [];
+  if (!folder) {
+    try {
+      copies = await detect.installedCopies(core.detectName(repo));
+    } catch {}
+  }
+  const found = await selfupdating.check({ ...repo, updatesItself: undefined }, {
+    listing: !!(rel && rel.updatesItself),
+    copies,
+    folder,
+    listFiles: (rec) => platform.packageFiles(rec.name, rec.flavor),
+  });
+  const decision = repo.updatesItself === false ? null : repo.updatesItself === true ? { by: 'you' } : found;
+  return { found, decision };
+}
+
 function dirHasFiles(dir) {
   try {
     return !!dir && fs.existsSync(dir) && fs.readdirSync(dir).length > 0;
@@ -323,11 +350,27 @@ async function handleRepo(repo, id, st, opts) {
   }
 
   const fromV = installed ? core.normTag(installed) : prev.tag && core.normTag(prev.tag);
+  // An app on this machine that keeps itself up to date is left to its own updater (see
+  // src/selfupdating.js). Worked out for an up-to-date row too, so the window can show the
+  // row's "Updates itself" tick. Never for an app that is not installed: a first install goes ahead.
+  const own = installed ? await updatesItself(repo, rel, externallyInstalled) : { found: null, decision: null };
+  const self = own.decision;
+  const selfInfo = {
+    ...(own.decision ? { updatesItself: own.decision.by } : {}),
+    ...(own.found ? { selfFound: own.found.by } : {}),
+  };
   if (!isNew && !opts.force) {
-    return { repo: id, id: key, status: 'current', from: fromV, to: core.normTag(latest), ...src, ...(retyped ? { retyped, note: retyped.note } : {}) };
+    return { repo: id, id: key, status: 'current', from: fromV, to: core.normTag(latest), ...src, ...selfInfo, ...(retyped ? { retyped, note: retyped.note } : {}) };
   }
 
-  const base = { repo: id, id: key, from: fromV, to: core.normTag(latest), ...src };
+  const base = { repo: id, id: key, from: fromV, to: core.normTag(latest), ...src, ...selfInfo };
+
+  // Same answer for Check, Update, Update all, the schedule and the sign-in run, and for a forced
+  // reinstall: the row's "Updates itself" tick is the one way to let git-updater update it.
+  if (self) {
+    if (opts.mode !== 'check' && !opts.dryRun) log(`SKIP ${key}: ${core.appName(repo)} updates itself (${self.by})`);
+    return { ...base, status: 'self', reason: `${core.appName(repo)} updates itself` };
+  }
 
   // A selection failure that choosing a file by hand would fix (nothing fits automatically,
   // or a saved choice stopped matching — see sources.selectAsset) is a row state, not an
