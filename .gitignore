@@ -8,3 +8,4 @@ state.json
 .server.log
 # Trusted Signing dlib + metadata (3rd-party binaries; re-fetch per machine — see sign.js)
 .signing/
+helper/target/
