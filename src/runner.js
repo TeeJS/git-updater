@@ -561,8 +561,8 @@ async function handleRepo(repo, id, st, opts) {
           throw new Error(`needs you: ${core.appName(repo)}'s installer needs administrator permission, so it was not run unattended. Update it from the window.`);
         }
         // "Ask for administrator permission once per update run" is on (opts.setAside is only
-        // given then, and only on Windows): keep the installer and carry on. When the run is
-        // over, everything set aside is run together behind one Windows prompt (see
+        // given then, and only where it can work: Windows, or Linux with apt-get): keep the installer and carry on. When the run is
+        // over, everything set aside is run together behind one prompt (see
         // src/elevate.js). An installer the helper cannot take still opens its own window.
         if ((e.status === 1603 || e.elevation) && opts.setAside) {
           const kept = await elevate.setAsideEntry(file, stageBase, spec);

@@ -595,7 +595,7 @@
           <span style="color:var(--muted);font-size:.9rem;min-width:8rem">Administrator</span>
           <label class="scan-label"><input type="checkbox" id="adminPromptOnce"> Ask for administrator permission once per update run</label>
         </div>
-        <p class="hint">Installers that need administrator rights run together at the end, behind one Windows prompt. git-updater itself never runs as administrator; an unsigned installer still opens its own window.</p>
+        <p class="hint" id="adminPromptOnceHint">Installers that need administrator rights run together at the end, behind one Windows prompt. git-updater itself never runs as administrator; an unsigned installer still opens its own window.</p>
       </div>
       <div class="row" style="margin-top:.6rem">
         <span style="color:var(--muted);font-size:.9rem;min-width:8rem">Downloads</span>
@@ -893,8 +893,8 @@ function statusViewOf(s) {
     case 'verifying': return { text: 'Verifying SHA-256', cls: 'c-work' };
     case 'installing': return { text: 'Installing…', cls: 'c-work' };
     case 'waiting': return { text: 'Waiting for installer…', cls: 'c-work' };
-    case 'needsAdmin': return { text: 'Waiting for administrator permission', cls: 'c-work', tip: 'Its installer needs administrator rights. Windows will ask once, at the end of this run, for every app waiting like this.' };
-    case 'admin': return { text: 'Installing — approve the Windows prompt', cls: 'c-work' };
+    case 'needsAdmin': return { text: 'Waiting for administrator permission', cls: 'c-work', tip: adminPromptKind === 'linux' ? 'Its package needs root. You are asked for your password once, at the end of this run, for every app waiting like this.' : 'Its installer needs administrator rights. Windows will ask once, at the end of this run, for every app waiting like this.' };
+    case 'admin': return { text: adminPromptKind === 'linux' ? 'Installing — enter your password in the prompt' : 'Installing — approve the Windows prompt', cls: 'c-work' };
     case 'current': return datedStatus(s);
     case 'available': return s.present ? { text: 'Update available', cls: 'c-up' } : { text: 'Available to install', cls: 'c-up' };
     case 'installed': return datedStatus({ ...s, lastAction: 'installed' });
@@ -904,6 +904,9 @@ function statusViewOf(s) {
     default: return s.present ? { text: 'Not checked', cls: 'c-muted' } : { text: 'Not installed', cls: 'c-warn' };
   }
 }
+// Which administrator prompt this machine shows: "windows" (its own prompt), or "linux" (the
+// desktop's password prompt). Set once, from what the app reports (see adminPromptOnce below).
+let adminPromptKind = 'windows';
 function primaryAction(s) {
   if (s.ph === 'waiting') return 'Check';
   if (s.ph === 'failed') return 'Retry';
@@ -2091,10 +2094,18 @@ function syncForceClose() {
 $('autoCloseReopen').onchange = () => { config.autoCloseReopen = $('autoCloseReopen').checked; syncForceClose(); saveConfig().then(() => msg('Saved.', 'ok')); };
 $('forceClose').onchange = () => { config.forceClose = $('forceClose').checked; saveConfig().then(() => msg('Saved.', 'ok')); };
 $('adminPromptOnce').onchange = () => { config.adminPromptOnce = $('adminPromptOnce').checked; saveConfig().then(() => msg('Saved.', 'ok')); };
-// Shown only where it can work: on Windows, with the installer helper present.
+// Shown only where it can work: on Windows with the installer helper present, or on Linux
+// with pkexec and apt-get.
 window.api
   .getPlatform()
-  .then(({ adminPromptOnce }) => { $('adminPromptOnceBlock').hidden = !adminPromptOnce; })
+  .then(({ adminPromptOnce, platform }) => {
+    $('adminPromptOnceBlock').hidden = !adminPromptOnce;
+    // Linux has no Windows prompt: the desktop asks for the password, and apt-get installs.
+    if (platform === 'linux') {
+      adminPromptKind = 'linux';
+      $('adminPromptOnceHint').textContent = 'Packages (.deb) that need root are installed together at the end, behind one password prompt. git-updater itself never runs as root.';
+    }
+  })
   .catch(() => {}); // an older main process without the answer keeps it hidden
 $('requireChecksum').onchange = () => { config.requireChecksum = $('requireChecksum').checked; saveConfig().then(() => msg('Saved.', 'ok')); };
 $('typePref').onchange = () => {

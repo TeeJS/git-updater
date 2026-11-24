@@ -56,15 +56,21 @@ function sha256(file) {
 // Keep a copy of a downloaded installer for the administrator run (the download folder is
 // removed when the app's own run ends) and describe it for the helper. Returns
 // { item, file, keepDir }, or null when this installer is not one the helper can take.
+//
+// A Linux .deb is taken too (kind 'deb'): there is no helper there, the system's own apt-get
+// installs it (finishLinux below). apt-get takes no installer switches, so a .deb the user
+// pinned dpkg switches for keeps its own route.
 async function setAsideEntry(file, stageBase, spec) {
-  const switches = switchesFor(spec);
+  const deb = !!spec && spec.kind === 'deb';
+  if (deb && ((spec.args && spec.args.length) || spec.rawArgs)) return null;
+  const switches = deb ? { kind: 'deb' } : switchesFor(spec);
   if (!switches) return null;
   const keepDir = fs.mkdtempSync(path.join(stageBase, 'admin-'));
   const keep = path.join(keepDir, path.basename(file));
   try {
     fs.copyFileSync(file, keep);
     const item = { file: keep, sha256: await sha256(keep), ...switches };
-    helper.jobText([item]); // throws now, not at the prompt, if the helper would refuse the job
+    if (!deb) helper.jobText([item]); // throws now, not at the prompt, if the helper would refuse the job
     return { item, file: keep, keepDir };
   } catch (e) {
     discard({ keepDir });
@@ -126,6 +132,7 @@ const TIMEOUT_SECS = 600; // per installer: the same ten minutes a normal silent
 async function finish(entries, opts = {}) {
   const out = new Map();
   if (!entries.length) return out;
+  if (opts.linux) return finishLinux(entries, opts);
   const { helperPath, stageBase, spawn } = opts;
   const handedOver = new Set(); // opened in their own window: that window is using the file
   const ownWindow = (e, why) => {
@@ -208,4 +215,183 @@ async function finish(entries, opts = {}) {
   }
 }
 
-module.exports = { switchesFor, setAsideEntry, discard, finish, runHelper, exitReason, DECLINED, TIMEOUT_SECS };
+// ---------------------------------------------------------------------------------------------
+// Linux (Debian and Ubuntu family): one password prompt, through polkit's pkexec.
+// PROJECT-linux-one-password-prompt.md.
+//
+// There is no helper program here. git-updater starts ONE command,
+//
+//     pkexec --disable-internal-agent /bin/sh -c <ADMIN_SCRIPT> git-updater-admin <limit> <sha256> <file> ...
+//
+// and the desktop shows its normal password prompt. As root, the script below installs each
+// package in turn with the system's own apt-get. git-updater never sees the password, and
+// nothing is installed on the system to make this work: no polkit rule, no service, no
+// root-owned file.
+//
+// Why a script and not `pkexec apt-get install a.deb b.deb`: that is one transaction, so one
+// package with a missing dependency fails every other one; apt cannot be told not to ask
+// questions (that is an environment variable, and pkexec clears the environment); and a hung
+// install could never be stopped, because git-updater cannot signal a root process. The
+// script gives each package its own run, its own time limit and its own result.
+//
+// What the copy and the hash check are worth, plainly: they narrow the window in which
+// another program running as this user could swap a file between the download check and the
+// install. They do not close it — on Linux git-updater lives in a folder the user can write
+// and is not signed, so such a program could change git-updater itself. The password prompt
+// is the real gate, as with sudo.
+// ---------------------------------------------------------------------------------------------
+
+// POSIX sh (dash on Debian and Ubuntu): no bashisms. Runs as root, so it uses a fixed PATH and
+// only the system's own tools. Arguments: <limit seconds> then one <sha256> <file> pair per
+// package. Prints, for each package by position:
+//     result <n> exit <code>     apt-get's exit status (0 = installed; 124/137 = time limit)
+//     result <n> copy            the file could not be copied
+//     result <n> hash            the copy is not the file that was downloaded
+//     reason <n> <text>          up to three lines of apt's own explanation, on failure
+// between the lines "git-updater-admin 1" and "git-updater-admin done".
+const ADMIN_SCRIPT = String.raw`PATH=/usr/sbin:/usr/bin:/sbin:/bin
+export PATH
+DEBIAN_FRONTEND=noninteractive
+export DEBIAN_FRONTEND
+umask 022
+limit=$1
+shift
+dir=$(mktemp -d /var/tmp/git-updater-admin.XXXXXXXX) || exit 70
+trap 'rm -rf "$dir"' EXIT
+chmod 755 "$dir"
+echo "git-updater-admin 1"
+i=0
+while [ "$#" -ge 2 ]; do
+  sum=$1
+  src=$2
+  shift 2
+  copy="$dir/$i.deb"
+  if ! cp -- "$src" "$copy" 2>/dev/null; then
+    echo "result $i copy"
+  elif [ "$(sha256sum < "$copy" | cut -c1-64)" != "$sum" ]; then
+    echo "result $i hash"
+  else
+    out=$(timeout -k 30 "$limit" apt-get install -y -q -o DPkg::Lock::Timeout=120 -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold "$copy" </dev/null 2>&1)
+    code=$?
+    if [ "$code" -ne 0 ]; then
+      printf '%s\n' "$out" | grep -E '^(E:|dpkg: error| .*(Depends|Conflicts|Breaks):)' | head -n 3 | while IFS= read -r line; do
+        echo "reason $i $line"
+      done
+    fi
+    echo "result $i exit $code"
+  fi
+  rm -f "$copy"
+  i=$((i+1))
+done
+echo "git-updater-admin done"
+exit 0
+`;
+
+// pkexec(1): 126 = the user dismissed the password prompt. 127 = not authorized, the password
+// was not accepted, or no prompt could be shown at all.
+const PKEXEC_DISMISSED = 126;
+
+// Where the tools live. Fixed system folders only, never the user's PATH: what runs as root
+// is the system's own pkexec, sh and apt-get. null when this is not Linux or one is missing
+// (an rpm system has no apt-get) — the setting is then not offered and nothing is set aside.
+const LINUX_DIRS = ['/usr/bin', '/bin', '/usr/sbin', '/sbin'];
+function linuxTools(exists = fs.existsSync, platform = process.platform) {
+  if (platform !== 'linux') return null;
+  const find = (name) => LINUX_DIRS.map((d) => `${d}/${name}`).find((f) => exists(f)) || null;
+  const pkexec = find('pkexec');
+  const sh = find('sh');
+  return pkexec && sh && find('apt-get') ? { pkexec, sh } : null;
+}
+
+// What the script printed, as one answer per package: { kind: 'exit', code } | { kind: 'copy' }
+// | { kind: 'hash' }, each with `reasons`, or null for a package it never reached. Returns null
+// when the script never started (its first line is missing): no permission, or no prompt.
+function parseAdminOutput(text, count) {
+  const lines = String(text || '').split(/\r?\n/);
+  if (!lines.includes('git-updater-admin 1')) return null;
+  const results = new Array(count).fill(null);
+  const reasons = new Map();
+  for (const line of lines) {
+    const why = /^reason (\d+) (.*)$/.exec(line);
+    if (why) {
+      const n = Number(why[1]);
+      reasons.set(n, [...(reasons.get(n) || []), why[2].trim()]);
+      continue;
+    }
+    const m = /^result (\d+) (copy|hash|exit (\d+))$/.exec(line);
+    if (!m || Number(m[1]) >= count) continue;
+    results[Number(m[1])] = m[3] === undefined ? { kind: m[2] } : { kind: 'exit', code: Number(m[3]) };
+  }
+  results.forEach((r, n) => { if (r) r.reasons = reasons.get(n) || []; });
+  return results;
+}
+
+// A package apt-get would not install, in the words a row shows. apt's own explanation is the
+// useful part ("Depends: libfoo but it is not installable"), so a dependency line is preferred
+// over its closing summary.
+function linuxReason(r) {
+  if (r.kind === 'copy') return REFUSED[CODES.copyFailed];
+  if (r.kind === 'hash') return REFUSED[CODES.hashMismatch];
+  if (r.code === 124 || r.code === 137) return REFUSED[CODES.timedOut];
+  const line = r.reasons.find((l) => /(Depends|Conflicts|Breaks):/.test(l)) || r.reasons[0];
+  if (!line) return `the package could not be installed (apt-get exit ${r.code})`;
+  return `the package could not be installed: ${line.replace(/^E:\s*/, '').slice(0, 200)}`;
+}
+
+// finish() for Linux. Same contract: every entry gets a result, and nothing throws.
+async function finishLinux(entries, opts) {
+  const out = new Map();
+  const { linux, spawn } = opts;
+  const handedOver = new Set(); // opened in their own window: that window is using the file
+  const ownWindow = (e, why) => {
+    log(`  ${e.key}: ${why}; opening its own installer window instead`);
+    try {
+      out.set(e.key, e.ownWindow());
+      handedOver.add(e);
+    } catch (err) {
+      out.set(e.key, e.fail(err.message));
+    }
+  };
+  try {
+    const args = ['--disable-internal-agent', linux.sh, '-c', ADMIN_SCRIPT, 'git-updater-admin', String(opts.timeoutSecs || TIMEOUT_SECS)];
+    for (const e of entries) args.push(e.item.sha256, e.item.file);
+    log(`administrator run: ${entries.length} package(s) — ${entries.map((e) => e.key).join(', ')}`);
+    const ran = await runHelper(linux.pkexec, args, spawn);
+    const results = parseAdminOutput(ran.stdout, entries.length);
+    if (!results) {
+      if (ran.code === PKEXEC_DISMISSED) {
+        log('administrator run: the password prompt was dismissed');
+        for (const e of entries) out.set(e.key, e.fail(DECLINED));
+      } else {
+        // No prompt could be shown (no polkit agent in this session), or the password was not
+        // accepted. Either way today's route still works: the desktop's own package installer.
+        const problem = ran.error ? ran.error.message : `pkexec exit ${ran.code}`;
+        for (const e of entries) ownWindow(e, `the one password prompt could not be used (${problem})`);
+      }
+      return out;
+    }
+    entries.forEach((e, i) => {
+      const r = results[i];
+      log(`  ${e.key}: ${!r ? 'not reached' : r.kind === 'exit' ? `apt-get exit ${r.code}` : r.kind}`);
+      if (!r) out.set(e.key, e.fail('the administrator run stopped before this installer — Retry'));
+      else if (r.kind === 'exit' && r.code === 0) {
+        try {
+          out.set(e.key, e.succeed());
+        } catch (err) {
+          out.set(e.key, e.fail(err.message));
+        }
+      } else out.set(e.key, e.fail(linuxReason(r)));
+    });
+    return out;
+  } catch (err) {
+    for (const e of entries) if (!out.has(e.key)) ownWindow(e, `the administrator run could not be prepared (${err.message})`);
+    return out;
+  } finally {
+    for (const e of entries) if (!handedOver.has(e)) discard(e);
+  }
+}
+
+module.exports = {
+  switchesFor, setAsideEntry, discard, finish, runHelper, exitReason, DECLINED, TIMEOUT_SECS,
+  linuxTools, parseAdminOutput, linuxReason, ADMIN_SCRIPT, PKEXEC_DISMISSED,
+};

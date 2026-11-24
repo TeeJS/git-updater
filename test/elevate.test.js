@@ -353,7 +353,7 @@ function appHandlers({ config, helperThere = true }) {
     shell: { openPath: () => {} },
     path,
     paths: { dataDir: () => 'C:\\data' },
-    installerHelperPath: () => (helperThere ? 'C:\\app\\resources\\helper\\git-updater-helper.exe' : null),
+    adminRun: () => (helperThere ? { helperPath: 'C:\\app\\resources\\helper\\git-updater-helper.exe' } : null),
     runner: {
       run: async (_config, opts) => {
         seen.runs.push(opts);
@@ -417,7 +417,7 @@ test('app: the scheduled run is never given the setting, and the window can reac
   assert.ok(scheduled.length >= 1);
   for (const line of scheduled) assert.ok(!line.includes('setAside'), line.trim());
   assert.match(preloadSrc, /updateAdmin: \(body\) => ipcRenderer\.invoke\('update:admin', body\)/);
-  assert.match(mainSrc, /adminPromptOnce: !!installerHelperPath\(\)/, 'the window is told whether the setting can work here');
+  assert.ok(mainSrc.includes('adminPromptOnce: !!adminRun() }));'), 'the window is told whether the setting can work here');
   assert.match(mainSrc, /if \(cfg\.adminPromptOnce != null\) cfg\.adminPromptOnce = !!cfg\.adminPromptOnce;/);
   // Packaged, the helper sits beside the app's resources; it is never looked for anywhere a user file could stand in.
   const where = between(mainSrc, 'function installerHelperPath()', '// Installers set aside during');
@@ -527,4 +527,271 @@ test('window: a row says what it is waiting for', () => {
   assert.match(ctx.statusViewOf({ ph: 'needsAdmin' }).tip, /Windows will ask once, at the end of this run/);
   assert.strictEqual(ctx.statusViewOf({ ph: 'admin' }).text, 'Installing — approve the Windows prompt');
   assert.match(html, /const WORKING_PHASES = \[[^\]]*'needsAdmin', 'admin'\]/, 'both count as "Working now" in the status filter');
+});
+
+// --- Linux: one password prompt (PROJECT-linux-one-password-prompt.md) -------------------------
+//
+// On Debian and Ubuntu family Linux there is no helper: pkexec raises the desktop's password
+// prompt and a fixed script installs each package with apt-get. pkexec is replaced by a
+// stand-in here, so nothing can raise a prompt. The script itself runs for real, as root,
+// against real packages in test/admin-linux.test.js (CI, Ubuntu).
+
+// A stand-in for pkexec: prints what the test says, exits how the test says, records its argv.
+function fakePkexec(answer) {
+  const calls = [];
+  const spawn = (exe, args, options) => {
+    calls.push({ exe, args, options });
+    const child = new EventEmitter();
+    child.stdout = new EventEmitter();
+    setImmediate(() => {
+      if (answer.error) return child.emit('error', new Error(answer.error));
+      if (answer.stdout) child.stdout.emit('data', Buffer.from(answer.stdout));
+      child.emit('close', answer.exit === undefined ? 0 : answer.exit);
+    });
+    return child;
+  };
+  return { spawn, calls };
+}
+
+const LINUX = { pkexec: '/usr/bin/pkexec', sh: '/usr/bin/sh' };
+
+function debEntriesIn(stageBase, names) {
+  const log = [];
+  const entries = names.map((name, i) => {
+    const keepDir = fs.mkdtempSync(path.join(stageBase, 'admin-'));
+    const file = path.join(keepDir, `${name}.deb`);
+    fs.writeFileSync(file, '!<arch>\n');
+    return {
+      key: `acme/${name}#installer`,
+      item: { file, sha256: String(i).repeat(64), kind: 'deb' },
+      keepDir,
+      succeed: () => { log.push(`succeed ${name}`); return { id: `acme/${name}#installer`, status: 'updated' }; },
+      ownWindow: () => { log.push(`window ${name}`); return { id: `acme/${name}#installer`, status: 'failed', reason: 'installer window opened — authorize and finish it, then Check' }; },
+      fail: (reason) => ({ id: `acme/${name}#installer`, status: 'failed', reason }),
+    };
+  });
+  return { entries, log };
+}
+
+test('linux: the tools are looked for in the system folders only, and all three are needed', () => {
+  const having = (...files) => (f) => files.includes(f);
+  assert.strictEqual(elevate.linuxTools(() => true, 'win32'), null, 'Windows has its helper instead');
+  assert.strictEqual(elevate.linuxTools(() => true, 'darwin'), null);
+  assert.deepStrictEqual(elevate.linuxTools(() => true, 'linux'), { pkexec: '/usr/bin/pkexec', sh: '/usr/bin/sh' });
+  assert.deepStrictEqual(
+    elevate.linuxTools(having('/usr/bin/pkexec', '/bin/sh', '/usr/bin/apt-get'), 'linux'),
+    { pkexec: '/usr/bin/pkexec', sh: '/bin/sh' }
+  );
+  assert.strictEqual(elevate.linuxTools(having('/usr/bin/pkexec', '/bin/sh'), 'linux'), null, 'no apt-get: an rpm system');
+  assert.strictEqual(elevate.linuxTools(having('/bin/sh', '/usr/bin/apt-get'), 'linux'), null, 'no pkexec');
+  assert.strictEqual(elevate.linuxTools(having('/home/me/bin/pkexec', '/bin/sh', '/usr/bin/apt-get'), 'linux'), null, 'a pkexec in a user folder is not used');
+});
+
+test('linux: a .deb is set aside with its SHA-256; one with pinned dpkg switches keeps its own route', async () => {
+  const dir = tmp();
+  try {
+    const stageBase = path.join(dir, 'staging');
+    fs.mkdirSync(stageBase);
+    const file = path.join(dir, 'widget_2.0_amd64.deb');
+    fs.writeFileSync(file, '!<arch>\nwidget');
+    const kept = await elevate.setAsideEntry(file, stageBase, { kind: 'deb' });
+    assert.ok(kept);
+    assert.deepStrictEqual(Object.keys(kept.item).sort(), ['file', 'kind', 'sha256']);
+    assert.strictEqual(kept.item.kind, 'deb');
+    assert.strictEqual(path.basename(kept.item.file), 'widget_2.0_amd64.deb');
+    assert.notStrictEqual(kept.item.file, file, 'a copy: the download folder is removed when the app\'s run ends');
+    assert.strictEqual(kept.item.sha256, require('crypto').createHash('sha256').update('!<arch>\nwidget').digest('hex'));
+    elevate.discard(kept);
+
+    assert.strictEqual(await elevate.setAsideEntry(file, stageBase, { kind: 'deb', args: ['--force-overwrite', '-i'] }), null, 'apt-get takes no dpkg switches');
+    assert.strictEqual(await elevate.setAsideEntry(file, stageBase, { kind: 'rpm' }), null, 'an .rpm is not taken');
+    assert.deepStrictEqual(leftIn(stageBase), [], 'nothing is left behind for what was not taken');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('linux: one pkexec, never a shell of git-updater\'s own, and each package gets its own result', async () => {
+  const stageBase = tmp();
+  try {
+    const { entries, log } = debEntriesIn(stageBase, ['good', 'baddep', 'changed', 'unreached']);
+    const pk = fakePkexec({
+      stdout: [
+        'git-updater-admin 1',
+        'result 0 exit 0',
+        'reason 1  gu-bad : Depends: gu-nope but it is not installable',
+        'reason 1 E: Unable to correct problems, you have held broken packages.',
+        'result 1 exit 100',
+        'result 2 hash',
+        '',
+      ].join('\n'),
+    });
+    const out = await elevate.finish(entries, { linux: LINUX, stageBase, spawn: pk.spawn });
+
+    assert.strictEqual(pk.calls.length, 1, 'ONE command: one password prompt');
+    const { exe, args, options } = pk.calls[0];
+    assert.strictEqual(exe, '/usr/bin/pkexec');
+    assert.ok(!options.shell, 'pkexec is started directly');
+    assert.deepStrictEqual(args.slice(0, 6), ['--disable-internal-agent', '/usr/bin/sh', '-c', elevate.ADMIN_SCRIPT, 'git-updater-admin', String(elevate.TIMEOUT_SECS)]);
+    assert.deepStrictEqual(args.slice(6), entries.flatMap((e) => [e.item.sha256, e.item.file]), 'then one <sha256> <file> pair per package, in order');
+
+    assert.deepStrictEqual(log, ['succeed good']);
+    const by = (name) => out.get(`acme/${name}#installer`);
+    assert.strictEqual(by('good').status, 'updated');
+    assert.strictEqual(by('baddep').reason, 'the package could not be installed: gu-bad : Depends: gu-nope but it is not installable');
+    assert.match(by('changed').reason, /changed after it was downloaded, so it was not run/);
+    assert.match(by('unreached').reason, /stopped before this installer — Retry/);
+    assert.deepStrictEqual(leftIn(stageBase), [], 'every kept file is removed');
+  } finally {
+    fs.rmSync(stageBase, { recursive: true, force: true });
+  }
+});
+
+test('linux: a dismissed password prompt installs nothing and opens nothing', async () => {
+  const stageBase = tmp();
+  try {
+    const { entries, log } = debEntriesIn(stageBase, ['a', 'b']);
+    const pk = fakePkexec({ exit: elevate.PKEXEC_DISMISSED });
+    const out = await elevate.finish(entries, { linux: LINUX, stageBase, spawn: pk.spawn });
+    assert.deepStrictEqual(log, []);
+    assert.deepStrictEqual([...out.values()].map((r) => r.reason), [elevate.DECLINED, elevate.DECLINED]);
+    assert.deepStrictEqual(leftIn(stageBase), []);
+  } finally {
+    fs.rmSync(stageBase, { recursive: true, force: true });
+  }
+});
+
+test('linux: when no password prompt can be used, every package opens its own window as before', async () => {
+  for (const answer of [{ exit: 127 }, { error: 'spawn /usr/bin/pkexec ENOENT' }, { exit: 0, stdout: 'not what the script prints\n' }]) {
+    const stageBase = tmp();
+    try {
+      const { entries, log } = debEntriesIn(stageBase, ['a', 'b']);
+      const pk = fakePkexec(answer);
+      const out = await elevate.finish(entries, { linux: LINUX, stageBase, spawn: pk.spawn });
+      assert.deepStrictEqual(log, ['window a', 'window b'], JSON.stringify(answer));
+      assert.ok([...out.values()].every((r) => /^installer window opened/.test(r.reason)));
+      assert.strictEqual(leftIn(stageBase).length, 2, 'the windows are using the kept files: they stay');
+    } finally {
+      fs.rmSync(stageBase, { recursive: true, force: true });
+    }
+  }
+});
+
+test('linux: every app gets an answer, whatever goes wrong', async () => {
+  const stageBase = tmp();
+  try {
+    const { entries } = debEntriesIn(stageBase, ['a', 'b', 'c']);
+    entries[0].succeed = () => { throw new Error('could not read the installed version'); };
+    entries[1].ownWindow = () => { throw new Error('needs administrator rights'); };
+    const ok = fakePkexec({ stdout: 'git-updater-admin 1\nresult 0 exit 0\nresult 1 exit 124\nresult 2 copy\nresult 9 exit 0\n' });
+    const out = await elevate.finish(entries, { linux: LINUX, stageBase, spawn: ok.spawn });
+    assert.deepStrictEqual([...out.keys()], entries.map((e) => e.key));
+    assert.strictEqual(out.get(entries[0].key).reason, 'could not read the installed version');
+    assert.match(out.get(entries[1].key).reason, /did not finish in time and was stopped/);
+    assert.match(out.get(entries[2].key).reason, /could not be prepared for the administrator run/);
+
+    const again = debEntriesIn(stageBase, ['d']);
+    again.entries[0].ownWindow = () => { throw new Error('needs administrator rights'); };
+    const none = fakePkexec({ exit: 127 });
+    const out2 = await elevate.finish(again.entries, { linux: LINUX, stageBase, spawn: none.spawn });
+    assert.strictEqual(out2.get(again.entries[0].key).reason, 'needs administrator rights');
+  } finally {
+    fs.rmSync(stageBase, { recursive: true, force: true });
+  }
+});
+
+test('linux: what the script printed is read strictly', () => {
+  assert.strictEqual(elevate.parseAdminOutput('', 2), null, 'the script never started');
+  assert.strictEqual(elevate.parseAdminOutput('result 0 exit 0\n', 1), null, 'no first line: not the script');
+  assert.deepStrictEqual(
+    elevate.parseAdminOutput('git-updater-admin 1\r\nresult 1 exit 100\r\nreason 1 E: broken\r\nresult 0 copy\r\nresult 5 exit 0\r\nresult x exit 0\r\nresult 0 exit\r\n', 3),
+    [{ kind: 'copy', reasons: [] }, { kind: 'exit', code: 100, reasons: ['E: broken'] }, null]
+  );
+  assert.strictEqual(elevate.linuxReason({ kind: 'exit', code: 100, reasons: [] }), 'the package could not be installed (apt-get exit 100)');
+  assert.strictEqual(elevate.linuxReason({ kind: 'exit', code: 100, reasons: ['E: Could not get lock /var/lib/dpkg/lock-frontend.'] }), 'the package could not be installed: Could not get lock /var/lib/dpkg/lock-frontend.');
+  assert.match(elevate.linuxReason({ kind: 'exit', code: 137, reasons: [] }), /did not finish in time/);
+});
+
+test('linux: the root script uses a fixed PATH, the system\'s own tools, and nothing interactive', () => {
+  const script = elevate.ADMIN_SCRIPT;
+  assert.ok(!script.includes('\r'), 'LF only, whatever line endings this checkout has');
+  const lines = script.split('\n');
+  assert.strictEqual(lines[0], 'PATH=/usr/sbin:/usr/bin:/sbin:/bin', 'the first thing it does');
+  assert.ok(lines.includes('DEBIAN_FRONTEND=noninteractive'));
+  assert.match(script, /apt-get install -y -q [^\n]*"\$copy" <\/dev\/null 2>&1/, 'the root-owned copy is what is installed, with no terminal to ask on');
+  assert.match(script, /timeout -k 30 "\$limit" apt-get/, 'each package has its own time limit');
+  assert.match(script, /sha256sum < "\$copy"/, 'the copy is what is checked');
+  assert.match(script, /trap 'rm -rf "\$dir"' EXIT/, 'nothing is left behind');
+  // POSIX sh only (dash on Debian and Ubuntu), and nothing fetched or elevated from inside it.
+  for (const banned of ['[[', 'function ', 'local ', 'sudo', 'curl', 'wget', 'eval ', 'source ']) assert.ok(!script.includes(banned), banned);
+});
+
+const debWidget = () => ({ portableRoot: '', repos: [{ owner: 'acme', repo: 'widget', type: 'installer', asset: 'payload.deb', install: { kind: 'deb' } }] });
+
+test('linux runner: with the setting on, a .deb that needs root is set aside, not opened', async () => {
+  const dir = tmp();
+  const statePath = path.join(dir, 'state.json');
+  const opened = [];
+  const aside = [];
+  const real = { getLatestRelease: github.getLatestRelease, downloadAsset: github.downloadAsset };
+  try {
+    await withRelease(async () => {
+      github.getLatestRelease = async () => ({ tag_name: 'v2.0.0', assets: [{ name: 'payload.deb', browser_download_url: 'https://example.invalid/payload.deb' }] });
+      github.downloadAsset = async (_url, file) => fs.writeFileSync(file, '!<arch>\nwidget 2.0.0');
+      try {
+        const { results } = await runner.run(debWidget(), { statePath, openFile: (f) => opened.push(f), setAside: (e) => aside.push(e) });
+        assert.strictEqual(results[0].needsAdmin, true, results[0].reason);
+        assert.strictEqual(results[0].reason, 'waiting for administrator permission');
+
+        const unattended = await runner.run(debWidget(), { statePath, unattended: true, openFile: (f) => opened.push(f) });
+        assert.match(unattended.results[0].reason, /needs administrator permission, so it was not run unattended/);
+      } finally {
+        Object.assign(github, real);
+      }
+    });
+    assert.deepStrictEqual(opened, [], 'no installer window');
+    assert.strictEqual(aside.length, 1);
+    assert.strictEqual(aside[0].item.kind, 'deb');
+    assert.ok(fs.existsSync(aside[0].item.file), 'the package outlives the download folder');
+    const windowed = aside[0].ownWindow();
+    assert.deepStrictEqual(opened, [aside[0].item.file], 'the fallback is still the desktop\'s own installer');
+    assert.strictEqual(windowed.status, 'failed');
+  } finally {
+    for (const e of aside) elevate.discard(e);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('linux app: what runs the set-aside installers is the helper on Windows, pkexec and apt-get on Linux', () => {
+  const src = between(mainSrc, 'function adminRun()', '// Installers set aside during');
+  const run = (helperPath, linux) => {
+    const ctx = { installerHelperPath: () => helperPath, elevate: { linuxTools: () => linux } };
+    vm.runInNewContext(`${src}; this.adminRun = adminRun;`, ctx);
+    const got = ctx.adminRun();
+    return got && { ...got }; // made in the other context: compare its own keys, not its prototype
+  };
+  assert.deepStrictEqual(run('C:\\app\\helper.exe', null), { helperPath: 'C:\\app\\helper.exe' });
+  assert.deepStrictEqual(run(null, LINUX), { linux: LINUX });
+  assert.strictEqual(run(null, null), null, 'neither: the setting is not offered');
+  assert.match(mainSrc, /elevate\.finish\(entries, \{ \.\.\.adminRun\(\), stageBase:/);
+});
+
+test('linux window: the row and the setting speak of a password prompt, not a Windows one', async () => {
+  const view = between(html, 'function statusViewOf(s) {', 'function primaryAction(s)');
+  const ctx = { datedStatus: () => ({}) };
+  vm.runInNewContext(`${view}; adminPromptKind = 'linux'; this.statusViewOf = statusViewOf;`, ctx);
+  assert.strictEqual(ctx.statusViewOf({ ph: 'needsAdmin' }).text, 'Waiting for administrator permission');
+  assert.match(ctx.statusViewOf({ ph: 'needsAdmin' }).tip, /asked for your password once, at the end of this run/);
+  assert.strictEqual(ctx.statusViewOf({ ph: 'admin' }).text, 'Installing — enter your password in the prompt');
+
+  const block = between(html, "$('adminPromptOnce').onchange", "$('requireChecksum').onchange");
+  const els = { adminPromptOnce: { checked: false }, adminPromptOnceBlock: { hidden: true }, adminPromptOnceHint: { textContent: 'the Windows wording' } };
+  const settings = { $: (id) => els[id], config: {}, saveConfig: async () => {}, msg: () => {}, adminPromptKind: 'windows', window: { api: { getPlatform: async () => ({ adminPromptOnce: true, platform: 'linux' }) } } };
+  vm.runInNewContext(block, settings);
+  await new Promise((r) => setImmediate(r));
+  assert.strictEqual(els.adminPromptOnceBlock.hidden, false);
+  assert.strictEqual(settings.adminPromptKind, 'linux');
+  assert.match(els.adminPromptOnceHint.textContent, /behind one password prompt\. git-updater itself never runs as root\./);
+  assert.ok(els.adminPromptOnceHint.textContent.length <= 220, 'as short as every other Settings hint');
+  assert.match(html, /<p class="hint" id="adminPromptOnceHint">Installers that need administrator rights run together at the end, behind one Windows prompt\./, 'Windows keeps its wording');
 });
