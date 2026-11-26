@@ -370,6 +370,51 @@ async function extractDmg(dmgPath, destDir) {
   }
 }
 
+// A disk image that holds an installer package rather than an app (Google Drive from Homebrew:
+// GoogleDrive.dmg holds GoogleDrive.pkg). Mount it, copy the package out, unmount, and return
+// the copy's path: it is then installed like any other .pkg. `wanted` is the package the
+// listing names; without one, the image must hold exactly one.
+async function pkgFromDiskImage(dmgPath, destDir, wanted) {
+  const mnt = fs.mkdtempSync(path.join(os.tmpdir(), 'git-updater-dmg-'));
+  const attach = await exec.runStatus(
+    'hdiutil',
+    ['attach', dmgPath, '-nobrowse', '-noautoopen', '-readonly', '-mountpoint', mnt],
+    { timeout: COPY_TIMEOUT }
+  );
+  try {
+    if (attach.code !== 0) {
+      fs.rmSync(mnt, { recursive: true, force: true });
+      const hasLic = await hasLicenceAgreement(dmgPath);
+      const err = new Error(mountFailure(attach, hasLic));
+      if (hasLic) err.licenceAgreement = true;
+      throw err;
+    }
+    let names;
+    try {
+      names = fs.readdirSync(mnt);
+    } catch {
+      throw new Error('the disk image mounted but could not be read');
+    }
+    const pkgs = names.filter((n) => !n.startsWith('.') && /\.m?pkg$/i.test(n) && !leavesImage(mnt, n));
+    const pick = wanted && pkgs.includes(wanted) ? wanted : pkgs.length === 1 ? pkgs[0] : null;
+    if (!pick) {
+      throw new Error(
+        pkgs.length
+          ? `the disk image holds ${pkgs.length} installer packages and the listing does not say which to install`
+          : 'the disk image holds no installer package'
+      );
+    }
+    const dest = path.join(destDir, pick);
+    await ditto(path.join(mnt, pick), dest); // throws on failure
+    return dest;
+  } finally {
+    if (attach.code === 0) {
+      await run('hdiutil', ['detach', mnt, '-force'], { acceptAnyExit: true });
+      fs.rmSync(mnt, { recursive: true, force: true });
+    }
+  }
+}
+
 // Returns true when it handled the archive, false to let the generic path take it.
 async function extract(archivePath, destDir) {
   if (/\.dmg$/i.test(archivePath)) {
@@ -455,6 +500,7 @@ module.exports = {
   scanAppBundles,
   bundleVersion,
   extractDmg,
+  pkgFromDiskImage,
   leavesImage,
   mountFailure,
   PKG_IN_DMG,

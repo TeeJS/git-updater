@@ -1989,14 +1989,17 @@ ipcMain.handle('admin:copyInstallCommand', () => {
 });
 
 // What can run set-aside installers behind one prompt on this machine, as the options
-// elevate.finish takes: Windows' helper, or on Debian and Ubuntu family Linux the system's own
-// pkexec and apt-get (no helper is shipped there). null when neither is here: the setting is
-// then not offered, and every installer keeps its own window.
+// elevate.finish takes: Windows' helper; on Debian and Ubuntu family Linux the system's own
+// pkexec and apt-get; on macOS AppleScript's administrator password box and Apple's own
+// `installer` (no helper is shipped on either). null when none is here: the setting is then
+// not offered, and every installer keeps its own window.
 function adminRun() {
   const helperPath = installerHelperPath();
   if (helperPath) return { helperPath };
   const linux = elevate.linuxTools();
-  return linux ? { linux } : null;
+  if (linux) return { linux };
+  const mac = elevate.macTools();
+  return mac ? { mac } : null;
 }
 
 // Installers set aside during the window's update run, waiting for the one administrator
@@ -2033,7 +2036,7 @@ ipcMain.handle('update', async (e, body = {}) => {
 });
 
 // The end of the window's update run: every installer set aside for these apps is handed to
-// the helper (Windows) or to apt-get (Linux) together. One prompt; each app gets its own result back, in the
+// the helper (Windows), apt-get (Linux) or installer (macOS) together. One prompt; each app gets its own result back, in the
 // order asked. Anything set aside for an app that is NOT asked for is dropped.
 ipcMain.handle('update:admin', async (e, body = {}) => {
   if (updating) throw new Error('an update is already in progress');

@@ -1,0 +1,63 @@
+# One password box for Mac installer packages (PROJECT-no-installer-windows.md).
+#
+# tests: everything around the root step, with osascript, pkgutil and spctl replaced by
+# stand-ins, on all three platforms (test/elevate-mac.test.js), plus the Windows and Linux
+# administrator tests to show they are unchanged.
+#
+# root-step: the real thing on macOS, as root, with real packages built by pkgbuild
+# (test/admin-mac.test.js): the script git-updater hands to AppleScript installs each package
+# with Apple's installer, one bad package does not stop the others, a swapped file is refused,
+# a hung install is stopped, and AppleScript itself passes every argument through intact.
+# `sudo -n` stands in for the password box, so the one thing NOT proven here is the box itself.
+#
+# The release workflow runs the same root-step test before it builds the Mac app.
+
+name: Mac administrator step
+
+on:
+  pull_request:
+    paths:
+      - src/elevate.js
+      - src/runner.js
+      - src/platform/mac.js
+      - src/sources/brew.js
+      - electron/main.js
+      - ui/index.html
+      - test/elevate.test.js
+      - test/elevate-mac.test.js
+      - test/admin-mac.test.js
+      - .github/workflows/mac-admin.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Everything around the root step, and Windows and Linux unchanged
+        run: node --test test/elevate-mac.test.js test/elevate.test.js test/sources-brew.test.js
+  root-step:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: The root step itself, as root, with real packages
+        env:
+          GIT_UPDATER_ROOT_TESTS: '1'
+        run: node --test test/admin-mac.test.js

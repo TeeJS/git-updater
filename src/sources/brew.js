@@ -245,6 +245,11 @@ function toRelease(base, ctx) {
     kind: hasPkg && !hasApp ? 'pkg' : (EXT.exec(name || '') || [])[1] ? EXT.exec(name)[1].toLowerCase() : undefined,
   };
   if (sniff) asset.sniff = true;
+  // The installer package a disk image holds (Google Drive: GoogleDrive.dmg holds GoogleDrive.pkg).
+  // Only a plain file name: it picks which top-level .pkg of the mounted image is installed.
+  const pkgArtifact = hasPkg && !hasApp ? (Array.isArray(cask.artifacts) ? cask.artifacts : []).find((a) => a && Array.isArray(a.pkg)) : null;
+  const pkgName = pkgArtifact && typeof pkgArtifact.pkg[0] === 'string' ? pkgArtifact.pkg[0] : '';
+  if (/^[^/\\]+\.m?pkg$/i.test(pkgName) && pkgName !== '.pkg') asset.pkgName = pkgName;
   if (typeof cask.sha256 === 'string' && SHA256.test(cask.sha256)) {
     asset.digest = `sha256:${cask.sha256.toLowerCase()}`;
     asset.redirects = 'https-pinned'; // vendor mirrors redirect; the pinned hash makes that safe

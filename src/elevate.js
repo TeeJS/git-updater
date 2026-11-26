@@ -60,17 +60,33 @@ function sha256(file) {
 // A Linux .deb is taken too (kind 'deb'): there is no helper there, the system's own apt-get
 // installs it (finishLinux below). apt-get takes no installer switches, so a .deb the user
 // pinned dpkg switches for keeps its own route.
-async function setAsideEntry(file, stageBase, spec) {
+//
+// So is a macOS .pkg (kind 'pkg'), installed by Apple's own `installer` (finishMac below), but
+// only one that carries a Developer ID Installer signature AND that Gatekeeper accepts
+// (checkPackage). Any other keeps its own route: Installer.app, which shows the user what
+// macOS thinks of it. `opts.checkPackage` is injectable for tests.
+async function setAsideEntry(file, stageBase, spec, opts = {}) {
   const deb = !!spec && spec.kind === 'deb';
-  if (deb && ((spec.args && spec.args.length) || spec.rawArgs)) return null;
-  const switches = deb ? { kind: 'deb' } : switchesFor(spec);
+  const pkg = !!spec && spec.kind === 'pkg';
+  if ((deb || pkg) && ((spec.args && spec.args.length) || spec.rawArgs)) return null;
+  const switches = deb ? { kind: 'deb' } : pkg ? { kind: 'pkg' } : switchesFor(spec);
   if (!switches) return null;
   const keepDir = fs.mkdtempSync(path.join(stageBase, 'admin-'));
   const keep = path.join(keepDir, path.basename(file));
   try {
     fs.copyFileSync(file, keep);
+    // The hash is taken BEFORE the signature is checked: the root step refuses any file whose
+    // bytes are not these, so the bytes that were checked are the bytes that get installed.
     const item = { file: keep, sha256: await sha256(keep), ...switches };
-    if (!deb) helper.jobText([item]); // throws now, not at the prompt, if the helper would refuse the job
+    if (pkg) {
+      const why = await (opts.checkPackage || module.exports.checkPackage)(keep);
+      if (why) {
+        discard({ keepDir });
+        log(`  ${why}; it opens in Installer instead`);
+        return null;
+      }
+    }
+    if (!deb && !pkg) helper.jobText([item]); // throws now, not at the prompt, if the helper would refuse the job
     return { item, file: keep, keepDir };
   } catch (e) {
     discard({ keepDir });
@@ -134,6 +150,7 @@ async function finish(entries, opts = {}) {
   const out = new Map();
   if (!entries.length) return out;
   if (opts.linux) return finishLinux(entries, opts);
+  if (opts.mac) return finishMac(entries, opts);
   const { helperPath, stageBase, spawn } = opts;
   const handedOver = new Set(); // opened in their own window: that window is using the file
   const ownWindow = (e, why) => {
@@ -454,8 +471,229 @@ async function finishLinux(entries, opts) {
   }
 }
 
+// ---------------------------------------------------------------------------------------------
+// macOS: one password box for installer packages (.pkg), through AppleScript's
+// `do shell script … with administrator privileges` (Apple TN2065). PROJECT-no-installer-windows.md.
+//
+// As on Linux there is no helper program. git-updater starts ONE command,
+//
+//     osascript -e <MAC_RUNNER lines> <MAC_ADMIN_SCRIPT> <prompt> <limit> <sha256> <file> ...
+//
+// and macOS shows its own administrator password box, with a line saying which apps are being
+// updated. As root, the script below installs each package in turn with Apple's own
+// `installer`. git-updater never sees the password, and nothing is installed on the system to
+// make this work: no helper tool, no launchd job, no sudoers rule.
+//
+// The arguments go to AppleScript as its run handler's argv, never through a shell of
+// git-updater's own: AppleScript itself quotes each one (`quoted form of`) into the one command
+// it hands to /bin/sh as root.
+//
+// Before any of that, each package has passed checkPackage at set-aside time: a Developer ID
+// Installer signature (pkgutil) and Gatekeeper's verdict for installing it (spctl). The root
+// step then refuses any file whose bytes are not the ones that were checked (the SHA-256).
+//
+// EDR: osascript running a shell as root is something endpoint protection watches. Elastic's
+// rule "Apple Scripting Execution with Administrator Privileges" fires when the process asking
+// is unsigned or untrusted, or runs from /tmp or /Users/Shared. git-updater is Developer ID
+// signed and notarized, and its packages wait in ~/Library/Application Support.
+// ---------------------------------------------------------------------------------------------
+
+const MAC_TOOLS = {
+  osascript: '/usr/bin/osascript',
+  sh: '/bin/sh',
+  installer: '/usr/sbin/installer',
+  pkgutil: '/usr/sbin/pkgutil',
+  spctl: '/usr/sbin/spctl',
+};
+
+// The tools, at their fixed system paths only. null when this is not a Mac or one is missing:
+// the setting is then not offered and nothing is set aside.
+function macTools(exists = fs.existsSync, platform = process.platform) {
+  if (platform !== 'darwin') return null;
+  return Object.values(MAC_TOOLS).every((f) => exists(f)) ? { osascript: MAC_TOOLS.osascript, sh: MAC_TOOLS.sh } : null;
+}
+
+// Run one of Apple's tools with an argv, never a shell. -> { code, out } (stdout and stderr together).
+function runTool(exe, args, execFile = childProcess.execFile) {
+  return new Promise((resolve) => {
+    try {
+      execFile(exe, args, { timeout: 60_000, maxBuffer: 1024 * 1024 }, (err, stdout, stderr) => {
+        const code = err ? (typeof err.code === 'number' ? err.code : null) : 0;
+        resolve({ code, out: `${stdout || ''}${stderr || ''}` });
+      });
+    } catch (e) {
+      resolve({ code: null, out: String(e && e.message) });
+    }
+  });
+}
+
+// Is this package one git-updater may install as root without the user seeing Installer?
+// -> null when it is, else the reason it is not (for the log).
+//   1. pkgutil: signed, and the chain names a Developer ID Installer certificate.
+//   2. spctl: Gatekeeper accepts it for installing (it checks notarization too).
+async function checkPackage(file, run = runTool) {
+  const sig = await run(MAC_TOOLS.pkgutil, ['--check-signature', file]);
+  if (sig.code !== 0 || !/Developer ID Installer:/.test(sig.out)) return 'the package has no Developer ID Installer signature';
+  const gk = await run(MAC_TOOLS.spctl, ['--assess', '--type', 'install', file]);
+  if (gk.code !== 0) return 'Gatekeeper did not accept the package';
+  return null;
+}
+
+// POSIX sh, as root. A fixed PATH and only Apple's own tools. Arguments: <limit seconds> then
+// one <sha256> <file> pair per package. It prints what the Linux script prints (read by
+// parseAdminOutput), each package by position:
+//     result <n> exit <code>     installer's exit status (0 = installed; 143/137 = time limit)
+//     result <n> copy            the file could not be copied
+//     result <n> hash            the copy is not the file that was checked
+//     reason <n> <text>          up to three lines of installer's own explanation, on failure
+// between the lines "git-updater-admin 1" and "git-updater-admin done".
+//
+// macOS has no `timeout` command, so a watchdog stops an installer that runs past the limit,
+// and leaves a mark so the result says "time limit" whatever exit code installer then chose.
+// The watchdog holds no output open: AppleScript waits for every holder of it to let go.
+const MAC_ADMIN_SCRIPT = String.raw`PATH=/usr/bin:/bin:/usr/sbin:/sbin
+export PATH
+umask 077
+limit=$1
+shift
+dir=$(mktemp -d /var/tmp/git-updater-admin.XXXXXXXX) || exit 70
+trap 'rm -rf "$dir"' EXIT
+echo "git-updater-admin 1"
+i=0
+while [ "$#" -ge 2 ]; do
+  sum=$1
+  src=$2
+  shift 2
+  copy="$dir/$i.pkg"
+  if ! cp -- "$src" "$copy" 2>/dev/null; then
+    echo "result $i copy"
+  elif [ "$(shasum -a 256 < "$copy" | cut -c1-64)" != "$sum" ]; then
+    echo "result $i hash"
+  else
+    out="$dir/$i.out"
+    installer -pkg "$copy" -target / </dev/null >"$out" 2>&1 &
+    pid=$!
+    ( sleep "$limit"; : > "$dir/$i.late"; kill -TERM "$pid"; sleep 30; kill -KILL "$pid" ) </dev/null >/dev/null 2>&1 &
+    dog=$!
+    wait "$pid"
+    code=$?
+    kill "$dog" 2>/dev/null
+    if [ -e "$dir/$i.late" ]; then
+      code=143
+    fi
+    if [ "$code" -ne 0 ]; then
+      grep -iE 'error|fail|cannot|not ' "$out" | head -n 3 | while IFS= read -r line; do
+        echo "reason $i $line"
+      done
+    fi
+    echo "result $i exit $code"
+    rm -f "$out"
+  fi
+  rm -f "$copy"
+  i=$((i+1))
+done
+echo "git-updater-admin done"
+exit 0
+`;
+
+// The AppleScript osascript runs. argv: 1 the script above, 2 the line the password box shows,
+// then the script's own arguments. Every argument is quoted by AppleScript itself. A cancelled
+// box (error -128) or any other error comes back as one line instead of osascript failing, so
+// the answer is always on stdout.
+const MAC_RUNNER = [
+  'on run argv',
+  'set cmd to "/bin/sh -c " & quoted form of (item 1 of argv) & " git-updater-admin"',
+  'repeat with i from 3 to count of argv',
+  'set cmd to cmd & " " & quoted form of (item i of argv)',
+  'end repeat',
+  'try',
+  'return do shell script cmd with prompt (item 2 of argv) with administrator privileges without altering line endings',
+  'on error errText number errNum',
+  'return "git-updater-admin error " & errNum',
+  'end try',
+  'end run',
+];
+
+// AppleScript's "User canceled." — the password box was cancelled.
+const MAC_CANCELLED = -128;
+
+// What the password box says. Its first line is macOS's own ("osascript wants to make changes");
+// this one says what for, naming the apps.
+function macPrompt(entries) {
+  const names = entries.map((e) => String(e.name || e.key));
+  const list = names.length <= 3 ? names.join(', ') : `${names.slice(0, 3).join(', ')} and ${names.length - 3} more`;
+  return `git-updater is installing updates for ${list}.`.slice(0, 300);
+}
+
+// A package installer would not install, in the words a row shows.
+function macReason(r) {
+  if (r.kind === 'copy') return REFUSED[CODES.copyFailed];
+  if (r.kind === 'hash') return REFUSED[CODES.hashMismatch];
+  if (r.code === 143 || r.code === 137) return REFUSED[CODES.timedOut];
+  const line = r.reasons[0];
+  if (!line) return `the package could not be installed (installer exit ${r.code})`;
+  return `the package could not be installed: ${line.replace(/^installer:\s*/i, '').slice(0, 200)}`;
+}
+
+// finish() for macOS. Same contract: every entry gets a result, and nothing throws.
+async function finishMac(entries, opts) {
+  const out = new Map();
+  const { mac, spawn } = opts;
+  const handedOver = new Set(); // opened in Installer: that window is using the file
+  const ownWindow = (e, why) => {
+    log(`  ${e.key}: ${why}; opening it in Installer instead`);
+    try {
+      out.set(e.key, e.ownWindow());
+      handedOver.add(e);
+    } catch (err) {
+      out.set(e.key, e.fail(err.message));
+    }
+  };
+  try {
+    const args = [];
+    for (const line of MAC_RUNNER) args.push('-e', line);
+    args.push(MAC_ADMIN_SCRIPT, macPrompt(entries), String(opts.timeoutSecs || TIMEOUT_SECS));
+    for (const e of entries) args.push(e.item.sha256, e.item.file);
+    log(`administrator run: ${entries.length} package(s) — ${entries.map((e) => e.key).join(', ')}`);
+    const ran = await runHelper(mac.osascript, args, spawn);
+    const error = /^git-updater-admin error (-?\d+)\s*$/m.exec(ran.stdout || '');
+    const results = error ? null : parseAdminOutput(ran.stdout, entries.length);
+    if (!results) {
+      if (error && Number(error[1]) === MAC_CANCELLED) {
+        log('administrator run: the password box was cancelled');
+        for (const e of entries) out.set(e.key, e.fail(DECLINED));
+      } else {
+        // The box could not be shown, the password was not accepted, or the script could not
+        // start. Today's route still works: Installer, one package at a time.
+        const problem = error ? `AppleScript error ${error[1]}` : ran.error ? ran.error.message : `osascript exit ${ran.code}`;
+        for (const e of entries) ownWindow(e, `the one password box could not be used (${problem})`);
+      }
+      return out;
+    }
+    entries.forEach((e, i) => {
+      const r = results[i];
+      log(`  ${e.key}: ${!r ? 'not reached' : r.kind === 'exit' ? `installer exit ${r.code}` : r.kind}`);
+      if (!r) out.set(e.key, e.fail('the administrator run stopped before this installer — Retry'));
+      else if (r.kind === 'exit' && r.code === 0) {
+        try {
+          out.set(e.key, e.succeed());
+        } catch (err) {
+          out.set(e.key, e.fail(err.message));
+        }
+      } else out.set(e.key, e.fail(macReason(r)));
+    });
+    return out;
+  } catch (err) {
+    for (const e of entries) if (!out.has(e.key)) ownWindow(e, `the administrator run could not be prepared (${err.message})`);
+    return out;
+  } finally {
+    for (const e of entries) if (!handedOver.has(e)) discard(e);
+  }
+}
+
 module.exports = {
   switchesFor, setAsideEntry, discard, finish, runHelper, exitReason, DECLINED, TIMEOUT_SECS,
   linuxTools, parseAdminOutput, linuxReason, ADMIN_SCRIPT, PKEXEC_DISMISSED,
   linuxStatus, installPkexecInTerminal, INSTALL_PKEXEC, INSTALL_PKEXEC_IN_TERMINAL,
+  macTools, checkPackage, runTool, macPrompt, macReason, MAC_ADMIN_SCRIPT, MAC_RUNNER, MAC_CANCELLED, MAC_TOOLS,
 };
