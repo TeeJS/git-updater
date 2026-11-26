@@ -765,15 +765,17 @@ test('linux runner: with the setting on, a .deb that needs root is set aside, no
 
 test('linux app: what runs the set-aside installers is the helper on Windows, pkexec and apt-get on Linux', () => {
   const src = between(mainSrc, 'function adminRun()', '// Installers set aside during');
-  const run = (helperPath, linux) => {
-    const ctx = { installerHelperPath: () => helperPath, elevate: { linuxTools: () => linux } };
+  const MAC = { osascript: '/usr/bin/osascript', sh: '/bin/sh' };
+  const run = (helperPath, linux, mac = null) => {
+    const ctx = { installerHelperPath: () => helperPath, elevate: { linuxTools: () => linux, macTools: () => mac } };
     vm.runInNewContext(`${src}; this.adminRun = adminRun;`, ctx);
     const got = ctx.adminRun();
     return got && { ...got }; // made in the other context: compare its own keys, not its prototype
   };
   assert.deepStrictEqual(run('C:\\app\\helper.exe', null), { helperPath: 'C:\\app\\helper.exe' });
   assert.deepStrictEqual(run(null, LINUX), { linux: LINUX });
-  assert.strictEqual(run(null, null), null, 'neither: the setting is not offered');
+  assert.deepStrictEqual(run(null, null, MAC), { mac: MAC }, 'macOS: the password box and Apple\'s installer');
+  assert.strictEqual(run(null, null), null, 'none: the setting is not offered');
   assert.match(mainSrc, /elevate\.finish\(entries, \{ \.\.\.adminRun\(\), stageBase:/);
 });
 

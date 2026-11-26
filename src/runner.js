@@ -539,6 +539,13 @@ async function handleRepo(repo, id, st, opts) {
       file = install.extractNestedInstaller(file, asset.nested, tmp);
       stagedName = path.basename(file);
     }
+    if (repo.type === 'installer' && process.platform === 'darwin' && sniffExtension(file) === '.dmg') {
+      // A disk image that holds an installer package (Google Drive from Homebrew). The package
+      // is taken out and installed like any other .pkg: behind the one password box, or in
+      // Installer, never by leaving the user a mounted image to find it in.
+      file = await require('./platform/mac').pkgFromDiskImage(file, tmp, asset.pkgName);
+      stagedName = path.basename(file);
+    }
     if (repo.type === 'installer') {
       // Detect the installer's silent-install technology from its bytes. If it can't be
       // identified, FAIL rather than blindly running an unknown .exe with NSIS's /S switch.
@@ -619,7 +626,7 @@ async function handleRepo(repo, id, st, opts) {
           throw new Error(`needs you: ${core.appName(repo)}'s installer needs administrator permission, so it was not run unattended. Update it from the window.`);
         }
         // "Ask for administrator permission once per update run" is on (opts.setAside is only
-        // given then, and only where it can work: Windows, or Linux with apt-get): keep the installer and carry on. When the run is
+        // given then, and only where it can work: Windows, Linux with apt-get, or macOS): keep the installer and carry on. When the run is
         // over, everything set aside is run together behind one prompt (see
         // src/elevate.js). An installer the helper cannot take still opens its own window.
         if ((e.status === 1603 || e.elevation) && opts.setAside) {
@@ -628,6 +635,7 @@ async function handleRepo(repo, id, st, opts) {
             log(`  ${key}: needs administrator permission — set aside for the one prompt at the end of the run`);
             opts.setAside({
               key,
+              name: core.appName(repo), // the Mac's password box names the apps it is for
               ...kept,
               // The saved state is read again at that moment: other apps have been updated since.
               succeed: () => recordInstalled(state.load(opts.statePath)),

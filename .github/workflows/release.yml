@@ -89,6 +89,12 @@ jobs:
           fi
           security find-identity -v -p codesigning | grep 'Developer ID Application'
       - run: npm ci
+      # One password box for Mac installer packages: the real root step, as root, with real test
+      # packages (the same test .github/workflows/mac-admin.yml runs on pull requests).
+      - name: Test the administrator install step
+        env:
+          GIT_UPDATER_ROOT_TESTS: '1'
+        run: node --test test/elevate-mac.test.js test/admin-mac.test.js
       # electron-builder finds the identity in the keychain, signs and notarizes the .app;
       # the afterAllArtifactBuild guard (build/verify-mac-build.js) then signs, notarizes and
       # staples the .dmg and FAILS the build unless the app and the disk image truly pass.

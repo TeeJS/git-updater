@@ -924,8 +924,8 @@ function statusViewOf(s) {
     case 'verifying': return { text: 'Verifying SHA-256', cls: 'c-work' };
     case 'installing': return { text: 'Installing…', cls: 'c-work' };
     case 'waiting': return { text: 'Waiting for installer…', cls: 'c-work' };
-    case 'needsAdmin': return { text: 'Waiting for administrator permission', cls: 'c-work', tip: adminPromptKind === 'linux' ? 'Its package needs root. You are asked for your password once, at the end of this run, for every app waiting like this.' : 'Its installer needs administrator rights. Windows will ask once, at the end of this run, for every app waiting like this.' };
-    case 'admin': return { text: adminPromptKind === 'linux' ? 'Installing — enter your password in the prompt' : 'Installing — approve the Windows prompt', cls: 'c-work' };
+    case 'needsAdmin': return { text: 'Waiting for administrator permission', cls: 'c-work', tip: adminPromptKind === 'linux' ? 'Its package needs root. You are asked for your password once, at the end of this run, for every app waiting like this.' : adminPromptKind === 'mac' ? 'Its installer package needs your password. macOS asks once, at the end of this run, for every app waiting like this.' : 'Its installer needs administrator rights. Windows will ask once, at the end of this run, for every app waiting like this.' };
+    case 'admin': return { text: adminPromptKind === 'linux' || adminPromptKind === 'mac' ? 'Installing — enter your password in the prompt' : 'Installing — approve the Windows prompt', cls: 'c-work' };
     case 'current': return datedStatus(s);
     case 'available': return s.present ? { text: 'Update available', cls: 'c-up' } : { text: 'Available to install', cls: 'c-up' };
     case 'installed': return datedStatus({ ...s, lastAction: 'installed' });
@@ -937,8 +937,8 @@ function statusViewOf(s) {
     default: return s.present ? { text: 'Not checked', cls: 'c-muted' } : { text: 'Not installed', cls: 'c-warn' };
   }
 }
-// Which administrator prompt this machine shows: "windows" (its own prompt), or "linux" (the
-// desktop's password prompt). Set once, from what the app reports (see adminPromptOnce below).
+// Which administrator prompt this machine shows: "windows" (its own prompt), "linux" (the
+// desktop's password prompt) or "mac" (macOS's password box). Set once, from what the app reports (see adminPromptOnce below).
 let adminPromptKind = 'windows';
 function primaryAction(s) {
   if (s.ph === 'waiting') return 'Check';
@@ -2173,8 +2173,8 @@ $('adminNeedsCheck').onclick = async () => {
 };
 // Back from the terminal: the notice clears itself once pkexec is there.
 window.addEventListener('focus', () => { syncAdminNeeds(); });
-// Shown wherever it could work: on Windows with the installer helper present, or on Linux
-// with apt-get. pkexec missing does not hide it: syncAdminNeeds above offers to install it.
+// Shown wherever it could work: on Windows with the installer helper present, on Linux with
+// apt-get, and on macOS. pkexec missing does not hide it: syncAdminNeeds above offers to install it.
 window.api
   .getPlatform()
   .then(({ adminPromptOnce, platform }) => {
@@ -2184,6 +2184,11 @@ window.api
     if (platform === 'linux') {
       adminPromptKind = 'linux';
       $('adminPromptOnceHint').textContent = 'Packages (.deb) that need root are installed together at the end, behind one password prompt. git-updater itself never runs as root.';
+    }
+    // macOS: its own password box, and Apple's installer installs each package.
+    if (platform === 'darwin') {
+      adminPromptKind = 'mac';
+      $('adminPromptOnceHint').textContent = 'Installer packages (.pkg) are installed together at the end, behind one macOS password box. git-updater itself never runs as root; a package Apple has not checked still opens in Installer.';
     }
   })
   .catch(() => {}); // an older main process without the answer keeps it hidden
